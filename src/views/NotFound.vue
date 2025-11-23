@@ -2,8 +2,8 @@
 
 <template>
   <div>
-    <router-view></router-view>
+    <h1>404</h1>
   </div>
 </template>
 
-<style scoped></style>
+<style lang="scss" scoped></style>
