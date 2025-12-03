@@ -1,16 +1,16 @@
 <template>
   <Swiper class="w-screen h-screen" @swiper="onSwiper" @slideChange="onSlideChange">
-    <SwiperSlide v-for="nmu in 6" :key="nmu">
+    <SwiperSlide>
       <div style="
           height: 100%;
-          background-image: url(https://wowtabextension.z7.web.core.windows.net/wowtabwallpapers/2025-03-01.jpg);
         " class="flex justify-center items-center">
         <div class="flex flex-wrap w-[80vw] gap-8">
-          <div v-for="star in 30" :key="star" class="star w-32 h-32 flex flex-col items-center cursor-pointer">
+          <div class="star w-32 h-32 flex flex-col items-center cursor-pointer">
             <div
-              class="icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl hover:scale-110 transition-all ease-in duration-200">
+              class="icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl hover:scale-110 transition-all ease-in duration-200 border border-neutral-100 flex items-center justify-center"
+              @click="navigateTo('/d3task')">
+              <span class="text-white text-xl">d3 task</span>
             </div>
-            <div class="title text-neutral-100 text-center">star</div>
           </div>
           <div class="star w-32 h-32 flex flex-col items-center">
             <div
@@ -39,11 +39,16 @@ import { Dock } from 'primevue'
 import 'swiper/css'
 import { ref } from 'vue'
 import animeIcon from '@/assets/bilibili.svg'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
+const navigateTo = (path: string) => {
+  router.push(path)
+}
 const swiperRef = ref<SwiperType | null>(null)
 const items = ref([
   {
-    label: '未分类',
+    label: '我的工具',
     icon: 'https://primefaces.org/cdn/primevue/images/dock/photos.svg',
   },
   {

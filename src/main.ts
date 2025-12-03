@@ -9,6 +9,8 @@ import './app.css'
 import PrimeVue from 'primevue/config'
 import Aura from '@primeuix/themes/aura'
 import Tooltip from 'primevue/tooltip'
+import TDesign from 'tdesign-vue-next'
+import 'tdesign-vue-next/es/style/index.css'
 
 const app = createApp(App)
 
@@ -20,5 +22,5 @@ app.use(PrimeVue, {
   },
 })
 app.directive('tooltip', Tooltip)
-
+app.use(TDesign)
 app.mount('#app')
