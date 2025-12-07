@@ -1,12 +1,12 @@
-// On page load or when changing themes, best to add inline in `head` to avoid FOUC
-document.documentElement.classList.toggle(
-  'dark',
+if (
   localStorage.theme === 'dark' ||
-    (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches),
-)
-// Whenever the user explicitly chooses light mode
-localStorage.theme = 'light'
-// Whenever the user explicitly chooses dark mode
-localStorage.theme = 'dark'
-// Whenever the user explicitly chooses to respect the OS preference
-localStorage.removeItem('theme')
+  (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)
+) {
+  // tailwindcss dark mode
+  document.documentElement.classList.toggle('dark')
+  // tdesign dark mode
+  document.documentElement.setAttribute('theme-mode', 'dark')
+} else {
+  document.documentElement.classList.toggle('light')
+  document.documentElement.setAttribute('theme-mode', 'light')
+}
