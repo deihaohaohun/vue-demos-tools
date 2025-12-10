@@ -1,22 +1,21 @@
 <template>
   <Swiper class="w-screen h-screen dark:bg-neutral-900" @swiper="onSwiper" @slideChange="onSlideChange">
     <SwiperSlide>
-      <div style="
-          height: 100%;
-        " class="flex justify-center items-center">
+      <div style="height: 100%" class="flex justify-center items-center">
         <div class="flex flex-wrap w-[80vw] gap-8">
-          <div class="star w-32 h-32 flex flex-col items-center cursor-pointer">
-            <div
-              class="icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl hover:scale-110 transition-all ease-in duration-200 border border-neutral-600 flex items-center justify-center"
-              @click="navigateTo('/d3task')">
-              <span class="text-white text-xl">d3 task</span>
-            </div>
+          <div
+            class="star icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl transition-all ease-in duration-100 border dark:border-neutral-300 border-neutral-500 flex items-center justify-center"
+            @click="navigateTo('/d3task')">
+            <span class="dark:text-white text-xl select-none">d3 task</span>
           </div>
-          <div class="star w-32 h-32 flex flex-col items-center">
-            <div
-              class="icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl flex items-center justify-center text-3xl cursor-pointer text-white border border-neutral-600">
-              +
-            </div>
+          <div
+            class="star icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl transition-all ease-in duration-100 border border-neutral-500 flex items-center justify-center"
+            @click="navigateTo('/todo')">
+            <span class="dark:text-white text-xl select-none">todo list</span>
+          </div>
+          <div
+            class="star icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl transition-all ease-in duration-100 flex items-center justify-center text-3xl cursor-pointer dark:text-white border border-neutral-500">
+            +
           </div>
         </div>
       </div>
@@ -47,4 +46,17 @@ const onSlideChange = () => {
 }
 </script>
 
-<style lang="scss"></style>
+<style lang="scss">
+.star {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+
+  @media (prefers-color-scheme: dark) {
+    border: 1px solid #303030;
+  }
+
+  &:hover {
+    box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
+  }
+}
+</style>

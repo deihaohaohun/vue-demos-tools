@@ -14,6 +14,11 @@ const router = createRouter({
       component: () => import('@/views/d3task/D3Task.vue'),
     },
     {
+      path: '/todo',
+      name: 'todo',
+      component: () => import('@/views/todo/D3TodoList.vue'),
+    },
+    {
       path: '/setting',
       name: 'setting',
       meta: { requiresAuth: true },
