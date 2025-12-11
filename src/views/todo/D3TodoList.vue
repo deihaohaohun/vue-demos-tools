@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { nanoid } from 'nanoid';
+import { MessagePlugin } from 'tdesign-vue-next';
 
 const title = ref('')
 const todos = ref<{ title: string, id: string, done: boolean }[]>([])
@@ -10,12 +11,14 @@ const addTodo = () => {
   if (title.value.trim()) {
     todos.value.push({ title: title.value.trim(), id: nanoid(), done: false })
     title.value = ''
+  } else {
+    MessagePlugin.error('任务标题不能为空')
   }
 }
 </script>
 
 <template>
-  <div class="w-screen h-screen dark:bg-neutral-900 overflow-hidden">
+  <div class="w-screen h-screen dark:bg-neutral-900 overflow-hidden bg-neutral-50">
     <div class="flex gap-2 items-center justify-center pt-12 w-[800px] mx-auto">
       <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加一个任务"></t-input>
       <t-button @click="addTodo">添加</t-button>
@@ -27,14 +30,18 @@ const addTodo = () => {
           <div class="p-2">
             <template v-if="todos.length">
               <label v-for="todo in todos" :key="todo.id"
-                class="p-2 dark:hover:bg-neutral-950 transition-all ease-in-out duration-200 rounded-md flex items-center cursor-pointer mb-2 last-of-type:mb-0"
-                :class="{ 'bg-neutral-950': selectedIds.has(todo.id) }"
+                class="p-2 dark:hover:bg-neutral-950 hover:bg-neutral-100 transition-all ease-in-out duration-200 rounded-md flex items-center justify-between cursor-pointer mb-2 last-of-type:mb-0"
+                :class="{ 'dark:bg-neutral-950': selectedIds.has(todo.id), 'bg-neutral-100': selectedIds.has(todo.id) }"
                 @click.stop="selectedIds.has(todo.id) ? selectedIds.delete(todo.id) : selectedIds.add(todo.id)">
                 <t-checkbox v-model="todo.done">{{ todo.title }}</t-checkbox>
+
+                <t-button theme="danger" size="small" @click.stop>删除</t-button>
               </label>
             </template>
             <template v-else>
-              <p class="text-center">暂无数据</p>
+              <div class="w-full h-[300px] flex flex-col items-center justify-center">
+                <t-empty />
+              </div>
             </template>
           </div>
         </t-tab-panel>
