@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { nanoid } from 'nanoid'
 import { MessagePlugin } from 'tdesign-vue-next'
 import VChart from 'vue-echarts'
@@ -12,6 +12,11 @@ import {
   LegendComponent,
   TitleComponent,
 } from 'echarts/components'
+import CalHeatmap from 'cal-heatmap'
+import Tooltip from 'cal-heatmap/plugins/Tooltip'
+import 'cal-heatmap/cal-heatmap.css'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
 import TodoItem from './TodoItem.vue'
 
 use([
@@ -496,7 +501,7 @@ const loadData = () => {
     try {
       history.value = JSON.parse(storedHistory)
     } catch (e) {
-      console.error('加载历史记录失败:', e)
+      console.error('加载历史任务记录失败:', e)
     }
   }
 }
@@ -556,14 +561,14 @@ const removeHistory = (text: string) => {
   const index = history.value.indexOf(text)
   if (index > -1) {
     history.value.splice(index, 1)
-    MessagePlugin.success('已删除历史记录')
+    MessagePlugin.success('已删除历史任务记录')
   }
 }
 
 const clearHistory = () => {
   if (!history.value.length) return
   history.value = []
-  MessagePlugin.success('已清空历史记录')
+  MessagePlugin.success('已清空历史任务记录')
 }
 
 const handlePunchIn = (id: string) => {
@@ -656,13 +661,9 @@ const addTodo = () => {
 }
 
 const addFromHistory = (text: string) => {
-  const existing = todos.value.find(
-    (t) =>
-      t.title === text && !t.done && t.category === category.value && t.period === period.value,
-  )
+  const existing = todos.value.find((t) => t.title === text)
   if (existing) {
-    const action = existing.punchIns > 0 ? '再次打卡' : '开始打卡'
-    MessagePlugin.info(`任务已存在,请${action}`)
+    MessagePlugin.info('已存在相同名称任务')
     return
   }
 
@@ -710,7 +711,7 @@ const addFromHistory = (text: string) => {
   ensureDayStat(dk).createdCount += 1
   incCategory(ensureDayStat(dk).categoryCreated, category.value, 1)
   updateHistory(text)
-  MessagePlugin.success('已从历史记录添加')
+  MessagePlugin.success('已从历史任务记录添加')
 }
 
 const deleteTodo = (id: string) => {
@@ -805,6 +806,166 @@ const getDayKeyOffsetFromToday = (offsetDays: number) => {
   return formatDayKey(base.getTime())
 }
 
+const getHeatmapStartDate = () => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
+const getDaysDiff = (a: Date, b: Date) => {
+  const day = 24 * 60 * 60 * 1000
+  const aa = new Date(a)
+  const bb = new Date(b)
+  aa.setHours(0, 0, 0, 0)
+  bb.setHours(0, 0, 0, 0)
+  return Math.floor((bb.getTime() - aa.getTime()) / day)
+}
+
+let calHeatmap: any = null
+
+const dayKeyToTimestamp = (dayKey: string) => {
+  const parts = dayKey.split('-')
+  const y = Number(parts[0])
+  const m = Number(parts[1])
+  const d = Number(parts[2])
+  return new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
+}
+
+const calendarData = computed(() => {
+  const start = getHeatmapStartDate()
+  const today = new Date()
+  const days = getDaysDiff(start, today) + 1
+  const records: Array<{ ts: number; value: number; minutes: number; completedCount: number }> = []
+  const minutesByTs: Record<number, number> = {}
+  const completedByTs: Record<number, number> = {}
+
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const dk = getDayKeyOffsetFromToday(-i)
+    const punches =
+      dk === todayKey.value ? todayPunchInsTotal.value : dayStats.value[dk]?.punchInsTotal || 0
+    const minutes =
+      dk === todayKey.value ? todayMinutesTotal.value : dayStats.value[dk]?.minutesTotal || 0
+    const completedCount =
+      dk === todayKey.value ? todayCompletedCount.value : dayStats.value[dk]?.completedCount || 0
+    const ts = dayKeyToTimestamp(dk)
+    records.push({ ts, value: punches, minutes, completedCount })
+    minutesByTs[ts] = minutes
+    completedByTs[ts] = completedCount
+  }
+
+  const sumPunches = records.reduce((s, r) => s + (r.value || 0), 0)
+  const sumMinutes = records.reduce((s, r) => s + (r.minutes || 0), 0)
+  const sumCompleted = records.reduce((s, r) => s + (r.completedCount || 0), 0)
+
+  if (sumPunches === 0 && sumMinutes === 0 && sumCompleted === 0) {
+    for (const r of records) {
+      const d = new Date(r.ts)
+      const week = d.getDay() // 0-6
+      const date = d.getDate() // 1-31
+      const punches = week === 0 || week === 6 ? date % 2 : (date % 5) + 1
+      const minutes = punches * (10 + (date % 3) * 5)
+      const completedCount = Math.min(punches, (date % 4) + 1)
+      r.value = punches
+      r.minutes = minutes
+      r.completedCount = completedCount
+      minutesByTs[r.ts] = minutes
+      completedByTs[r.ts] = completedCount
+    }
+  }
+
+  return { records, minutesByTs, completedByTs }
+})
+
+const renderCalHeatmap = async () => {
+  const root = document.getElementById('todo-cal-heatmap')
+  const legend = document.getElementById('todo-cal-heatmap-legend')
+  if (!root) return
+
+  if (calHeatmap) {
+    await calHeatmap.destroy()
+    calHeatmap = null
+  }
+
+  if (legend) {
+    legend.innerHTML = ''
+  }
+
+  dayjs.locale('zh-cn')
+  const start = getHeatmapStartDate()
+
+  calHeatmap = new CalHeatmap()
+  calHeatmap.paint(
+    {
+      itemSelector: '#todo-cal-heatmap',
+      date: { start },
+      data: {
+        source: calendarData.value.records,
+        x: (d: any) => d.ts,
+        y: 'value',
+        defaultValue: 0,
+      },
+      scale: {
+        color: {
+          type: 'threshold',
+          domain: [1, 3, 6, 10],
+          range: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
+        },
+      },
+      domain: {
+        type: 'month',
+        gutter: 4,
+        dynamicDimension: false,
+      },
+      subDomain: {
+        type: 'day',
+        radius: 2,
+        width: 12,
+        height: 12,
+        gutter: 2,
+      },
+    },
+    [
+      [
+        Tooltip,
+        {
+          text: function (date: any, value: any, dayjsDate: any) {
+            const ts = typeof date === 'number' ? date : date?.getTime?.() || 0
+            const punches = typeof value === 'number' ? value : 0
+            const minutes = calendarData.value.minutesByTs[ts] || 0
+            const completedCount = calendarData.value.completedByTs[ts] || 0
+            const dateText = dayjsDate?.format?.('YYYY-MM-DD') || dayjs(date).format('YYYY-MM-DD')
+            return (
+              `${dateText}` +
+              `<br/>打卡次数: ${punches} 次` +
+              `<br/>累计分钟: ${minutes} 分钟` +
+              `<br/>完成任务: ${completedCount} 个`
+            )
+          },
+        },
+      ],
+    ],
+  )
+}
+
+onMounted(() => {
+  renderCalHeatmap()
+})
+
+watch(
+  calendarData,
+  () => {
+    renderCalHeatmap()
+  },
+  { deep: true },
+)
+
+onBeforeUnmount(() => {
+  if (calHeatmap) {
+    calHeatmap.destroy()
+    calHeatmap = null
+  }
+})
+
 const rangeDays = computed(() => {
   if (statsRange.value === '7d') return 7
   if (statsRange.value === '30d') return 30
@@ -849,21 +1010,14 @@ const rangeLabels = computed(() => {
 
 const createdSeries = computed(() => rangeStats.value.map((s) => s.createdCount))
 const completedSeries = computed(() => rangeStats.value.map((s) => s.completedCount))
-const completionRateSeries = computed(() =>
-  rangeStats.value.map((s) => {
-    if (!s.createdCount) return 0
-    return Math.round((s.completedCount / s.createdCount) * 100)
-  }),
-)
 
 const punchInsSeries = computed(() => rangeStats.value.map((s) => s.punchInsTotal))
 const minutesSeries = computed(() => rangeStats.value.map((s) => s.minutesTotal))
 
-const rangeCategoryCompleted = computed(() => {
+const rangeCategoryCreated = computed(() => {
   const map: Record<string, number> = {}
   if (statsRange.value === 'today') {
     for (const t of todayTodos.value) {
-      if (!t.done) continue
       const k = t.category || '未分类'
       map[k] = (map[k] || 0) + 1
     }
@@ -873,7 +1027,7 @@ const rangeCategoryCompleted = computed(() => {
   for (const dk of rangeDayKeys.value) {
     const stat = dayStats.value[dk]
     if (!stat) continue
-    for (const [c, v] of Object.entries(stat.categoryCompleted || {})) {
+    for (const [c, v] of Object.entries(stat.categoryCreated || {})) {
       map[c] = (map[c] || 0) + (v || 0)
     }
   }
@@ -884,53 +1038,33 @@ const trendOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
-    legend: { data: ['总任务', '已完成', '完成率%'], top: 0 },
-    grid: { left: 24, right: 24, top: 40, bottom: 24, containLabel: true },
+    legend: { data: ['完成任务数'], top: 0 },
+    grid: { left: 24, right: 24, top: 40, bottom: 6, containLabel: true },
     xAxis: { type: 'category', data: rangeLabels.value, axisTick: { show: false } },
-    yAxis: [
-      { type: 'value', name: '任务', minInterval: 1 },
-      { type: 'value', name: '%', min: 0, max: 100 },
-    ],
+    yAxis: { type: 'value', name: '个', minInterval: 1 },
     series: [
       {
-        name: '总任务',
-        type: 'bar',
-        data: createdSeries.value,
-        itemStyle: { color: '#60a5fa' },
-        barWidth: 14,
-      },
-      {
-        name: '已完成',
-        type: 'bar',
-        data: completedSeries.value,
-        itemStyle: { color: '#34d399' },
-        barWidth: 14,
-      },
-      {
-        name: '完成率%',
+        name: '完成任务数',
         type: 'line',
-        yAxisIndex: 1,
-        data: completionRateSeries.value,
+        data: completedSeries.value,
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
         itemStyle: { color: '#f472b6' },
+        areaStyle: { color: 'rgba(244,114,182,0.18)' },
       },
     ],
   }
 })
 
-const activityOption = computed(() => {
+const punchInsOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
-    legend: { data: ['打卡次数', '累计分钟'], top: 0 },
-    grid: { left: 24, right: 24, top: 40, bottom: 24, containLabel: true },
+    legend: { data: ['打卡次数'], top: 0 },
+    grid: { left: 24, right: 24, top: 40, bottom: 6, containLabel: true },
     xAxis: { type: 'category', data: rangeLabels.value, axisTick: { show: false } },
-    yAxis: [
-      { type: 'value', name: '次', minInterval: 1 },
-      { type: 'value', name: '分钟', minInterval: 1 },
-    ],
+    yAxis: { type: 'value', name: '次', minInterval: 1 },
     series: [
       {
         name: '打卡次数',
@@ -941,10 +1075,22 @@ const activityOption = computed(() => {
         itemStyle: { color: '#a78bfa' },
         areaStyle: { color: 'rgba(167,139,250,0.2)' },
       },
+    ],
+  }
+})
+
+const minutesOption = computed(() => {
+  return {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['累计分钟'], top: 0 },
+    grid: { left: 24, right: 24, top: 40, bottom: 6, containLabel: true },
+    xAxis: { type: 'category', data: rangeLabels.value, axisTick: { show: false } },
+    yAxis: { type: 'value', name: '分钟', minInterval: 1 },
+    series: [
       {
         name: '累计分钟',
         type: 'line',
-        yAxisIndex: 1,
         data: minutesSeries.value,
         smooth: true,
         symbolSize: 6,
@@ -956,23 +1102,25 @@ const activityOption = computed(() => {
 })
 
 const categoryOption = computed(() => {
-  const data = Object.entries(rangeCategoryCompleted.value)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-
+  const data = Object.entries(rangeCategoryCreated.value).sort((a, b) => (b[1] || 0) - (a[1] || 0))
   return {
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'item' },
-    legend: { top: 0 },
-    color: ['#34d399', '#60a5fa', '#f472b6', '#a78bfa', '#fb923c', '#22c55e', '#eab308'],
+    tooltip: { trigger: 'axis' },
+    grid: { left: 24, right: 24, top: 40, bottom: 26, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map((d) => d[0]),
+      axisTick: { show: false },
+      axisLabel: { interval: 0, rotate: data.length > 6 ? 30 : 0 },
+    },
+    yAxis: { type: 'value', name: '个', minInterval: 1 },
     series: [
       {
-        type: 'pie',
-        name: '完成分类',
-        radius: ['35%', '70%'],
-        center: ['50%', '60%'],
-        data,
-        label: { formatter: '{b}: {d}%' },
+        name: '任务分类',
+        type: 'bar',
+        data: data.map((d) => d[1] || 0),
+        barWidth: 16,
+        itemStyle: { color: '#60a5fa' },
       },
     ],
   }
@@ -986,7 +1134,7 @@ const formatShortDay = (dayKey: string) => {
 
 <template>
   <div class="w-screen h-screen dark:bg-neutral-900 overflow-auto bg-neutral-50 pb-4">
-    <div class="w-[800px] mx-auto pt-4">
+    <div class="w-[1200px] mx-auto pt-4">
       <div class="text-sm text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
       <div class="flex gap-2 items-center justify-center">
         <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加一个任务"></t-input>
@@ -994,7 +1142,7 @@ const formatShortDay = (dayKey: string) => {
       </div>
     </div>
 
-    <div class="w-[800px] mx-auto mt-4 grid grid-cols-12 gap-2">
+    <div class="w-[1200px] mx-auto mt-4 grid grid-cols-12 gap-2">
       <div class="col-span-12 md:col-span-6 flex items-center gap-2">
         <div class="text-sm text-neutral-500 w-[72px]">任务分类</div>
         <t-radio-group v-model="category" variant="default-filled" size="small">
@@ -1059,8 +1207,8 @@ const formatShortDay = (dayKey: string) => {
       </div>
     </div>
 
-    <div class="w-[800px] mx-auto mt-4 flex flex-wrap gap-2">
-      <div class="text-sm text-neutral-500 flex items-center">历史记录:</div>
+    <div class="w-[1200px] mx-auto mt-4 flex flex-wrap gap-2">
+      <div class="text-sm text-neutral-500 flex items-center">历史任务记录:</div>
       <t-button
         v-if="history.length"
         size="small"
@@ -1086,7 +1234,7 @@ const formatShortDay = (dayKey: string) => {
       <div v-else class="text-sm text-neutral-400 flex items-center">暂无历史数据</div>
     </div>
 
-    <div class="w-[800px] mx-auto mt-4 rounded-md overflow-hidden">
+    <div class="w-[1200px] mx-auto mt-4 rounded-md overflow-hidden">
       <t-tabs :default-value="1">
         <t-tab-panel :value="1" label="待完成">
           <div class="p-2">
@@ -1116,7 +1264,6 @@ const formatShortDay = (dayKey: string) => {
                 v-for="todo in completedTodos"
                 :key="todo.id"
                 :todo="todo"
-                :is-selected="selectedIds.has(todo.id)"
                 @toggle-select="toggleSelect"
                 @toggle-done="toggleDone"
                 @punch-in="handlePunchIn"
@@ -1172,23 +1319,41 @@ const formatShortDay = (dayKey: string) => {
           </div>
         </div>
 
+        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 p-2 mb-3">
+          <div class="text-xs text-neutral-500 mb-4">最近一年活跃热力图（打卡次数/分钟数）</div>
+          <div class="w-full overflow-x-auto">
+            <div class="w-fit mx-auto">
+              <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-12 gap-3">
-          <div class="col-span-12 lg:col-span-7 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">完成趋势（总任务/已完成/完成率）</div>
-            <div class="h-[240px] w-full overflow-hidden" style="line-height: 0">
+          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
+            <div class="text-xs text-neutral-500 mb-2">完成任务数趋势</div>
+            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
               <VChart :option="trendOption" style="height: 100%; width: 100%" />
             </div>
           </div>
-          <div class="col-span-12 lg:col-span-5 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">完成分类占比</div>
-            <div class="h-[240px] w-full overflow-hidden" style="line-height: 0">
+
+          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
+            <div class="text-xs text-neutral-500 mb-2">任务分类（数量）</div>
+            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
               <VChart :option="categoryOption" style="height: 100%; width: 100%" />
             </div>
           </div>
-          <div class="col-span-12 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">活跃度（打卡次数/累计分钟）</div>
+
+          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
+            <div class="text-xs text-neutral-500 mb-2">打卡次数趋势</div>
             <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
-              <VChart :option="activityOption" style="height: 100%; width: 100%" />
+              <VChart :option="punchInsOption" style="height: 100%; width: 100%" />
+            </div>
+          </div>
+
+          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
+            <div class="text-xs text-neutral-500 mb-2">分钟数趋势</div>
+            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
+              <VChart :option="minutesOption" style="height: 100%; width: 100%" />
             </div>
           </div>
         </div>
@@ -1269,4 +1434,9 @@ const formatShortDay = (dayKey: string) => {
   </div>
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+#todo-cal-heatmap {
+  display: flex;
+  justify-content: center;
+}
+</style>
