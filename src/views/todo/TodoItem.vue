@@ -3,6 +3,7 @@ interface Todo {
   title: string
   id: string
   done: boolean
+  punchIns: number
 }
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 interface Emits {
   (e: 'toggle-select', id: string): void
   (e: 'toggle-done', id: string, done: boolean): void
+  (e: 'punch-in', id: string): void
   (e: 'delete', id: string): void
 }
 
@@ -29,27 +31,27 @@ const emit = defineEmits<Emits>()
     }"
     @click.stop="emit('toggle-select', todo.id)"
   >
-    <div class="pointer-events-none">
-      {{ todo.title }}
+    <div class="pointer-events-none flex items-center gap-2">
+      <span>{{ todo.title }}</span>
+      <t-tag v-if="!todo.done && todo.punchIns > 0" size="small" variant="light" theme="primary">
+        已打卡 {{ todo.punchIns }} 次
+      </t-tag>
     </div>
 
     <div class="flex gap-2">
-      <t-button
-        v-if="!todo.done"
-        theme="primary"
-        size="small"
-        @click.stop="emit('toggle-done', todo.id, true)"
-      >
-        完成
-      </t-button>
-      <t-button
-        v-else
-        theme="default"
-        size="small"
-        @click.stop="emit('toggle-done', todo.id, false)"
-      >
-        撤销
-      </t-button>
+      <template v-if="!todo.done">
+        <t-button theme="primary" size="small" @click.stop="emit('punch-in', todo.id)">
+          {{ todo.punchIns > 0 ? '再次打卡' : '打卡' }}
+        </t-button>
+        <t-button
+          :theme="todo.punchIns > 0 ? 'success' : 'default'"
+          size="small"
+          @click.stop="emit('toggle-done', todo.id, true)"
+        >
+          {{ todo.punchIns > 0 ? '标记完成' : '完成' }}
+        </t-button>
+      </template>
+
       <t-button theme="danger" size="small" @click.stop="emit('delete', todo.id)"> 删除 </t-button>
     </div>
   </div>

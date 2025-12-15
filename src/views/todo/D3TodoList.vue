@@ -8,7 +8,9 @@ const STORAGE_KEY = 'todos'
 const HISTORY_KEY = 'todo_history'
 
 const title = ref('')
-const todos = ref<{ title: string; id: string; done: boolean; completedAt?: number }[]>([])
+const todos = ref<
+  { title: string; id: string; done: boolean; completedAt?: number; punchIns: number }[]
+>([])
 const history = ref<string[]>([])
 const selectedIds = ref<Set<string>>(new Set())
 const filterDate = ref('')
@@ -18,7 +20,19 @@ const loadData = () => {
   const storedTodos = localStorage.getItem(STORAGE_KEY)
   if (storedTodos) {
     try {
-      todos.value = JSON.parse(storedTodos)
+      const parsed = JSON.parse(storedTodos)
+      todos.value = parsed.map(
+        (t: {
+          title: string
+          id: string
+          done: boolean
+          completedAt?: number
+          punchIns?: number
+        }) => ({
+          ...t,
+          punchIns: t.punchIns || 0, // 兼容旧数据
+        }),
+      )
     } catch (e) {
       console.error('加载任务数据失败:', e)
     }
@@ -77,20 +91,27 @@ const updateHistory = (text: string) => {
   }
 }
 
-const checkDuplicate = (text: string) => {
-  if (todos.value.some((todo) => todo.title === text)) {
-    MessagePlugin.warning('任务已存在')
-    return true
+const handlePunchIn = (id: string) => {
+  const todo = todos.value.find((t) => t.id === id)
+  if (todo) {
+    todo.punchIns = (todo.punchIns || 0) + 1
+    MessagePlugin.success(`打卡成功,当前已打卡 ${todo.punchIns} 次`)
   }
-  return false
 }
 
 const addTodo = () => {
   if (title.value.trim()) {
     const text = title.value.trim()
-    if (checkDuplicate(text)) return
 
-    todos.value.push({ title: text, id: nanoid(), done: false })
+    // 如果存在未完成的同名任务,提示打卡
+    const existing = todos.value.find((t) => t.title === text && !t.done)
+    if (existing) {
+      const action = existing.punchIns > 0 ? '再次打卡' : '开始打卡'
+      MessagePlugin.info(`任务已存在,请${action}`)
+      return
+    }
+
+    todos.value.push({ title: text, id: nanoid(), done: false, punchIns: 0 })
     updateHistory(text)
     title.value = ''
   } else {
@@ -99,8 +120,14 @@ const addTodo = () => {
 }
 
 const addFromHistory = (text: string) => {
-  if (checkDuplicate(text)) return
-  todos.value.push({ title: text, id: nanoid(), done: false })
+  const existing = todos.value.find((t) => t.title === text && !t.done)
+  if (existing) {
+    const action = existing.punchIns > 0 ? '再次打卡' : '开始打卡'
+    MessagePlugin.info(`任务已存在,请${action}`)
+    return
+  }
+
+  todos.value.push({ title: text, id: nanoid(), done: false, punchIns: 0 })
   updateHistory(text)
   MessagePlugin.success('已从历史记录添加')
 }
@@ -167,6 +194,7 @@ const toggleDone = (id: string, done: boolean) => {
                 :is-selected="selectedIds.has(todo.id)"
                 @toggle-select="toggleSelect"
                 @toggle-done="toggleDone"
+                @punch-in="handlePunchIn"
                 @delete="deleteTodo"
               />
             </template>
@@ -190,6 +218,7 @@ const toggleDone = (id: string, done: boolean) => {
                 :is-selected="selectedIds.has(todo.id)"
                 @toggle-select="toggleSelect"
                 @toggle-done="toggleDone"
+                @punch-in="handlePunchIn"
                 @delete="deleteTodo"
               />
             </template>
