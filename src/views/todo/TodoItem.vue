@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { RefreshIcon, CheckIcon, EditIcon, Delete1Icon, CheckCircleIcon } from 'tdesign-icons-vue-next'
+
 interface Todo {
   title: string
   id: string
@@ -43,13 +45,12 @@ const getMinutesDone = (todo: Todo) => {
 <template>
   <div
     class="p-2 dark:hover:bg-neutral-950 hover:bg-neutral-100 transition-all ease-in-out duration-200 rounded-md flex items-center justify-between cursor-pointer mb-2 last-of-type:mb-0"
-    @click.stop="emit('toggle-select', todo.id)"
-  >
+    @click.stop="emit('toggle-select', todo.id)">
     <div class="pointer-events-none flex items-center gap-2">
       <span>{{ todo.title }}</span>
       <t-tag v-if="todo.category" size="small" variant="outline" theme="primary">{{
         todo.category
-      }}</t-tag>
+        }}</t-tag>
       <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
       <t-tag size="small" variant="light" theme="default">
         <template v-if="todo.unit === 'minutes'">
@@ -64,29 +65,35 @@ const getMinutesDone = (todo: Todo) => {
     </div>
 
     <div class="flex gap-2">
-      <t-button
-        v-if="todo.period !== 'once'"
-        theme="primary"
-        size="small"
-        @click.stop="emit('punch-in', todo.id)"
-      >
+      <t-button v-if="todo.period !== 'once'" theme="primary" size="small" @click.stop="emit('punch-in', todo.id)">
+        <template #icon>
+          <refresh-icon v-if="todo.punchIns > 0" size="12" />
+          <check-icon v-if="todo.punchIns <= 0" size="12" />
+        </template>
         {{ todo.punchIns > 0 ? '再次打卡' : '打卡' }}
       </t-button>
 
-      <t-button
-        v-if="todo.period === 'once' && !todo.done"
-        theme="success"
-        size="small"
-        @click.stop="emit('toggle-done', todo.id, true)"
-      >
-        完成
+      <t-button v-if="todo.period === 'once' && !todo.done" theme="success" size="small"
+        @click.stop="emit('toggle-done', todo.id, true)">
+        <template #icon>
+          <check-circle-icon size="12" />
+        </template>
+        完成目标
       </t-button>
 
       <t-button theme="default" variant="outline" size="small" @click.stop="emit('edit', todo.id)">
+        <template #icon>
+          <edit-icon size="12" />
+        </template>
         编辑
       </t-button>
 
-      <t-button theme="danger" size="small" @click.stop="emit('delete', todo.id)"> 删除 </t-button>
+      <t-button theme="danger" size="small" @click.stop="emit('delete', todo.id)">
+        <template #icon>
+          <delete1-icon size="12" />
+        </template>
+        删除
+      </t-button>
     </div>
   </div>
 </template>

@@ -15,6 +15,7 @@ import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
 import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem } from './useTodoStore'
+import { AddIcon } from 'tdesign-icons-vue-next'
 
 use([
   CanvasRenderer,
@@ -212,7 +213,7 @@ const { heatmapLoading } = useTodoHeatmap({
   dayStats,
 })
 
-const statsRange = ref<'today' | '7d' | '30d'>('today')
+const statsRange = ref<'today' | '7d' | '30d'>('7d')
 
 const getDayKeyOffsetFromToday = (offsetDays: number) => {
   const base = new Date()
@@ -307,7 +308,12 @@ const formatShortDay = (dayKey: string) => {
       <div class="text-sm text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
       <div class="flex gap-2 items-center justify-center">
         <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加一个任务"></t-input>
-        <t-button @click="addTodo">添加</t-button>
+        <t-button @click="addTodo">
+          <template #icon>
+            <add-icon size="20" />
+          </template>
+          新建任务
+        </t-button>
       </div>
     </div>
 
@@ -372,7 +378,7 @@ const formatShortDay = (dayKey: string) => {
           class="transition-colors">
           <span class="cursor-pointer hover:text-blue-600" @click="addFromHistory(item)">{{
             item.title
-            }}</span>
+          }}</span>
           <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
             ×
           </span>
@@ -499,7 +505,7 @@ const formatShortDay = (dayKey: string) => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-              }}</t-radio-button>
+            }}</t-radio-button>
           </t-radio-group>
         </div>
 
