@@ -41,20 +41,27 @@ interface DayStat {
   categoryCompleted: Record<string, number>
 }
 
+interface HistoryItem {
+  title: string
+  category: string
+  period: TodoPeriod
+  minFrequency: number
+  unit: TodoUnit
+  minutesPerTime?: number
+}
+
 const STORAGE_KEY = 'todos'
 const HISTORY_KEY = 'todo_history'
 const TEMPLATES_KEY = 'todo_templates'
 const DAY_STATS_KEY = 'todo_day_stats'
-const SKIPPED_KEY = 'todo_skipped'
 
-export type { Todo, TodoTemplate, DayStat, TodoPeriod, TodoUnit }
+export type { Todo, TodoTemplate, DayStat, TodoPeriod, TodoUnit, HistoryItem }
 
 export const useTodoStore = () => {
   const todos = ref<Todo[]>([])
   const templates = ref<TodoTemplate[]>([])
   const dayStats = ref<Record<string, DayStat>>({})
-  const history = ref<string[]>([])
-  const skipped = ref<Record<string, string[]>>({})
+  const history = ref<HistoryItem[]>([])
 
   const formatDayKey = (ts: number) => {
     const d = new Date(ts)
@@ -78,22 +85,6 @@ export const useTodoStore = () => {
       }
     }
     return dayStats.value[dayKey]
-  }
-
-  const isTemplateSkipped = (dayKey: string, templateId: string) => {
-    return (skipped.value[dayKey] || []).includes(templateId)
-  }
-
-  const markTemplateSkipped = (dayKey: string, templateId: string) => {
-    const list = skipped.value[dayKey] || []
-    if (!list.includes(templateId)) {
-      skipped.value[dayKey] = [...list, templateId]
-    }
-  }
-
-  const unmarkTemplateSkipped = (dayKey: string, templateId: string) => {
-    const list = skipped.value[dayKey] || []
-    skipped.value[dayKey] = list.filter((id) => id !== templateId)
   }
 
   const incCategory = (record: Record<string, number>, key: string, delta: number) => {
@@ -157,8 +148,6 @@ export const useTodoStore = () => {
     const tk = todayKey.value
     const todayDate = new Date()
 
-    const skippedTplIds = new Set(skipped.value[tk] || [])
-
     const keep = todos.value.filter((t) => t.dayKey === tk && t.period === 'once')
     const instances: Todo[] = [...keep]
 
@@ -170,7 +159,6 @@ export const useTodoStore = () => {
 
     for (const tpl of templates.value) {
       if (!isTemplateDueOnDate(tpl, todayDate)) continue
-      if (skippedTplIds.has(tpl.id)) continue
       if (existingByTemplateId.has(tpl.id)) {
         const existing = todos.value.find((t) => t.dayKey === tk && t.templateId === tpl.id)
         if (existing) instances.push(existing)
@@ -195,8 +183,7 @@ export const useTodoStore = () => {
       incCategory(ensureDayStat(tk).categoryCreated, tpl.category || '未分类', 1)
     }
 
-    // 防止多端/旧数据导致的“已跳过但实例仍在”
-    todos.value = instances.filter((t) => !(t.templateId && skippedTplIds.has(t.templateId)))
+    todos.value = instances
   }
 
   const rebuildStatsFromTodos = () => {
@@ -326,19 +313,36 @@ export const useTodoStore = () => {
       }
     }
 
-    const storedSkipped = localStorage.getItem(SKIPPED_KEY)
-    if (storedSkipped) {
-      try {
-        skipped.value = JSON.parse(storedSkipped) || {}
-      } catch (e) {
-        console.error('加载跳过记录失败:', e)
-      }
-    }
-
     const storedHistory = localStorage.getItem(HISTORY_KEY)
     if (storedHistory) {
       try {
-        history.value = JSON.parse(storedHistory)
+        const parsed = JSON.parse(storedHistory)
+        // 向后兼容：处理旧的字符串格式
+        if (Array.isArray(parsed)) {
+          history.value = parsed.map((item: string | HistoryItem) => {
+            if (typeof item === 'string') {
+              // 旧格式：只有标题字符串
+              return {
+                title: item,
+                category: '',
+                period: 'daily' as TodoPeriod,
+                minFrequency: 1,
+                unit: 'times' as TodoUnit,
+                minutesPerTime: undefined,
+              }
+            }
+            // 新格式：完整的历史项对象
+            return {
+              title: typeof item.title === 'string' ? item.title : '',
+              category: typeof item.category === 'string' ? item.category : '',
+              period: (item.period as TodoPeriod) || 'daily',
+              minFrequency: typeof item.minFrequency === 'number' ? item.minFrequency : 1,
+              unit: (item.unit as TodoUnit) || 'times',
+              minutesPerTime:
+                typeof item.minutesPerTime === 'number' ? item.minutesPerTime : undefined,
+            }
+          })
+        }
       } catch (e) {
         console.error('加载历史任务记录失败:', e)
       }
@@ -362,10 +366,6 @@ export const useTodoStore = () => {
     localStorage.setItem(DAY_STATS_KEY, JSON.stringify(dayStats.value))
   }
 
-  const saveSkipped = () => {
-    localStorage.setItem(SKIPPED_KEY, JSON.stringify(skipped.value))
-  }
-
   // 页面加载时读取数据
   onMounted(() => {
     loadData()
@@ -380,21 +380,24 @@ export const useTodoStore = () => {
   watch(history, saveHistory, { deep: true })
   watch(templates, saveTemplates, { deep: true })
   watch(dayStats, saveDayStats, { deep: true })
-  watch(skipped, saveSkipped, { deep: true })
 
-  const updateHistory = (text: string) => {
-    const index = history.value.indexOf(text)
+  const updateHistory = (item: HistoryItem) => {
+    const index = history.value.findIndex(
+      (h) => h.title === item.title && h.category === item.category && h.period === item.period,
+    )
     if (index > -1) {
       history.value.splice(index, 1)
     }
-    history.value.unshift(text)
+    history.value.unshift(item)
     if (history.value.length > 10) {
       history.value.pop()
     }
   }
 
-  const removeHistoryItem = (text: string) => {
-    const index = history.value.indexOf(text)
+  const removeHistoryItem = (item: HistoryItem) => {
+    const index = history.value.findIndex(
+      (h) => h.title === item.title && h.category === item.category && h.period === item.period,
+    )
     if (index > -1) {
       history.value.splice(index, 1)
       return true
@@ -477,9 +480,6 @@ export const useTodoStore = () => {
           createdAt: now,
         })
       }
-
-      // 如果今天曾跳过该模板，重新添加时取消跳过
-      unmarkTemplateSkipped(dk, templateId)
     }
 
     const todo: Todo = {
@@ -500,7 +500,14 @@ export const useTodoStore = () => {
     todos.value.push(todo)
     ensureDayStat(dk).createdCount += 1
     incCategory(ensureDayStat(dk).categoryCreated, params.category, 1)
-    updateHistory(text)
+    updateHistory({
+      title: text,
+      category: params.category,
+      period: params.period,
+      minFrequency: params.minFrequency,
+      unit: params.unit,
+      minutesPerTime: params.minutesPerTime,
+    })
 
     return { kind: 'added' as const }
   }
@@ -544,9 +551,6 @@ export const useTodoStore = () => {
           createdAt: now,
         })
       }
-
-      // 如果今天曾跳过该模板，重新添加时取消跳过
-      unmarkTemplateSkipped(dk, templateId)
     }
 
     todos.value.push({
@@ -565,7 +569,14 @@ export const useTodoStore = () => {
     })
     ensureDayStat(dk).createdCount += 1
     incCategory(ensureDayStat(dk).categoryCreated, params.category, 1)
-    updateHistory(text)
+    updateHistory({
+      title: text,
+      category: params.category,
+      period: params.period,
+      minFrequency: params.minFrequency,
+      unit: params.unit,
+      minutesPerTime: params.minutesPerTime,
+    })
 
     return { kind: 'added' as const }
   }
@@ -574,40 +585,32 @@ export const useTodoStore = () => {
     const target = todos.value.find((t) => t.id === id)
     if (!target) return { kind: 'not_found' as const, removedIds: [] as string[] }
 
-    // 周期任务：表示“今天不做了”，仅跳过今天，不删除模板
-    if (target.period !== 'once') {
-      const dk = target.dayKey
-      const tplId = target.templateId
-      if (tplId) {
-        markTemplateSkipped(dk, tplId)
-      }
+    const dk = target.dayKey
+    const stat = ensureDayStat(dk)
 
-      const removed = todos.value.filter(
-        (t) => t.dayKey === dk && (!!tplId ? t.templateId === tplId : t.id === id),
-      )
-
-      const stat = ensureDayStat(dk)
-      stat.createdCount = Math.max(0, stat.createdCount - removed.length)
-      for (const r of removed) {
-        incCategory(stat.categoryCreated, r.category || '未分类', -1)
-        const punch = r.punchIns || 0
-        stat.punchInsTotal = Math.max(0, stat.punchInsTotal - punch)
-        if (r.unit === 'minutes') {
-          stat.minutesTotal = Math.max(0, stat.minutesTotal - punch * getTodoMinutesPerPunch(r))
-        }
-        if (r.done) {
-          stat.completedCount = Math.max(0, stat.completedCount - 1)
-          incCategory(stat.categoryCompleted, r.category || '未分类', -1)
-        }
-      }
-
-      const toRemoveIds = new Set(removed.map((t) => t.id))
-      todos.value = todos.value.filter((t) => !toRemoveIds.has(t.id))
-
-      return { kind: 'skipped' as const, removedIds: Array.from(toRemoveIds) }
+    stat.createdCount = Math.max(0, stat.createdCount - 1)
+    incCategory(stat.categoryCreated, target.category || '未分类', -1)
+    const punch = target.punchIns || 0
+    stat.punchInsTotal = Math.max(0, stat.punchInsTotal - punch)
+    if (target.unit === 'minutes') {
+      stat.minutesTotal = Math.max(0, stat.minutesTotal - punch * getTodoMinutesPerPunch(target))
+    }
+    if (target.done) {
+      stat.completedCount = Math.max(0, stat.completedCount - 1)
+      incCategory(stat.categoryCompleted, target.category || '未分类', -1)
     }
 
     todos.value = todos.value.filter((todo) => todo.id !== id)
+
+    // 如果删除的任务有模板，检查是否还有其他任务使用该模板
+    if (target.templateId) {
+      const hasOtherTodosWithTemplate = todos.value.some((t) => t.templateId === target.templateId)
+      // 如果没有其他任务使用该模板，删除模板
+      if (!hasOtherTodosWithTemplate) {
+        templates.value = templates.value.filter((t) => t.id !== target.templateId)
+      }
+    }
+
     return { kind: 'deleted' as const, removedIds: [id] }
   }
 
@@ -633,7 +636,14 @@ export const useTodoStore = () => {
 
   const applyTodoEdit = (
     id: string,
-    patch: { category: string; minFrequency: number; minutesPerTime: number },
+    patch: {
+      title: string
+      category: string
+      period: TodoPeriod
+      minFrequency: number
+      unit: TodoUnit
+      minutesPerTime: number
+    },
   ) => {
     const todo = todos.value.find((t) => t.id === id)
     if (!todo) return false
@@ -644,21 +654,16 @@ export const useTodoStore = () => {
     const oldCategory = todo.category || '未分类'
     const newCategory = patch.category || '未分类'
 
-    const nextMinFrequency = todo.period === 'once' ? todo.minFrequency : patch.minFrequency
-    const nextMinutesPerTime =
-      todo.period === 'once'
-        ? todo.minutesPerTime
-        : todo.unit === 'minutes'
-          ? patch.minutesPerTime
-          : undefined
+    const nextMinFrequency = patch.period === 'once' ? 1 : patch.minFrequency
+    const nextMinutesPerTime = patch.unit === 'minutes' ? patch.minutesPerTime : undefined
 
     const oldMinutes =
       todo.unit === 'minutes' ? (todo.punchIns || 0) * getTodoMinutesPerPunch(todo) : 0
     const newMinutes =
-      todo.unit === 'minutes' ? (todo.punchIns || 0) * (nextMinutesPerTime || 15) : 0
+      patch.unit === 'minutes' ? (todo.punchIns || 0) * (nextMinutesPerTime || 15) : 0
 
     const wasDone = !!todo.done
-    const shouldDone = todo.period !== 'once' ? (todo.punchIns || 0) >= nextMinFrequency : wasDone
+    const shouldDone = patch.period !== 'once' ? (todo.punchIns || 0) >= nextMinFrequency : wasDone
 
     if (oldCategory !== newCategory) {
       incCategory(stat.categoryCreated, oldCategory, -1)
@@ -676,8 +681,11 @@ export const useTodoStore = () => {
 
     stat.minutesTotal = Math.max(0, stat.minutesTotal - oldMinutes + newMinutes)
 
+    todo.title = patch.title
     todo.category = newCategory
+    todo.period = patch.period
     todo.minFrequency = nextMinFrequency
+    todo.unit = patch.unit
     todo.minutesPerTime = nextMinutesPerTime
 
     if (!wasDone && shouldDone) {
@@ -688,33 +696,48 @@ export const useTodoStore = () => {
       todo.completedAt = undefined
     }
 
-    if (todo.period !== 'once') {
+    if (patch.period !== 'once') {
       let tplId = todo.templateId
       if (!tplId) {
         const existingTpl = templates.value.find(
-          (tpl) => tpl.title === todo.title && tpl.period === todo.period,
+          (tpl) => tpl.title === patch.title && tpl.period === patch.period,
         )
         tplId = existingTpl ? existingTpl.id : nanoid()
         if (!existingTpl) {
           templates.value.push({
             id: tplId,
-            title: todo.title,
+            title: patch.title,
             category: newCategory,
-            period: todo.period,
+            period: patch.period,
             minFrequency: nextMinFrequency,
-            unit: todo.unit,
-            minutesPerTime: todo.unit === 'minutes' ? nextMinutesPerTime : undefined,
+            unit: patch.unit,
+            minutesPerTime: patch.unit === 'minutes' ? nextMinutesPerTime : undefined,
             createdAt: typeof todo.createdAt === 'number' ? todo.createdAt : Date.now(),
           })
         }
         todo.templateId = tplId
+      } else {
+        // 更新现有模板
+        const tpl = templates.value.find((t) => t.id === tplId)
+        if (tpl) {
+          tpl.title = patch.title
+          tpl.category = newCategory
+          tpl.period = patch.period
+          tpl.minFrequency = nextMinFrequency
+          tpl.unit = patch.unit
+          tpl.minutesPerTime = patch.unit === 'minutes' ? nextMinutesPerTime : undefined
+        }
       }
-
-      const tpl = templates.value.find((t) => t.id === tplId)
-      if (tpl) {
-        tpl.category = newCategory
-        tpl.minFrequency = nextMinFrequency
-        tpl.minutesPerTime = todo.unit === 'minutes' ? nextMinutesPerTime : undefined
+    } else {
+      // 如果改为一次性，删除模板关联
+      if (todo.templateId) {
+        const hasOtherTodos = todos.value.some(
+          (t) => t.id !== id && t.templateId === todo.templateId,
+        )
+        if (!hasOtherTodos) {
+          templates.value = templates.value.filter((t) => t.id !== todo.templateId)
+        }
+        todo.templateId = undefined
       }
     }
 
@@ -730,12 +753,9 @@ export const useTodoStore = () => {
     templates,
     dayStats,
     history,
-    skipped,
     todayKey,
     formatDayKey,
     getTodoMinutesPerPunch,
-
-    isTemplateSkipped,
 
     getTodoById,
     punchInTodo,

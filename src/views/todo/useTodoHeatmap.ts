@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, type ComputedRef, type Ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, type ComputedRef, type Ref, watch, ref } from 'vue'
 import CalHeatmap from 'cal-heatmap'
 import Tooltip from 'cal-heatmap/plugins/Tooltip'
 import 'cal-heatmap/cal-heatmap.css'
@@ -44,6 +44,7 @@ export const useTodoHeatmap = (args: {
   dayStats: Ref<Record<string, DayStatLike>>
 }) => {
   let calHeatmap: any = null
+  const heatmapLoading = ref(false)
 
   const calendarData = computed(() => {
     const start = getHeatmapStartDate()
@@ -81,14 +82,21 @@ export const useTodoHeatmap = (args: {
   })
 
   const renderCalHeatmap = async () => {
+    heatmapLoading.value = true
     const root = document.getElementById('todo-cal-heatmap')
     const legend = document.getElementById('todo-cal-heatmap-legend')
-    if (!root) return
+    if (!root) {
+      heatmapLoading.value = false
+      return
+    }
 
     if (calHeatmap) {
       await calHeatmap.destroy()
       calHeatmap = null
     }
+
+    // 清空 DOM 容器
+    root.innerHTML = ''
 
     if (legend) {
       legend.innerHTML = ''
@@ -148,11 +156,25 @@ export const useTodoHeatmap = (args: {
         ],
       ],
     )
+    heatmapLoading.value = false
   }
 
   onMounted(() => {
     renderCalHeatmap()
   })
+
+  watch(
+    () => [
+      args.todayKey.value,
+      args.todayPunchInsTotal.value,
+      args.todayMinutesTotal.value,
+      args.todayCompletedCount.value,
+      Object.keys(args.dayStats.value).length,
+    ],
+    () => {
+      renderCalHeatmap()
+    },
+  )
 
   onBeforeUnmount(() => {
     if (calHeatmap) {
@@ -163,5 +185,6 @@ export const useTodoHeatmap = (args: {
 
   return {
     calendarData,
+    heatmapLoading,
   }
 }

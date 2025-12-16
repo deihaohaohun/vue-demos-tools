@@ -14,7 +14,7 @@ import {
 import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
-import { useTodoStore, type TodoPeriod, type TodoUnit } from './useTodoStore'
+import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem } from './useTodoStore'
 
 use([
   CanvasRenderer,
@@ -93,8 +93,11 @@ const saveEdit = () => {
   const id = editingTodoId.value
   if (!id) return
   const ok = applyTodoEdit(id, {
+    title: editTitle.value,
     category: editCategory.value,
+    period: editPeriod.value,
     minFrequency: editMinFrequency.value,
+    unit: editUnit.value,
     minutesPerTime: editMinutesPerTime.value,
   })
   if (!ok) return
@@ -107,8 +110,8 @@ const saveEdit = () => {
 const pendingTodos = computed(() => todos.value.filter((todo) => !todo.done))
 const completedTodos = computed(() => todos.value.filter((todo) => todo.done))
 
-const removeHistory = (text: string) => {
-  const ok = removeHistoryItem(text)
+const removeHistory = (item: HistoryItem) => {
+  const ok = removeHistoryItem(item)
   if (!ok) return
   MessagePlugin.success('已删除历史任务记录')
 }
@@ -152,13 +155,13 @@ const addTodo = () => {
   }
 }
 
-const addFromHistory = (text: string) => {
-  const res = addTodoFromHistory(text, {
-    category: category.value,
-    period: period.value,
-    minFrequency: minFrequency.value,
-    unit: unit.value,
-    minutesPerTime: minutesPerTime.value,
+const addFromHistory = (historyItem: HistoryItem) => {
+  const res = addTodoFromHistory(historyItem.title, {
+    category: historyItem.category,
+    period: historyItem.period,
+    minFrequency: historyItem.minFrequency,
+    unit: historyItem.unit,
+    minutesPerTime: historyItem.minutesPerTime,
   })
   if (res.kind === 'exists') {
     MessagePlugin.info('已存在相同名称任务')
@@ -172,11 +175,6 @@ const deleteTodo = (id: string) => {
   if (res.kind === 'not_found') return
 
   for (const rid of res.removedIds) selectedIds.value.delete(rid)
-
-  if (res.kind === 'skipped') {
-    MessagePlugin.success('已跳过今天')
-    return
-  }
 
   MessagePlugin.success('任务已删除')
 }
@@ -206,7 +204,7 @@ const todayMinutesTotal = computed(() =>
   }, 0),
 )
 
-useTodoHeatmap({
+const { heatmapLoading } = useTodoHeatmap({
   todayKey,
   todayPunchInsTotal,
   todayMinutesTotal,
@@ -334,25 +332,15 @@ const formatShortDay = (dayKey: string) => {
 
       <div class="col-span-12 md:col-span-6 flex items-center gap-2">
         <div class="text-sm text-neutral-500 w-[72px]">任务单位</div>
-        <t-radio-group
-          v-model="unit"
-          variant="default-filled"
-          size="small"
-          :disabled="period === 'once'"
-        >
+        <t-radio-group v-model="unit" variant="default-filled" size="small" :disabled="period === 'once'">
           <t-radio-button value="times">次数</t-radio-button>
           <t-radio-button value="minutes">分钟</t-radio-button>
         </t-radio-group>
       </div>
 
       <div class="col-span-12 md:col-span-6 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">最小次数</div>
-        <t-radio-group
-          v-model="minFrequency"
-          variant="default-filled"
-          size="small"
-          :disabled="period === 'once'"
-        >
+        <div class="text-sm text-neutral-500 w-[72px]">最小频率</div>
+        <t-radio-group v-model="minFrequency" variant="default-filled" size="small" :disabled="period === 'once'">
           <t-radio-button :value="1">1</t-radio-button>
           <t-radio-button :value="2">2</t-radio-button>
           <t-radio-button :value="3">3</t-radio-button>
@@ -363,12 +351,8 @@ const formatShortDay = (dayKey: string) => {
 
       <div class="col-span-12 md:col-span-6 flex items-center gap-2">
         <div class="text-sm text-neutral-500 w-[72px]">每次分钟</div>
-        <t-radio-group
-          v-model="minutesPerTime"
-          variant="default-filled"
-          size="small"
-          :disabled="period === 'once' || unit !== 'minutes'"
-        >
+        <t-radio-group v-model="minutesPerTime" variant="default-filled" size="small"
+          :disabled="period === 'once' || unit !== 'minutes'">
           <t-radio-button :value="12">12</t-radio-button>
           <t-radio-button :value="15">15</t-radio-button>
           <t-radio-button :value="18">18</t-radio-button>
@@ -380,24 +364,16 @@ const formatShortDay = (dayKey: string) => {
 
     <div class="w-[1200px] mx-auto mt-4 flex flex-wrap gap-2">
       <div class="text-sm text-neutral-500 flex items-center">历史任务记录:</div>
-      <t-button
-        v-if="history.length"
-        size="small"
-        theme="danger"
-        variant="text"
-        @click="clearHistory"
-      >
+      <t-button v-if="history.length" size="small" theme="danger" variant="text" @click="clearHistory">
         清空
       </t-button>
       <template v-if="history.length">
-        <t-tag v-for="item in history" :key="item" variant="outline" class="transition-colors">
+        <t-tag v-for="item in history" :key="`${item.title}-${item.category}-${item.period}`" variant="outline"
+          class="transition-colors">
           <span class="cursor-pointer hover:text-blue-600" @click="addFromHistory(item)">{{
-            item
-          }}</span>
-          <span
-            class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500"
-            @click.stop="removeHistory(item)"
-          >
+            item.title
+            }}</span>
+          <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
             ×
           </span>
         </t-tag>
@@ -408,18 +384,10 @@ const formatShortDay = (dayKey: string) => {
     <div class="w-[1200px] mx-auto mt-4 rounded-md overflow-hidden">
       <t-tabs :default-value="1">
         <t-tab-panel :value="1" :label="`待完成 (${pendingTodos.length})`">
-          <div class="p-2">
+          <div class="min-h-[300px]" :class="{ 'p-2': pendingTodos.length }">
             <template v-if="pendingTodos.length">
-              <TodoItem
-                v-for="todo in pendingTodos"
-                :key="todo.id"
-                :todo="todo"
-                @toggle-select="toggleSelect"
-                @toggle-done="toggleDone"
-                @punch-in="handlePunchIn"
-                @edit="openEdit"
-                @delete="deleteTodo"
-              />
+              <TodoItem v-for="todo in pendingTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+                @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
             </template>
             <template v-else>
               <div class="w-full h-[300px] flex flex-col items-center justify-center">
@@ -429,18 +397,10 @@ const formatShortDay = (dayKey: string) => {
           </div>
         </t-tab-panel>
         <t-tab-panel :value="2" :label="`已完成 (${completedTodos.length})`">
-          <div class="p-2">
+          <div class="min-h-[300px]" :class="{ 'p-2': pendingTodos.length }">
             <template v-if="completedTodos.length">
-              <TodoItem
-                v-for="todo in completedTodos"
-                :key="todo.id"
-                :todo="todo"
-                @toggle-select="toggleSelect"
-                @toggle-done="toggleDone"
-                @punch-in="handlePunchIn"
-                @edit="openEdit"
-                @delete="deleteTodo"
-              />
+              <TodoItem v-for="todo in completedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+                @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
             </template>
             <template v-else>
               <div class="w-full h-[300px] flex flex-col items-center justify-center">
@@ -451,9 +411,7 @@ const formatShortDay = (dayKey: string) => {
         </t-tab-panel>
       </t-tabs>
 
-      <div
-        class="p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800"
-      >
+      <div class="p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800">
         <div class="flex items-center justify-between gap-2 mb-3">
           <div class="text-sm text-neutral-500">数据统计</div>
           <t-radio-group v-model="statsRange" variant="default-filled" size="small">
@@ -464,65 +422,63 @@ const formatShortDay = (dayKey: string) => {
         </div>
 
         <div class="grid grid-cols-4 gap-2 mb-4">
-          <div
-            class="p-2 rounded bg-gradient-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900"
-          >
+          <div class="p-2 rounded bg-gradient-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500">已完成</div>
             <div class="text-lg">{{ todayCompletedCount }}</div>
           </div>
           <div
-            class="p-2 rounded bg-gradient-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900"
-          >
+            class="p-2 rounded bg-gradient-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500">未完成</div>
             <div class="text-lg">{{ todayPendingCount }}</div>
           </div>
-          <div
-            class="p-2 rounded bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900"
-          >
+          <div class="p-2 rounded bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500">打卡次数</div>
             <div class="text-lg">{{ todayPunchInsTotal }}</div>
           </div>
           <div
-            class="p-2 rounded bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900"
-          >
+            class="p-2 rounded bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500">累计分钟</div>
             <div class="text-lg">{{ todayMinutesTotal }}</div>
           </div>
         </div>
 
-        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 p-2 mb-3">
+        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 p-2 mb-3 relative h-[200px]">
           <div class="text-xs text-neutral-500 mb-4">最近一年活跃热力图（打卡次数/分钟数）</div>
           <div class="w-full overflow-x-auto">
             <div class="w-fit mx-auto">
               <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
             </div>
           </div>
+          <div v-if="heatmapLoading"
+            class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-neutral-950/50 rounded-md">
+            <t-loading text="正在更新热力图..." />
+          </div>
         </div>
 
         <div class="grid grid-cols-12 gap-3">
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">每天每种任务类型的打卡次数</div>
+            <div class="text-xs text-neutral-500 mb-2">各任务类型的打卡趋势</div>
             <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
               <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">任务分类（数量）</div>
+            <div class="text-xs text-neutral-500 mb-2">任务分类</div>
             <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
               <VChart :option="categoryOption" style="height: 100%; width: 100%" />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">打卡次数趋势</div>
+            <div class="text-xs text-neutral-500 mb-2">每日打卡次数趋势</div>
             <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
               <VChart :option="punchInsOption" style="height: 100%; width: 100%" />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">分钟数趋势</div>
+            <div class="text-xs text-neutral-500 mb-2">每日打卡分钟数趋势</div>
             <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
               <VChart :option="minutesOption" style="height: 100%; width: 100%" />
             </div>
@@ -535,7 +491,7 @@ const formatShortDay = (dayKey: string) => {
       <div class="grid grid-cols-12 gap-3">
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务名称</div>
-          <t-input v-model="editTitle" placeholder="请输入任务名称" disabled />
+          <t-input v-model="editTitle" placeholder="请输入任务名称" />
         </div>
 
         <div class="col-span-12">
@@ -543,13 +499,13 @@ const formatShortDay = (dayKey: string) => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-            }}</t-radio-button>
+              }}</t-radio-button>
           </t-radio-group>
         </div>
 
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务周期</div>
-          <t-radio-group v-model="editPeriod" variant="default-filled" size="small" disabled>
+          <t-radio-group v-model="editPeriod" variant="default-filled" size="small">
             <t-radio-button value="daily">每天</t-radio-button>
             <t-radio-button value="weekly">每周</t-radio-button>
             <t-radio-button value="monthly">每月</t-radio-button>
@@ -559,13 +515,17 @@ const formatShortDay = (dayKey: string) => {
         </div>
 
         <div class="col-span-12 md:col-span-6">
-          <div class="text-sm text-neutral-500 mb-1">最低频率</div>
-          <t-radio-group
-            v-model="editMinFrequency"
-            variant="default-filled"
-            size="small"
-            :disabled="editPeriod === 'once'"
-          >
+          <div class="text-sm text-neutral-500 mb-1">任务单位</div>
+          <t-radio-group v-model="editUnit" variant="default-filled" size="small" :disabled="editPeriod === 'once'">
+            <t-radio-button value="times">次数</t-radio-button>
+            <t-radio-button value="minutes">分钟</t-radio-button>
+          </t-radio-group>
+        </div>
+
+        <div class="col-span-12 md:col-span-6">
+          <div class="text-sm text-neutral-500 mb-1">最小频率</div>
+          <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
+            :disabled="editPeriod === 'once'">
             <t-radio-button :value="1">1</t-radio-button>
             <t-radio-button :value="2">2</t-radio-button>
             <t-radio-button :value="3">3</t-radio-button>
@@ -573,22 +533,10 @@ const formatShortDay = (dayKey: string) => {
           </t-radio-group>
         </div>
 
-        <div class="col-span-12 md:col-span-6">
-          <div class="text-sm text-neutral-500 mb-1">任务单位</div>
-          <t-radio-group v-model="editUnit" variant="default-filled" size="small" disabled>
-            <t-radio-button value="times">次数</t-radio-button>
-            <t-radio-button value="minutes">分钟</t-radio-button>
-          </t-radio-group>
-        </div>
-
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">每次分钟</div>
-          <t-radio-group
-            v-model="editMinutesPerTime"
-            variant="default-filled"
-            size="small"
-            :disabled="editPeriod === 'once' || editUnit !== 'minutes'"
-          >
+          <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
+            :disabled="editPeriod === 'once' || editUnit !== 'minutes'">
             <t-radio-button :value="12">12</t-radio-button>
             <t-radio-button :value="15">15</t-radio-button>
             <t-radio-button :value="18">18</t-radio-button>
