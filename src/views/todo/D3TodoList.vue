@@ -51,6 +51,7 @@ const period = ref<TodoPeriod>('daily')
 const minFrequency = ref<number>(1)
 const unit = ref<TodoUnit>('times')
 const minutesPerTime = ref<number>(15)
+const description = ref('')
 
 watch(period, (p) => {
   if (p === 'once') {
@@ -71,6 +72,7 @@ const editPeriod = ref<TodoPeriod>('daily')
 const editMinFrequency = ref<number>(1)
 const editUnit = ref<TodoUnit>('times')
 const editMinutesPerTime = ref<number>(15)
+const editDescription = ref('')
 
 const todayDisplay = computed(() => {
   const w = ['日', '一', '二', '三', '四', '五', '六']
@@ -87,6 +89,7 @@ const openEdit = (id: string) => {
   editMinFrequency.value = todo.minFrequency
   editUnit.value = todo.unit
   editMinutesPerTime.value = typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
+  editDescription.value = todo.description || ''
   editVisible.value = true
 }
 
@@ -100,6 +103,7 @@ const saveEdit = () => {
     minFrequency: editMinFrequency.value,
     unit: editUnit.value,
     minutesPerTime: editMinutesPerTime.value,
+    description: editDescription.value.trim() || undefined,
   })
   if (!ok) return
 
@@ -142,6 +146,7 @@ const addTodo = () => {
     minFrequency: minFrequency.value,
     unit: unit.value,
     minutesPerTime: minutesPerTime.value,
+    description: description.value.trim() || undefined,
   })
   if (res.kind === 'empty') {
     MessagePlugin.error('任务标题不能为空')
@@ -153,6 +158,7 @@ const addTodo = () => {
   }
   if (res.kind === 'added') {
     title.value = ''
+    description.value = ''
   }
 }
 
@@ -163,6 +169,7 @@ const addFromHistory = (historyItem: HistoryItem) => {
     minFrequency: historyItem.minFrequency,
     unit: historyItem.unit,
     minutesPerTime: historyItem.minutesPerTime,
+    description: historyItem.description,
   })
   if (res.kind === 'exists') {
     MessagePlugin.info('已存在相同名称任务')
@@ -366,6 +373,11 @@ const formatShortDay = (dayKey: string) => {
         </t-radio-group>
         <div class="text-sm text-neutral-400">分钟</div>
       </div>
+
+      <div class="col-span-12 flex items-center gap-2">
+        <div class="text-sm text-neutral-500 w-[72px]">任务描述</div>
+        <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
+      </div>
     </div>
 
     <div class="w-[1200px] mx-auto mt-4 flex flex-wrap gap-2">
@@ -548,6 +560,11 @@ const formatShortDay = (dayKey: string) => {
             <t-radio-button :value="18">18</t-radio-button>
             <t-radio-button :value="20">20</t-radio-button>
           </t-radio-group>
+        </div>
+
+        <div class="col-span-12">
+          <div class="text-sm text-neutral-500 mb-1">任务描述</div>
+          <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
         </div>
 
         <div class="col-span-12 flex justify-end gap-2 pt-2">

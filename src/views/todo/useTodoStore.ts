@@ -16,6 +16,7 @@ interface Todo {
   minFrequency: number
   unit: TodoUnit
   minutesPerTime?: number
+  description?: string
   templateId?: string
   createdAt: number
   dayKey: string
@@ -29,6 +30,7 @@ interface TodoTemplate {
   minFrequency: number
   unit: TodoUnit
   minutesPerTime?: number
+  description?: string
   createdAt: number
 }
 
@@ -48,6 +50,7 @@ interface HistoryItem {
   minFrequency: number
   unit: TodoUnit
   minutesPerTime?: number
+  description?: string
 }
 
 const STORAGE_KEY = 'todos'
@@ -247,6 +250,7 @@ export const useTodoStore = () => {
               minFrequency: typeof t.minFrequency === 'number' ? t.minFrequency : 1,
               unit: (t.unit as TodoUnit) || 'times',
               minutesPerTime: typeof t.minutesPerTime === 'number' ? t.minutesPerTime : undefined,
+              description: typeof t.description === 'string' ? t.description : undefined,
               createdAt,
               dayKey,
               templateId: typeof t.templateId === 'string' ? t.templateId : undefined,
@@ -283,6 +287,7 @@ export const useTodoStore = () => {
                   ? t.minutesPerTime
                   : 15
                 : undefined,
+            description: typeof t.description === 'string' ? t.description : undefined,
             createdAt,
           }
         })
@@ -441,6 +446,7 @@ export const useTodoStore = () => {
     minFrequency: number
     unit: TodoUnit
     minutesPerTime?: number
+    description?: string
   }) => {
     const text = params.title.trim()
     if (!text) return { kind: 'empty' as const }
@@ -477,6 +483,7 @@ export const useTodoStore = () => {
           minFrequency: params.minFrequency,
           unit: params.unit,
           minutesPerTime: params.unit === 'minutes' ? params.minutesPerTime : undefined,
+          description: params.description,
           createdAt: now,
         })
       }
@@ -492,6 +499,7 @@ export const useTodoStore = () => {
       minFrequency: params.minFrequency,
       unit: params.unit,
       minutesPerTime: params.unit === 'minutes' ? params.minutesPerTime : undefined,
+      description: params.description,
       templateId,
       createdAt: now,
       dayKey: dk,
@@ -507,6 +515,7 @@ export const useTodoStore = () => {
       minFrequency: params.minFrequency,
       unit: params.unit,
       minutesPerTime: params.minutesPerTime,
+      description: params.description,
     })
 
     return { kind: 'added' as const }
@@ -520,6 +529,7 @@ export const useTodoStore = () => {
       minFrequency: number
       unit: TodoUnit
       minutesPerTime?: number
+      description?: string
     },
   ) => {
     const existing = todos.value.find((t) => t.title === text)
@@ -548,6 +558,7 @@ export const useTodoStore = () => {
           minFrequency: params.minFrequency,
           unit: params.unit,
           minutesPerTime: params.unit === 'minutes' ? params.minutesPerTime : undefined,
+          description: params.description,
           createdAt: now,
         })
       }
@@ -563,6 +574,7 @@ export const useTodoStore = () => {
       minFrequency: params.minFrequency,
       unit: params.unit,
       minutesPerTime: params.unit === 'minutes' ? params.minutesPerTime : undefined,
+      description: params.description,
       templateId,
       createdAt: now,
       dayKey: dk,
@@ -576,6 +588,7 @@ export const useTodoStore = () => {
       minFrequency: params.minFrequency,
       unit: params.unit,
       minutesPerTime: params.minutesPerTime,
+      description: params.description,
     })
 
     return { kind: 'added' as const }
@@ -643,6 +656,7 @@ export const useTodoStore = () => {
       minFrequency: number
       unit: TodoUnit
       minutesPerTime: number
+      description?: string
     },
   ) => {
     const todo = todos.value.find((t) => t.id === id)
@@ -687,6 +701,7 @@ export const useTodoStore = () => {
     todo.minFrequency = nextMinFrequency
     todo.unit = patch.unit
     todo.minutesPerTime = nextMinutesPerTime
+    todo.description = patch.description
 
     if (!wasDone && shouldDone) {
       todo.done = true

@@ -11,6 +11,7 @@ interface Todo {
   minFrequency: number
   unit: 'times' | 'minutes'
   minutesPerTime?: number
+  description?: string
 }
 
 interface Props {
@@ -50,7 +51,7 @@ const getMinutesDone = (todo: Todo) => {
       <span>{{ todo.title }}</span>
       <t-tag v-if="todo.category" size="small" variant="outline" theme="primary">{{
         todo.category
-        }}</t-tag>
+      }}</t-tag>
       <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
       <t-tag size="small" variant="light" theme="default">
         <template v-if="todo.unit === 'minutes'">
@@ -58,6 +59,12 @@ const getMinutesDone = (todo: Todo) => {
         </template>
         <template v-else>目标 {{ todo.minFrequency }} 次</template>
       </t-tag>
+      <template v-if="todo.description">
+        <span>任务详情: </span>
+        <t-tag size="small">
+          {{ todo.description }}
+        </t-tag>
+      </template>
       <t-tag v-if="todo.punchIns > 0" size="small" variant="light" theme="primary">
         <template v-if="todo.unit === 'minutes'"> 已打卡 {{ getMinutesDone(todo) }} 分钟 </template>
         <template v-else>已打卡 {{ todo.punchIns }} 次</template>
