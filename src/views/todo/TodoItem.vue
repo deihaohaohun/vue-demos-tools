@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { RefreshIcon, CheckIcon, EditIcon, Delete1Icon, CheckCircleIcon } from 'tdesign-icons-vue-next'
+import { computed } from 'vue'
+import dayjs from 'dayjs'
 
 interface Todo {
   title: string
@@ -12,6 +14,7 @@ interface Todo {
   unit: 'times' | 'minutes'
   minutesPerTime?: number
   description?: string
+  deadline?: number
 }
 
 interface Props {
@@ -26,7 +29,7 @@ interface Emits {
   (e: 'delete', id: string): void
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const periodTextMap: Record<Todo['period'], string> = {
@@ -41,6 +44,45 @@ const getMinutesDone = (todo: Todo) => {
   if (todo.unit !== 'minutes') return 0
   return todo.punchIns * (todo.minutesPerTime || 0)
 }
+
+const remainingTime = computed(() => {
+  if (props.todo.done) return null
+  const now = dayjs()
+  let end: dayjs.Dayjs
+
+  if (props.todo.period === 'once') {
+    if (!props.todo.deadline) return null
+    end = dayjs(props.todo.deadline)
+    // 如果没有具体时间，默认为当天结束
+    if (end.hour() === 0 && end.minute() === 0) {
+      end = end.endOf('day')
+    }
+  } else {
+    // 周期任务
+    if (props.todo.period === 'daily') {
+      end = dayjs().endOf('day')
+    } else if (props.todo.period === 'weekly') {
+      end = dayjs().endOf('week')
+    } else if (props.todo.period === 'monthly') {
+      end = dayjs().endOf('month')
+    } else if (props.todo.period === 'yearly') {
+      end = dayjs().endOf('year')
+    } else {
+      return null
+    }
+  }
+
+  const diff = end.diff(now)
+  if (diff <= 0) return '已结束'
+
+  const d = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+
+  if (d > 0) return `${d}天${h}小时`
+  const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+  if (h > 0) return `${h}小时${m}分`
+  return `${m}分`
+})
 </script>
 
 <template>
@@ -68,6 +110,9 @@ const getMinutesDone = (todo: Todo) => {
       <t-tag v-if="todo.punchIns > 0" size="small" variant="light" theme="primary">
         <template v-if="todo.unit === 'minutes'"> 已打卡 {{ getMinutesDone(todo) }} 分钟 </template>
         <template v-else>已打卡 {{ todo.punchIns }} 次</template>
+      </t-tag>
+      <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
+        打卡时间还剩: {{ remainingTime }}
       </t-tag>
     </div>
 

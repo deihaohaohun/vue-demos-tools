@@ -20,6 +20,7 @@ interface Todo {
   templateId?: string
   createdAt: number
   dayKey: string
+  deadline?: number
 }
 
 interface TodoTemplate {
@@ -32,6 +33,7 @@ interface TodoTemplate {
   minutesPerTime?: number
   description?: string
   createdAt: number
+  deadline?: number
 }
 
 interface DayStat {
@@ -41,6 +43,7 @@ interface DayStat {
   minutesTotal: number
   categoryCreated: Record<string, number>
   categoryCompleted: Record<string, number>
+  categoryPunchIns: Record<string, number>
 }
 
 interface HistoryItem {
@@ -53,18 +56,30 @@ interface HistoryItem {
   description?: string
 }
 
+interface PunchRecord {
+  id: string
+  todoId: string
+  todoTitle: string
+  category: string
+  timestamp: number
+  dayKey: string
+  note?: string
+}
+
 const STORAGE_KEY = 'todos'
 const HISTORY_KEY = 'todo_history'
 const TEMPLATES_KEY = 'todo_templates'
 const DAY_STATS_KEY = 'todo_day_stats'
+const PUNCH_RECORDS_KEY = 'todo_punch_records'
 
-export type { Todo, TodoTemplate, DayStat, TodoPeriod, TodoUnit, HistoryItem }
+export type { Todo, TodoTemplate, DayStat, TodoPeriod, TodoUnit, HistoryItem, PunchRecord }
 
 export const useTodoStore = () => {
   const todos = ref<Todo[]>([])
   const templates = ref<TodoTemplate[]>([])
   const dayStats = ref<Record<string, DayStat>>({})
   const history = ref<HistoryItem[]>([])
+  const punchRecords = ref<PunchRecord[]>([])
 
   const formatDayKey = (ts: number) => {
     const d = new Date(ts)
@@ -85,6 +100,7 @@ export const useTodoStore = () => {
         minutesTotal: 0,
         categoryCreated: {},
         categoryCompleted: {},
+        categoryPunchIns: {},
       }
     }
     return dayStats.value[dayKey]
@@ -201,10 +217,12 @@ export const useTodoStore = () => {
           minutesTotal: 0,
           categoryCreated: {},
           categoryCompleted: {},
+          categoryPunchIns: {},
         }
       }
       grouped[dk].createdCount += 1
       grouped[dk].punchInsTotal += t.punchIns || 0
+      incCategory(grouped[dk].categoryPunchIns, t.category || '未分类', t.punchIns || 0)
       if (t.unit === 'minutes') {
         grouped[dk].minutesTotal += (t.punchIns || 0) * getTodoMinutesPerPunch(t)
       }
@@ -225,6 +243,9 @@ export const useTodoStore = () => {
       }
       for (const [c, v] of Object.entries(stat.categoryCompleted)) {
         target.categoryCompleted[c] = Math.max(target.categoryCompleted[c] || 0, v)
+      }
+      for (const [c, v] of Object.entries(stat.categoryPunchIns)) {
+        target.categoryPunchIns[c] = Math.max(target.categoryPunchIns[c] || 0, v)
       }
     }
   }
@@ -254,6 +275,7 @@ export const useTodoStore = () => {
               createdAt,
               dayKey,
               templateId: typeof t.templateId === 'string' ? t.templateId : undefined,
+              deadline: typeof t.deadline === 'number' ? t.deadline : undefined,
             }
 
             if (normalized.unit === 'minutes' && typeof normalized.minutesPerTime !== 'number') {
@@ -310,6 +332,7 @@ export const useTodoStore = () => {
             minutesTotal: typeof obj.minutesTotal === 'number' ? obj.minutesTotal : 0,
             categoryCreated: (obj.categoryCreated as Record<string, number>) || {},
             categoryCompleted: (obj.categoryCompleted as Record<string, number>) || {},
+            categoryPunchIns: (obj.categoryPunchIns as Record<string, number>) || {},
           }
         }
         dayStats.value = normalized
@@ -352,6 +375,26 @@ export const useTodoStore = () => {
         console.error('加载历史任务记录失败:', e)
       }
     }
+
+    const storedPunchRecords = localStorage.getItem(PUNCH_RECORDS_KEY)
+    if (storedPunchRecords) {
+      try {
+        const parsed = JSON.parse(storedPunchRecords)
+        if (Array.isArray(parsed)) {
+          punchRecords.value = parsed.map((item: Partial<PunchRecord>) => ({
+            id: typeof item.id === 'string' ? item.id : nanoid(),
+            todoId: typeof item.todoId === 'string' ? item.todoId : '',
+            todoTitle: typeof item.todoTitle === 'string' ? item.todoTitle : '未知任务',
+            category: typeof item.category === 'string' ? item.category : '未分类',
+            timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+            dayKey: typeof item.dayKey === 'string' ? item.dayKey : formatDayKey(Date.now()),
+            note: typeof item.note === 'string' ? item.note : undefined,
+          }))
+        }
+      } catch (e) {
+        console.error('加载打卡记录失败:', e)
+      }
+    }
   }
 
   // 保存数据到 localStorage
@@ -371,6 +414,10 @@ export const useTodoStore = () => {
     localStorage.setItem(DAY_STATS_KEY, JSON.stringify(dayStats.value))
   }
 
+  const savePunchRecords = () => {
+    localStorage.setItem(PUNCH_RECORDS_KEY, JSON.stringify(punchRecords.value))
+  }
+
   // 页面加载时读取数据
   onMounted(() => {
     loadData()
@@ -385,6 +432,7 @@ export const useTodoStore = () => {
   watch(history, saveHistory, { deep: true })
   watch(templates, saveTemplates, { deep: true })
   watch(dayStats, saveDayStats, { deep: true })
+  watch(punchRecords, savePunchRecords, { deep: true })
 
   const updateHistory = (item: HistoryItem) => {
     const index = history.value.findIndex(
@@ -416,7 +464,7 @@ export const useTodoStore = () => {
     return true
   }
 
-  const punchInTodo = (id: string) => {
+  const punchInTodo = (id: string, note?: string) => {
     const todo = todos.value.find((t) => t.id === id)
     if (!todo) return { kind: 'not_found' as const }
     if (todo.period === 'once') return { kind: 'once' as const }
@@ -426,6 +474,24 @@ export const useTodoStore = () => {
     stat.punchInsTotal += 1
     if (todo.unit === 'minutes') {
       stat.minutesTotal += getTodoMinutesPerPunch(todo)
+    }
+
+    // 记录分类统计
+    incCategory(stat.categoryPunchIns, todo.category || '未分类', 1)
+
+    // 记录打卡流水
+    punchRecords.value.unshift({
+      id: nanoid(),
+      todoId: todo.id,
+      todoTitle: todo.title,
+      category: todo.category || '未分类',
+      timestamp: Date.now(),
+      dayKey: formatDayKey(Date.now()),
+      note,
+    })
+    // 限制最大记录数，避免 localStorage 过大，比如最近 5000 条
+    if (punchRecords.value.length > 5000) {
+      punchRecords.value.pop()
     }
 
     if (!todo.done && todo.punchIns >= todo.minFrequency) {
@@ -439,6 +505,15 @@ export const useTodoStore = () => {
     return { kind: 'ok' as const, punchIns: todo.punchIns }
   }
 
+  const updatePunchRecordNote = (id: string, note: string) => {
+    const record = punchRecords.value.find((r) => r.id === id)
+    if (record) {
+      record.note = note
+      return true
+    }
+    return false
+  }
+
   const createTodo = (params: {
     title: string
     category: string
@@ -447,6 +522,7 @@ export const useTodoStore = () => {
     unit: TodoUnit
     minutesPerTime?: number
     description?: string
+    deadline?: number
   }) => {
     const text = params.title.trim()
     if (!text) return { kind: 'empty' as const }
@@ -503,6 +579,7 @@ export const useTodoStore = () => {
       templateId,
       createdAt: now,
       dayKey: dk,
+      deadline: params.deadline,
     }
 
     todos.value.push(todo)
@@ -530,6 +607,7 @@ export const useTodoStore = () => {
       unit: TodoUnit
       minutesPerTime?: number
       description?: string
+      deadline?: number
     },
   ) => {
     const existing = todos.value.find((t) => t.title === text)
@@ -578,6 +656,7 @@ export const useTodoStore = () => {
       templateId,
       createdAt: now,
       dayKey: dk,
+      deadline: params.deadline,
     })
     ensureDayStat(dk).createdCount += 1
     incCategory(ensureDayStat(dk).categoryCreated, params.category, 1)
@@ -605,6 +684,7 @@ export const useTodoStore = () => {
     incCategory(stat.categoryCreated, target.category || '未分类', -1)
     const punch = target.punchIns || 0
     stat.punchInsTotal = Math.max(0, stat.punchInsTotal - punch)
+    incCategory(stat.categoryPunchIns, target.category || '未分类', -punch)
     if (target.unit === 'minutes') {
       stat.minutesTotal = Math.max(0, stat.minutesTotal - punch * getTodoMinutesPerPunch(target))
     }
@@ -657,6 +737,7 @@ export const useTodoStore = () => {
       unit: TodoUnit
       minutesPerTime: number
       description?: string
+      deadline?: number
     },
   ) => {
     const todo = todos.value.find((t) => t.id === id)
@@ -682,6 +763,8 @@ export const useTodoStore = () => {
     if (oldCategory !== newCategory) {
       incCategory(stat.categoryCreated, oldCategory, -1)
       incCategory(stat.categoryCreated, newCategory, 1)
+      incCategory(stat.categoryPunchIns, oldCategory, -(todo.punchIns || 0))
+      incCategory(stat.categoryPunchIns, newCategory, todo.punchIns || 0)
     }
 
     if (wasDone) {
@@ -702,6 +785,7 @@ export const useTodoStore = () => {
     todo.unit = patch.unit
     todo.minutesPerTime = nextMinutesPerTime
     todo.description = patch.description
+    todo.deadline = patch.deadline
 
     if (!wasDone && shouldDone) {
       todo.done = true
@@ -768,12 +852,14 @@ export const useTodoStore = () => {
     templates,
     dayStats,
     history,
+    punchRecords,
     todayKey,
     formatDayKey,
     getTodoMinutesPerPunch,
 
     getTodoById,
     punchInTodo,
+    updatePunchRecordNote,
     createTodo,
     addTodoFromHistory,
     deleteTodoById,

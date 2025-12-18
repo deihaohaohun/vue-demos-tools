@@ -14,8 +14,9 @@ import {
 import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
-import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem } from './useTodoStore'
-import { AddIcon } from 'tdesign-icons-vue-next'
+import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem, type PunchRecord } from './useTodoStore'
+import { AddIcon, ChevronLeftIcon, ChevronRightIcon } from 'tdesign-icons-vue-next'
+import dayjs from 'dayjs'
 
 use([
   CanvasRenderer,
@@ -31,11 +32,13 @@ const {
   todos,
   dayStats,
   history,
+  punchRecords,
   todayKey,
   formatDayKey,
   getTodoMinutesPerPunch,
   getTodoById,
   punchInTodo,
+  updatePunchRecordNote,
   createTodo,
   addTodoFromHistory,
   deleteTodoById,
@@ -52,6 +55,7 @@ const minFrequency = ref<number>(1)
 const unit = ref<TodoUnit>('times')
 const minutesPerTime = ref<number>(15)
 const description = ref('')
+const deadline = ref<string>('') // YYYY-MM-DD
 
 watch(period, (p) => {
   if (p === 'once') {
@@ -60,6 +64,61 @@ watch(period, (p) => {
     minutesPerTime.value = 15
   }
 })
+
+// 打卡弹窗相关
+const punchDialogVisible = ref(false)
+const punchNote = ref('')
+const currentPunchId = ref('')
+
+const onPunchTrigger = (id: string) => {
+  currentPunchId.value = id
+  punchNote.value = ''
+  punchDialogVisible.value = true
+}
+
+const confirmPunch = () => {
+  if (!currentPunchId.value) return
+  punchDialogVisible.value = false
+
+  const res = punchInTodo(currentPunchId.value, punchNote.value)
+  if (res.kind === 'not_found') return
+  if (res.kind === 'once') return
+  if (res.kind === 'auto_done') {
+    MessagePlugin.success('已达成目标，自动完成')
+    return
+  }
+  MessagePlugin.success(`打卡成功,当前已打卡 ${res.punchIns} 次`)
+}
+
+// 历史打卡记录Tab页相关
+const historyDate = ref(dayjs().format('YYYY-MM-DD'))
+const currentHistoryRecords = computed(() => {
+  const targetDayKey = historyDate.value
+  return punchRecords.value.filter((r) => r.dayKey === targetDayKey)
+})
+
+const prevDay = () => {
+  historyDate.value = dayjs(historyDate.value).subtract(1, 'day').format('YYYY-MM-DD')
+}
+const nextDay = () => {
+  historyDate.value = dayjs(historyDate.value).add(1, 'day').format('YYYY-MM-DD')
+}
+const isToday = computed(() => historyDate.value === dayjs().format('YYYY-MM-DD'))
+
+const editingRecordId = ref<string | null>(null)
+const editingRecordNote = ref('')
+
+const startEditRecord = (record: PunchRecord) => {
+  editingRecordId.value = record.id
+  editingRecordNote.value = record.note || ''
+}
+const saveRecordNote = () => {
+  if (editingRecordId.value) {
+    updatePunchRecordNote(editingRecordId.value, editingRecordNote.value)
+    editingRecordId.value = null
+    MessagePlugin.success('备注已更新')
+  }
+}
 
 const categoryOptions = ['学习', '娱乐', '运动', '工作', '生活']
 const selectedIds = ref<Set<string>>(new Set())
@@ -73,6 +132,7 @@ const editMinFrequency = ref<number>(1)
 const editUnit = ref<TodoUnit>('times')
 const editMinutesPerTime = ref<number>(15)
 const editDescription = ref('')
+const editDeadline = ref<string>('')
 
 const todayDisplay = computed(() => {
   const w = ['日', '一', '二', '三', '四', '五', '六']
@@ -90,6 +150,7 @@ const openEdit = (id: string) => {
   editUnit.value = todo.unit
   editMinutesPerTime.value = typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
   editDescription.value = todo.description || ''
+  editDeadline.value = todo.deadline ? dayjs(todo.deadline).format('YYYY-MM-DD') : ''
   editVisible.value = true
 }
 
@@ -104,6 +165,7 @@ const saveEdit = () => {
     unit: editUnit.value,
     minutesPerTime: editMinutesPerTime.value,
     description: editDescription.value.trim() || undefined,
+    deadline: editPeriod.value === 'once' && editDeadline.value ? dayjs(editDeadline.value).valueOf() : undefined,
   })
   if (!ok) return
 
@@ -128,14 +190,7 @@ const clearHistory = () => {
 }
 
 const handlePunchIn = (id: string) => {
-  const res = punchInTodo(id)
-  if (res.kind === 'not_found') return
-  if (res.kind === 'once') return
-  if (res.kind === 'auto_done') {
-    MessagePlugin.success('已达成目标，自动完成')
-    return
-  }
-  MessagePlugin.success(`打卡成功,当前已打卡 ${res.punchIns} 次`)
+  onPunchTrigger(id)
 }
 
 const addTodo = () => {
@@ -147,6 +202,7 @@ const addTodo = () => {
     unit: unit.value,
     minutesPerTime: minutesPerTime.value,
     description: description.value.trim() || undefined,
+    deadline: period.value === 'once' && deadline.value ? dayjs(deadline.value).valueOf() : undefined,
   })
   if (res.kind === 'empty') {
     MessagePlugin.error('任务标题不能为空')
@@ -159,6 +215,7 @@ const addTodo = () => {
   if (res.kind === 'added') {
     title.value = ''
     description.value = ''
+    deadline.value = ''
   }
 }
 
@@ -201,7 +258,7 @@ const toggleDone = (id: string, done: boolean) => {
 
 const todayTodos = computed(() => todos.value.filter((t) => t.dayKey === todayKey.value))
 const todayCompletedCount = computed(() => todayTodos.value.filter((t) => t.done).length)
-const todayPendingCount = computed(() => todayTodos.value.filter((t) => !t.done).length)
+// const todayPendingCount = computed(() => todayTodos.value.filter((t) => !t.done).length)
 const todayPunchInsTotal = computed(() =>
   todayTodos.value.reduce((sum, t) => sum + (t.punchIns || 0), 0),
 )
@@ -211,6 +268,12 @@ const todayMinutesTotal = computed(() =>
     return sum + (t.punchIns || 0) * getTodoMinutesPerPunch(t)
   }, 0),
 )
+
+
+// 当天可以打卡的总任务数 (所有今天显示的任务)
+const todayScheduledCount = computed(() => todayTodos.value.length)
+// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0)
+const todayUnstartedCount = computed(() => todayTodos.value.filter(t => t.punchIns === 0).length)
 
 const { heatmapLoading } = useTodoHeatmap({
   todayKey,
@@ -296,6 +359,7 @@ const rangeCategoryCreated = computed(() => {
 
 const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption } = useTodoCharts({
   todos,
+  dayStats,
   rangeDayKeys,
   rangeLabels,
   punchInsSeries,
@@ -378,6 +442,11 @@ const formatShortDay = (dayKey: string) => {
         <div class="text-sm text-neutral-500 w-[72px]">任务描述</div>
         <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
       </div>
+
+      <div class="col-span-12 flex items-center gap-2" v-if="period === 'once'">
+        <div class="text-sm text-neutral-500 w-[72px]">截止日期</div>
+        <t-date-picker v-model="deadline" placeholder="可选：选择截止日期" class="flex-1" />
+      </div>
     </div>
 
     <div class="w-[1200px] mx-auto mt-4 flex flex-wrap gap-2">
@@ -401,7 +470,7 @@ const formatShortDay = (dayKey: string) => {
 
     <div class="w-[1200px] mx-auto mt-4 rounded-md overflow-hidden">
       <t-tabs :default-value="1">
-        <t-tab-panel :value="1" :label="`待完成 (${pendingTodos.length})`">
+        <t-tab-panel :value="1" :label="`待打卡 (${pendingTodos.length})`">
           <div class="min-h-[300px]" :class="{ 'p-2': pendingTodos.length }">
             <template v-if="pendingTodos.length">
               <TodoItem v-for="todo in pendingTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
@@ -414,7 +483,7 @@ const formatShortDay = (dayKey: string) => {
             </template>
           </div>
         </t-tab-panel>
-        <t-tab-panel :value="2" :label="`已完成 (${completedTodos.length})`">
+        <t-tab-panel :value="2" :label="`已打卡 (${completedTodos.length})`">
           <div class="min-h-[300px]" :class="{ 'p-2': pendingTodos.length }">
             <template v-if="completedTodos.length">
               <TodoItem v-for="todo in completedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
@@ -423,6 +492,59 @@ const formatShortDay = (dayKey: string) => {
             <template v-else>
               <div class="w-full h-[300px] flex flex-col items-center justify-center">
                 <t-empty />
+              </div>
+            </template>
+          </div>
+        </t-tab-panel>
+        <t-tab-panel :value="3" label="打卡记录">
+          <div class="min-h-[300px] p-2">
+            <div
+              class="flex items-center justify-between mb-3 border-b border-neutral-200 dark:border-neutral-800 pb-2">
+              <div class="flex items-center gap-2">
+                <t-button variant="text" shape="square" @click="prevDay">
+                  <template #icon><chevron-left-icon /></template>
+                </t-button>
+                <div class="font-medium text-lg">{{ historyDate }}</div>
+                <div class="text-sm text-neutral-500" v-if="isToday">(今天)</div>
+                <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
+                  <template #icon><chevron-right-icon /></template>
+                </t-button>
+              </div>
+              <div class="text-sm text-neutral-500">
+                当日打卡: {{ currentHistoryRecords.length }} 次
+              </div>
+            </div>
+
+            <template v-if="currentHistoryRecords.length">
+              <div class="flex flex-col gap-2">
+                <div v-for="record in currentHistoryRecords" :key="record.id"
+                  class="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-between">
+                  <div class="flex flex-col gap-1">
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium">{{ record.todoTitle }}</span>
+                      <t-tag size="small" variant="outline">{{ record.category }}</t-tag>
+                      <span class="text-xs text-neutral-400">{{ dayjs(record.timestamp).format('HH:mm:ss') }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <div v-if="editingRecordId === record.id" class="flex items-center gap-2">
+                        <t-input v-model="editingRecordNote" size="small" placeholder="输入备注..." auto-width />
+                        <t-button size="small" theme="primary" variant="text" @click="saveRecordNote">保存</t-button>
+                        <t-button size="small" theme="default" variant="text"
+                          @click="editingRecordId = null">取消</t-button>
+                      </div>
+                      <div v-else class="flex items-center gap-2 group cursor-pointer" @click="startEditRecord(record)">
+                        <span class="text-sm text-neutral-600 dark:text-neutral-400">
+                          {{ record.note || '无备注 (点击添加)' }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400">
+                <t-empty description="该日暂无打卡记录" />
               </div>
             </template>
           </div>
@@ -440,23 +562,26 @@ const formatShortDay = (dayKey: string) => {
         </div>
 
         <div class="grid grid-cols-4 gap-2 mb-4">
-          <div class="p-2 rounded bg-gradient-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900">
-            <div class="text-xs text-neutral-500">已完成</div>
-            <div class="text-lg">{{ todayCompletedCount }}</div>
+          <div class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900">
+            <div class="text-xs text-neutral-500 text-center mb-1">今日任务</div>
+            <div class="text-3xl font-bold text-center text-green-600 dark:text-green-400">{{ todayScheduledCount }}
+            </div>
           </div>
           <div
-            class="p-2 rounded bg-gradient-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900">
-            <div class="text-xs text-neutral-500">未完成</div>
-            <div class="text-lg">{{ todayPendingCount }}</div>
+            class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900">
+            <div class="text-xs text-neutral-500 text-center mb-1">未开始</div>
+            <div class="text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{ todayUnstartedCount }}
+            </div>
           </div>
-          <div class="p-2 rounded bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900">
-            <div class="text-xs text-neutral-500">打卡次数</div>
-            <div class="text-lg">{{ todayPunchInsTotal }}</div>
+          <div class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900">
+            <div class="text-xs text-neutral-500 text-center mb-1">今日打卡次数</div>
+            <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ todayPunchInsTotal }}</div>
           </div>
           <div
-            class="p-2 rounded bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900">
-            <div class="text-xs text-neutral-500">累计分钟</div>
-            <div class="text-lg">{{ todayMinutesTotal }}</div>
+            class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900">
+            <div class="text-xs text-neutral-500 text-center mb-1">今日累计分钟</div>
+            <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ todayMinutesTotal }}
+            </div>
           </div>
         </div>
 
@@ -549,9 +674,10 @@ const formatShortDay = (dayKey: string) => {
             <t-radio-button :value="3">3</t-radio-button>
             <t-radio-button :value="4">4</t-radio-button>
           </t-radio-group>
+          <div class="text-sm text-neutral-400">次</div>
         </div>
 
-        <div class="col-span-12">
+        <div class="col-span-12 md:col-span-6">
           <div class="text-sm text-neutral-500 mb-1">每次分钟</div>
           <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
             :disabled="editPeriod === 'once' || editUnit !== 'minutes'">
@@ -560,6 +686,7 @@ const formatShortDay = (dayKey: string) => {
             <t-radio-button :value="18">18</t-radio-button>
             <t-radio-button :value="20">20</t-radio-button>
           </t-radio-group>
+          <div class="text-sm text-neutral-400">分钟</div>
         </div>
 
         <div class="col-span-12">
@@ -567,9 +694,24 @@ const formatShortDay = (dayKey: string) => {
           <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
         </div>
 
-        <div class="col-span-12 flex justify-end gap-2 pt-2">
-          <t-button variant="outline" @click="editVisible = false">取消</t-button>
-          <t-button theme="primary" @click="saveEdit">保存</t-button>
+        <div class="col-span-12" v-if="editPeriod === 'once'">
+          <div class="text-sm text-neutral-500 mb-1">截止日期</div>
+          <t-date-picker v-model="editDeadline" placeholder="可选：选择截止日期" class="w-full" />
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end gap-2">
+        <t-button variant="outline" @click="editVisible = false">取消</t-button>
+        <t-button theme="primary" @click="saveEdit">保存</t-button>
+      </div>
+    </t-dialog>
+
+    <t-dialog v-model:visible="punchDialogVisible" header="打卡备注" width="400px" :footer="false" @close="confirmPunch">
+      <div class="flex flex-col gap-3">
+        <div class="text-sm text-neutral-500">请输入本次打卡备注（可选），关闭弹窗自动保存：</div>
+        <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
+        <div class="flex justify-end gap-2 mt-2">
+          <t-button variant="outline" @click="punchDialogVisible = false">取消</t-button>
+          <t-button theme="primary" @click="confirmPunch">确认打卡</t-button>
         </div>
       </div>
     </t-dialog>

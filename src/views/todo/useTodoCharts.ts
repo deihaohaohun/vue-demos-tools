@@ -7,6 +7,21 @@ type TodoLike = {
   punchIns: number
 }
 
+type DayStatLike = {
+  categoryPunchIns?: Record<string, number>
+}
+
+type LineSeriesLike = {
+  name: string
+  type: 'line'
+  data: number[]
+  smooth: boolean
+  symbol: string
+  symbolSize: number
+  itemStyle: { color: string }
+  areaStyle: { color: string }
+}
+
 const toRgba = (hex: string, alpha: number) => {
   const h = hex.replace('#', '')
   if (h.length !== 6) return `rgba(0,0,0,${alpha})`
@@ -18,6 +33,7 @@ const toRgba = (hex: string, alpha: number) => {
 
 export const useTodoCharts = (args: {
   todos: Ref<TodoLike[]>
+  dayStats?: Ref<Record<string, DayStatLike>>
   rangeDayKeys: ComputedRef<string[]>
   rangeLabels: ComputedRef<string[]>
   punchInsSeries: ComputedRef<number[]>
@@ -26,19 +42,35 @@ export const useTodoCharts = (args: {
 }) => {
   const palette = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
 
-  const punchInsByCategory = computed((): { categories: string[]; series: any[] } => {
+  const punchInsByCategory = computed((): { categories: string[]; series: LineSeriesLike[] } => {
     const dayKeys = args.rangeDayKeys.value
     const byDay: Record<string, Record<string, number>> = {}
     const categorySet = new Set<string>()
+    const daysFromStats = new Set<string>()
 
     for (const dk of dayKeys) byDay[dk] = {}
+
+    for (const dk of dayKeys) {
+      const stat = args.dayStats?.value?.[dk]
+      const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
+      if (!entries.length) continue
+      daysFromStats.add(dk)
+      for (const [c, v] of entries) {
+        if (!v) continue
+        categorySet.add(c)
+        const bucket = byDay[dk] || (byDay[dk] = {})
+        bucket[c] = (bucket[c] || 0) + (v || 0)
+      }
+    }
 
     for (const t of args.todos.value) {
       const dk = t.dayKey
       if (!byDay[dk]) continue
+      if (daysFromStats.has(dk)) continue
       const c = t.category || '未分类'
       categorySet.add(c)
-      byDay[dk][c] = (byDay[dk][c] || 0) + (t.punchIns || 0)
+      const bucket = byDay[dk] || (byDay[dk] = {})
+      bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
     }
 
     const categories = Array.from(categorySet)
@@ -48,7 +80,7 @@ export const useTodoCharts = (args: {
       const color = palette[idx % palette.length] ?? '#60a5fa'
       return {
         name: c,
-        type: 'line',
+        type: 'line' as const,
         data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
         smooth: true,
         symbol: 'circle',
@@ -62,7 +94,7 @@ export const useTodoCharts = (args: {
   })
 
   const punchInsByCategoryOption = computed((): EChartsOption => {
-    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v: number) => v > 0))
+    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v) => v > 0))
     if (!hasData) {
       return {
         backgroundColor: 'transparent',
@@ -87,7 +119,7 @@ export const useTodoCharts = (args: {
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
       yAxis: { type: 'value', name: '次', minInterval: 1 },
-      series: punchInsByCategory.value.series as any,
+      series: punchInsByCategory.value.series as unknown as EChartsOption['series'],
     }
   })
 
@@ -126,7 +158,7 @@ export const useTodoCharts = (args: {
           symbolSize: 6,
           itemStyle: { color: '#a78bfa' },
           areaStyle: { color: 'rgba(167,139,250,0.2)' },
-        } as any,
+        },
       ],
     }
   })
@@ -166,7 +198,7 @@ export const useTodoCharts = (args: {
           symbolSize: 6,
           itemStyle: { color: '#fb923c' },
           areaStyle: { color: 'rgba(251,146,60,0.2)' },
-        } as any,
+        },
       ],
     }
   })
@@ -211,7 +243,7 @@ export const useTodoCharts = (args: {
           data: data.map((d) => d[1] || 0),
           barWidth: 16,
           itemStyle: { color: '#60a5fa' },
-        } as any,
+        },
       ],
     }
   })
