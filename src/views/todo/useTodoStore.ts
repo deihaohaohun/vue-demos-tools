@@ -1,5 +1,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { nanoid } from 'nanoid'
+import dayjs from 'dayjs'
 
 type TodoPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'once'
 
@@ -44,6 +45,7 @@ interface DayStat {
   categoryCreated: Record<string, number>
   categoryCompleted: Record<string, number>
   categoryPunchIns: Record<string, number>
+  categoryMinutes: Record<string, number>
 }
 
 interface HistoryItem {
@@ -101,6 +103,7 @@ export const useTodoStore = () => {
         categoryCreated: {},
         categoryCompleted: {},
         categoryPunchIns: {},
+        categoryMinutes: {},
       }
     }
     return dayStats.value[dayKey]
@@ -115,23 +118,6 @@ export const useTodoStore = () => {
   const getTodoMinutesPerPunch = (todo: Todo) => {
     if (todo.unit !== 'minutes') return 0
     return typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
-  }
-
-  const isTemplateDueOnDate = (tpl: TodoTemplate, date: Date) => {
-    if (tpl.period === 'daily') return true
-    if (tpl.period === 'once') return false
-
-    const anchor = new Date(tpl.createdAt)
-    if (tpl.period === 'weekly') {
-      return anchor.getDay() === date.getDay()
-    }
-    if (tpl.period === 'monthly') {
-      return anchor.getDate() === date.getDate()
-    }
-    if (tpl.period === 'yearly') {
-      return anchor.getMonth() === date.getMonth() && anchor.getDate() === date.getDate()
-    }
-    return false
   }
 
   const syncTemplatesFromTodos = () => {
@@ -163,26 +149,93 @@ export const useTodoStore = () => {
     }
   }
 
+  const getCycleStart = (tpl: TodoTemplate, today: Date) => {
+    const anchor = dayjs(tpl.createdAt)
+    const now = dayjs(today)
+
+    if (tpl.period === 'daily') {
+      return now.startOf('day')
+    } else if (tpl.period === 'weekly') {
+      // 找到本周的"anchor day"
+      let start = now.day(anchor.day()).startOf('day')
+      // 如果本周的这一天还没到（比如今天是周一，anchor是周五），那应该是上周五
+      if (start.isAfter(now)) {
+        start = start.subtract(1, 'week')
+      }
+      return start
+    } else if (tpl.period === 'monthly') {
+      let start = now.date(anchor.date()).startOf('day')
+      if (start.isAfter(now)) {
+        start = start.subtract(1, 'month')
+      }
+      return start
+    } else if (tpl.period === 'yearly') {
+      let start = now.month(anchor.month()).date(anchor.date()).startOf('day')
+      if (start.isAfter(now)) {
+        start = start.subtract(1, 'year')
+      }
+      return start
+    }
+    return now.startOf('day')
+  }
+
   const materializeTodayTodosFromTemplates = () => {
     const tk = todayKey.value
     const todayDate = new Date()
 
-    const keep = todos.value.filter((t) => t.dayKey === tk && t.period === 'once')
-    const instances: Todo[] = [...keep]
+    // 1. 保留今天已有的任务
+    const todayItems = todos.value.filter((t) => t.dayKey === tk)
 
-    const existingByTemplateId = new Set(
-      todos.value
-        .filter((t) => t.dayKey === tk && !!t.templateId)
-        .map((t) => t.templateId as string),
-    )
+    // 2. 查找之前未完成的任务，并"滚动"到今天 (Rollover)
+    // 策略：
+    // - once: 一次性任务，如果没完成，必须顺延，否则就丢了
+    // - weekly/monthly/yearly: 周期性任务，如果没完成，也顺延 (用户期望看到它)
+    // - daily: 每日任务，通常是"今日事今日毕"，如果没做完，第二天应该重置(从模板生成新的)，而不是堆积
+    const overdueItems = todos.value.filter((t) => {
+      if (t.done) return false // 已完成的不顺延
+      if (t.dayKey === tk) return false // 已经是今天的，上面 todayItems 处理了
+      // 排除 daily
+      if (t.period === 'daily') return false
+      return true
+    })
+
+    // 将过期任务的 dayKey 更新为今天，以便在今日列表中显示
+    overdueItems.forEach((t) => {
+      t.dayKey = tk
+    })
+
+    // 合并作为基础实例列表
+    const instances: Todo[] = [...todayItems, ...overdueItems]
+
+    // 3. 检查模板，是否需要生成"本周期"的新任务
+    // 关键点：即使今天不是"创建日"，只要本周期内没有生成过任务（且没完成），就应该显示
+    // 比如：每周任务是周一创建。今天是周二。如果周一没打开APP，今天应该生成。
+    // 如果周一打开了但没做，上面的 overdueItems 会把它带过来。
+    // 如果周一打开了并做了，todos里会有已完成记录（我们需要去原始 todos 里查，因为 instances 里可能过滤掉了）
+
+    // 为了避免重复查询，我们建立一个"本周期已覆盖"的 Set
+    const coveredTemplateIds = new Set<string>()
+
+    // 检查所有的 currentTodos (包括被过滤掉的已完成任务)
+    todos.value.forEach((t) => {
+      if (!t.templateId) return
+      const tpl = templates.value.find((tp) => tp.id === t.templateId)
+      if (!tpl) return
+
+      const cycleStart = getCycleStart(tpl, todayDate)
+      const createdAt = dayjs(t.createdAt)
+
+      // 如果这个任务的创建时间在"本周期开始时间"之后（或相同），说明它是本周期的任务
+      if (createdAt.isAfter(cycleStart) || createdAt.isSame(cycleStart)) {
+        coveredTemplateIds.add(t.templateId)
+      }
+    })
 
     for (const tpl of templates.value) {
-      if (!isTemplateDueOnDate(tpl, todayDate)) continue
-      if (existingByTemplateId.has(tpl.id)) {
-        const existing = todos.value.find((t) => t.dayKey === tk && t.templateId === tpl.id)
-        if (existing) instances.push(existing)
-        continue
-      }
+      // 如果本周期已经有任务了（无论完成与否，或者是rolled over过来的），就不再生成
+      if (coveredTemplateIds.has(tpl.id)) continue
+
+      // 生成新任务
       const now = Date.now()
       instances.push({
         title: tpl.title,
@@ -218,13 +271,16 @@ export const useTodoStore = () => {
           categoryCreated: {},
           categoryCompleted: {},
           categoryPunchIns: {},
+          categoryMinutes: {},
         }
       }
       grouped[dk].createdCount += 1
       grouped[dk].punchInsTotal += t.punchIns || 0
       incCategory(grouped[dk].categoryPunchIns, t.category || '未分类', t.punchIns || 0)
       if (t.unit === 'minutes') {
-        grouped[dk].minutesTotal += (t.punchIns || 0) * getTodoMinutesPerPunch(t)
+        const mins = (t.punchIns || 0) * getTodoMinutesPerPunch(t)
+        grouped[dk].minutesTotal += mins
+        incCategory(grouped[dk].categoryMinutes, t.category || '未分类', mins)
       }
       incCategory(grouped[dk].categoryCreated, t.category || '未分类', 1)
       if (t.done) grouped[dk].completedCount += 1
@@ -246,6 +302,9 @@ export const useTodoStore = () => {
       }
       for (const [c, v] of Object.entries(stat.categoryPunchIns)) {
         target.categoryPunchIns[c] = Math.max(target.categoryPunchIns[c] || 0, v)
+      }
+      for (const [c, v] of Object.entries(stat.categoryMinutes)) {
+        target.categoryMinutes[c] = Math.max(target.categoryMinutes[c] || 0, v)
       }
     }
   }
@@ -333,6 +392,7 @@ export const useTodoStore = () => {
             categoryCreated: (obj.categoryCreated as Record<string, number>) || {},
             categoryCompleted: (obj.categoryCompleted as Record<string, number>) || {},
             categoryPunchIns: (obj.categoryPunchIns as Record<string, number>) || {},
+            categoryMinutes: (obj.categoryMinutes as Record<string, number>) || {},
           }
         }
         dayStats.value = normalized
@@ -473,7 +533,9 @@ export const useTodoStore = () => {
     const stat = ensureDayStat(todo.dayKey)
     stat.punchInsTotal += 1
     if (todo.unit === 'minutes') {
-      stat.minutesTotal += getTodoMinutesPerPunch(todo)
+      const mins = getTodoMinutesPerPunch(todo)
+      stat.minutesTotal += mins
+      incCategory(stat.categoryMinutes, todo.category || '未分类', mins)
     }
 
     // 记录分类统计
@@ -686,7 +748,9 @@ export const useTodoStore = () => {
     stat.punchInsTotal = Math.max(0, stat.punchInsTotal - punch)
     incCategory(stat.categoryPunchIns, target.category || '未分类', -punch)
     if (target.unit === 'minutes') {
-      stat.minutesTotal = Math.max(0, stat.minutesTotal - punch * getTodoMinutesPerPunch(target))
+      const mins = punch * getTodoMinutesPerPunch(target)
+      stat.minutesTotal = Math.max(0, stat.minutesTotal - mins)
+      incCategory(stat.categoryMinutes, target.category || '未分类', -mins)
     }
     if (target.done) {
       stat.completedCount = Math.max(0, stat.completedCount - 1)
@@ -777,6 +841,8 @@ export const useTodoStore = () => {
     }
 
     stat.minutesTotal = Math.max(0, stat.minutesTotal - oldMinutes + newMinutes)
+    incCategory(stat.categoryMinutes, oldCategory, -oldMinutes)
+    incCategory(stat.categoryMinutes, newCategory, newMinutes)
 
     todo.title = patch.title
     todo.category = newCategory

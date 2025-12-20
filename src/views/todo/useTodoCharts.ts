@@ -5,10 +5,13 @@ type TodoLike = {
   dayKey: string
   category: string
   punchIns: number
+  unit: string
+  minutesPerTime?: number
 }
 
 type DayStatLike = {
   categoryPunchIns?: Record<string, number>
+  categoryMinutes?: Record<string, number>
 }
 
 type LineSeriesLike = {
@@ -93,6 +96,61 @@ export const useTodoCharts = (args: {
     return { categories, series }
   })
 
+  const minutesByCategory = computed((): { categories: string[]; series: LineSeriesLike[] } => {
+    const dayKeys = args.rangeDayKeys.value
+    const byDay: Record<string, Record<string, number>> = {}
+    const categorySet = new Set<string>()
+    const daysFromStats = new Set<string>()
+
+    for (const dk of dayKeys) byDay[dk] = {}
+
+    for (const dk of dayKeys) {
+      const stat = args.dayStats?.value?.[dk]
+      const entries = stat?.categoryMinutes ? Object.entries(stat.categoryMinutes) : []
+      if (!entries.length) continue
+      daysFromStats.add(dk)
+      for (const [c, v] of entries) {
+        if (!v) continue
+        categorySet.add(c)
+        const bucket = byDay[dk] || (byDay[dk] = {})
+        bucket[c] = (bucket[c] || 0) + (v || 0)
+      }
+    }
+
+    for (const t of args.todos.value) {
+      const dk = t.dayKey
+      if (!byDay[dk]) continue
+      if (daysFromStats.has(dk)) continue
+      if (t.unit !== 'minutes') continue
+
+      const c = t.category || '未分类'
+      categorySet.add(c)
+      const bucket = byDay[dk] || (byDay[dk] = {})
+      const mins =
+        (t.punchIns || 0) * (typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15)
+      bucket[c] = (bucket[c] || 0) + mins
+    }
+
+    const categories = Array.from(categorySet)
+    categories.sort((a, b) => a.localeCompare(b, 'zh'))
+
+    const series = categories.map((c, idx) => {
+      const color = palette[idx % palette.length] ?? '#fb923c'
+      return {
+        name: c,
+        type: 'line' as const,
+        data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        itemStyle: { color },
+        areaStyle: { color: toRgba(color, 0.12) },
+      }
+    })
+
+    return { categories, series }
+  })
+
   const punchInsByCategoryOption = computed((): EChartsOption => {
     const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v) => v > 0))
     if (!hasData) {
@@ -145,13 +203,13 @@ export const useTodoCharts = (args: {
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
-      legend: { data: ['打卡次数'], top: 0 },
+      legend: { data: ['每日打卡次数'], top: 0 },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
       yAxis: { type: 'value', name: '次', minInterval: 1 },
       series: [
         {
-          name: '打卡次数',
+          name: '每日打卡次数',
           type: 'line',
           data: args.punchInsSeries.value,
           smooth: true,
@@ -164,7 +222,10 @@ export const useTodoCharts = (args: {
   })
 
   const minutesOption = computed((): EChartsOption => {
-    const hasData = args.minutesSeries.value.some((v: number) => v > 0)
+    const hasData =
+      args.minutesSeries.value.some((v: number) => v > 0) ||
+      minutesByCategory.value.series.some((s) => s.data.some((v) => v > 0))
+
     if (!hasData) {
       return {
         backgroundColor: 'transparent',
@@ -182,24 +243,29 @@ export const useTodoCharts = (args: {
         series: [],
       }
     }
+
+    const totalSeries = {
+      name: '打卡总分钟',
+      type: 'line',
+      data: args.minutesSeries.value,
+      smooth: true,
+      symbolSize: 6,
+      itemStyle: { color: '#ef4444' }, // 红色，突出显示
+      lineStyle: { width: 3, type: 'dashed' }, // 虚线，加粗
+      areaStyle: { color: 'rgba(239,68,68,0.1)' },
+    }
+
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
-      legend: { data: ['累计分钟'], top: 0 },
+      legend: { data: ['打卡总分钟', ...minutesByCategory.value.categories], top: 0 },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
       yAxis: { type: 'value', name: '分钟', minInterval: 1 },
       series: [
-        {
-          name: '累计分钟',
-          type: 'line',
-          data: args.minutesSeries.value,
-          smooth: true,
-          symbolSize: 6,
-          itemStyle: { color: '#fb923c' },
-          areaStyle: { color: 'rgba(251,146,60,0.2)' },
-        },
-      ],
+        totalSeries,
+        ...minutesByCategory.value.series,
+      ] as unknown as EChartsOption['series'],
     }
   })
 
