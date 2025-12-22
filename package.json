@@ -24,6 +24,7 @@
     "cal-heatmap": "^4.2.4",
     "dayjs": "^1.11.13",
     "echarts": "^5.5.1",
+    "gsap": "^3.14.2",
     "motion-v": "^1.7.4",
     "nanoid": "^5.1.6",
     "pinia": "^3.0.3",
@@ -31,7 +32,6 @@
     "tailwindcss": "^4.1.17",
     "tdesign-icons-vue-next": "^0.4.1",
     "tdesign-vue-next": "^1.17.6",
-    "utc": "link:dayjs/plugin/utc",
     "vue": "^3.5.22",
     "vue-echarts": "^7.0.3",
     "vue-router": "^4.6.3"

@@ -17,6 +17,7 @@ import { useTodoHeatmap } from './useTodoHeatmap'
 import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem, type PunchRecord } from './useTodoStore'
 import { AddIcon, ChevronLeftIcon, ChevronRightIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
+import { useNumberAnimation } from '@/composables/useNumberAnimation'
 
 use([
   CanvasRenderer,
@@ -46,6 +47,7 @@ const {
   applyTodoEdit,
   removeHistoryItem,
   clearHistoryAll,
+  consecutivePunchDays,
 } = useTodoStore()
 
 const title = ref('')
@@ -270,10 +272,23 @@ const todayMinutesTotal = computed(() =>
 )
 
 
-// 当天可以打卡的总任务数 (所有今天显示的任务)
-const todayScheduledCount = computed(() => todayTodos.value.length)
-// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0)
-const todayUnstartedCount = computed(() => todayTodos.value.filter(t => t.punchIns === 0).length)
+// 当天可以打卡的总任务数 (所有今天显示的任务，排除一次性)
+const todayScheduledCount = computed(() => todayTodos.value.filter((t) => t.period !== 'once').length)
+// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0，排除一次性)
+const todayUnstartedCount = computed(() =>
+  todayTodos.value.filter((t) => t.period !== 'once' && t.punchIns === 0).length,
+)
+// 未完成目标数 (一次性任务 && 未完成)
+const unfinishedGoalsCount = computed(
+  () => todayTodos.value.filter((t) => t.period === 'once' && !t.done).length,
+)
+
+const animatedScheduled = useNumberAnimation(todayScheduledCount)
+const animatedUnstarted = useNumberAnimation(todayUnstartedCount)
+const animatedUnfinishedGoals = useNumberAnimation(unfinishedGoalsCount)
+const animatedPunchIns = useNumberAnimation(todayPunchInsTotal)
+const animatedMinutes = useNumberAnimation(todayMinutesTotal)
+const animatedConsecutive = useNumberAnimation(consecutivePunchDays)
 
 const { heatmapLoading } = useTodoHeatmap({
   todayKey,
@@ -283,7 +298,7 @@ const { heatmapLoading } = useTodoHeatmap({
   dayStats,
 })
 
-const statsRange = ref<'today' | '7d' | '30d'>('7d')
+const statsRange = ref<'7d' | '30d'>('7d')
 
 const getDayKeyOffsetFromToday = (offsetDays: number) => {
   const base = new Date()
@@ -295,12 +310,13 @@ const getDayKeyOffsetFromToday = (offsetDays: number) => {
 const rangeDays = computed(() => {
   if (statsRange.value === '7d') return 7
   if (statsRange.value === '30d') return 30
-  return 1
+  return 7
 })
 
 const rangeDayKeys = computed(() => {
   const days = rangeDays.value
   const keys: string[] = []
+  // 从今天开始往前推 days 天 (0 到 days-1)
   for (let i = days - 1; i >= 0; i -= 1) {
     keys.push(getDayKeyOffsetFromToday(-i))
   }
@@ -309,15 +325,6 @@ const rangeDayKeys = computed(() => {
 
 const rangeStats = computed(() => {
   return rangeDayKeys.value.map((dk) => {
-    if (dk === todayKey.value) {
-      return {
-        dayKey: dk,
-        createdCount: todayTodos.value.length,
-        completedCount: todayCompletedCount.value,
-        punchInsTotal: todayPunchInsTotal.value,
-        minutesTotal: todayMinutesTotal.value,
-      }
-    }
     const stat = dayStats.value[dk]
     return {
       dayKey: dk,
@@ -330,7 +337,6 @@ const rangeStats = computed(() => {
 })
 
 const rangeLabels = computed(() => {
-  if (statsRange.value === 'today') return ['今日']
   return rangeDayKeys.value.map(formatShortDay)
 })
 
@@ -339,14 +345,6 @@ const minutesSeries = computed(() => rangeStats.value.map((s) => s.minutesTotal)
 
 const rangeCategoryCreated = computed(() => {
   const map: Record<string, number> = {}
-  if (statsRange.value === 'today') {
-    for (const t of todayTodos.value) {
-      const k = t.category || '未分类'
-      map[k] = (map[k] || 0) + 1
-    }
-    return map
-  }
-
   for (const dk of rangeDayKeys.value) {
     const stat = dayStats.value[dk]
     if (!stat) continue
@@ -376,14 +374,14 @@ const formatShortDay = (dayKey: string) => {
 <template>
   <div class="w-screen h-screen dark:bg-neutral-900 overflow-auto bg-neutral-50 pb-4">
     <div class="w-[1200px] mx-auto pt-4">
-      <div class="text-sm text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
+      <div class="text-2xl text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
       <div class="flex gap-2 items-center justify-center">
         <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加一个任务"></t-input>
         <t-button @click="addTodo">
           <template #icon>
-            <add-icon size="20" />
+            <add-icon size="24" />
           </template>
-          新建任务
+          新建任务模板
         </t-button>
       </div>
     </div>
@@ -459,7 +457,7 @@ const formatShortDay = (dayKey: string) => {
           class="transition-colors">
           <span class="cursor-pointer hover:text-blue-600" @click="addFromHistory(item)">{{
             item.title
-          }}</span>
+            }}</span>
           <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
             ×
           </span>
@@ -555,32 +553,42 @@ const formatShortDay = (dayKey: string) => {
         <div class="flex items-center justify-between gap-2 mb-3">
           <div class="text-sm text-neutral-500">数据统计</div>
           <t-radio-group v-model="statsRange" variant="default-filled" size="small">
-            <t-radio-button value="today">今日</t-radio-button>
             <t-radio-button value="7d">7天</t-radio-button>
             <t-radio-button value="30d">30天</t-radio-button>
           </t-radio-group>
         </div>
 
-        <div class="grid grid-cols-4 gap-2 mb-4">
+        <div class="grid grid-cols-6 gap-2 mb-4">
           <div class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">今日任务</div>
-            <div class="text-3xl font-bold text-center text-green-600 dark:text-green-400">{{ todayScheduledCount }}
+            <div class="text-3xl font-bold text-center text-green-600 dark:text-green-400">{{ animatedScheduled }}
             </div>
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">未开始</div>
-            <div class="text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{ todayUnstartedCount }}
+            <div class="text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{ animatedUnstarted }}
+            </div>
+          </div>
+          <div class="p-2 rounded bg-linear-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-neutral-900">
+            <div class="text-xs text-neutral-500 text-center mb-1">未完成目标</div>
+            <div class="text-3xl font-bold text-center text-red-600 dark:text-red-400">{{ animatedUnfinishedGoals }}
             </div>
           </div>
           <div class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">今日打卡次数</div>
-            <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ todayPunchInsTotal }}</div>
+            <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ animatedPunchIns }}</div>
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">今日累计分钟</div>
-            <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ todayMinutesTotal }}
+            <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ animatedMinutes }}
+            </div>
+          </div>
+          <div
+            class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900">
+            <div class="text-xs text-neutral-500 text-center mb-1">连续打卡天数</div>
+            <div class="text-3xl font-bold text-center text-orange-600 dark:text-orange-400">{{ animatedConsecutive }}
             </div>
           </div>
         </div>
@@ -642,7 +650,7 @@ const formatShortDay = (dayKey: string) => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-            }}</t-radio-button>
+              }}</t-radio-button>
           </t-radio-group>
         </div>
 

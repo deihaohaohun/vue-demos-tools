@@ -93,6 +93,44 @@ export const useTodoStore = () => {
 
   const todayKey = computed(() => formatDayKey(Date.now()))
 
+  const consecutivePunchDays = computed(() => {
+    let days = 0
+    let currentKey = todayKey.value
+
+    // 如果今天已经打卡，从今天开始算
+    // 如果今天还没打卡，从昨天开始算
+    const todayStat = dayStats.value[currentKey]
+    if (!todayStat || todayStat.punchInsTotal === 0) {
+      // check yesterday
+      const parts = currentKey.split('-').map(Number)
+      if (parts.length === 3) {
+        const [y, m, d] = parts as [number, number, number]
+        const date = new Date(y, m - 1, d)
+        date.setDate(date.getDate() - 1)
+        currentKey = formatDayKey(date.getTime())
+      }
+    }
+
+    // 防止无限循环，限制最大回溯天数，比如3650天
+    let safeGuard = 0
+    while (safeGuard < 3650) {
+      const stat = dayStats.value[currentKey]
+      if (stat && stat.punchInsTotal > 0) {
+        days++
+        const parts = currentKey.split('-').map(Number)
+        if (parts.length !== 3) break
+        const [y, m, d] = parts as [number, number, number]
+        const date = new Date(y, m - 1, d)
+        date.setDate(date.getDate() - 1)
+        currentKey = formatDayKey(date.getTime())
+      } else {
+        break
+      }
+      safeGuard++
+    }
+    return days
+  })
+
   const ensureDayStat = (dayKey: string) => {
     if (!dayStats.value[dayKey]) {
       dayStats.value[dayKey] = {
@@ -920,6 +958,7 @@ export const useTodoStore = () => {
     history,
     punchRecords,
     todayKey,
+    consecutivePunchDays,
     formatDayKey,
     getTodoMinutesPerPunch,
 
