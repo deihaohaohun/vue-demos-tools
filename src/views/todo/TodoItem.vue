@@ -83,6 +83,17 @@ const remainingTime = computed(() => {
   if (h > 0) return `${h}小时${m}分`
   return `${m}分`
 })
+
+const getCategoryTheme = (category: string) => {
+  const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
+    '学习': 'primary',
+    '娱乐': 'success',
+    '运动': 'warning',
+    '工作': 'danger',
+    '生活': 'default',
+  }
+  return map[category] || 'primary'
+}
 </script>
 
 <template>
@@ -91,9 +102,9 @@ const remainingTime = computed(() => {
     @click.stop="emit('toggle-select', todo.id)">
     <div class="pointer-events-none flex items-center gap-2">
       <span>{{ todo.title }}</span>
-      <t-tag v-if="todo.category" size="small" variant="outline" theme="primary">{{
+      <t-tag v-if="todo.category" size="small" variant="outline" :theme="getCategoryTheme(todo.category)">{{
         todo.category
-      }}</t-tag>
+        }}</t-tag>
       <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
       <t-tag size="small" variant="light" theme="default">
         <template v-if="todo.unit === 'minutes'">

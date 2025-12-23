@@ -48,6 +48,7 @@ const {
   removeHistoryItem,
   clearHistoryAll,
   consecutivePunchDays,
+  maxConsecutivePunchDays,
 } = useTodoStore()
 
 const title = ref('')
@@ -66,6 +67,17 @@ watch(period, (p) => {
     minutesPerTime.value = 15
   }
 })
+
+const getCategoryTheme = (category: string) => {
+  const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
+    '学习': 'primary',
+    '娱乐': 'success',
+    '运动': 'warning',
+    '工作': 'danger',
+    '生活': 'default',
+  }
+  return map[category] || 'primary'
+}
 
 // 打卡弹窗相关
 const punchDialogVisible = ref(false)
@@ -283,12 +295,22 @@ const unfinishedGoalsCount = computed(
   () => todayTodos.value.filter((t) => t.period === 'once' && !t.done).length,
 )
 
+// 今日已打卡任务数 (排除一次性)
+const todayPunchedCount = computed(() => todayTodos.value.filter((t) => t.period !== 'once' && t.punchIns > 0).length)
+
+// 昨日数据对比
+const yesterdayKey = computed(() => dayjs().subtract(1, 'day').format('YYYY-MM-DD'))
+const yesterdayStat = computed(() => dayStats.value[yesterdayKey.value] || { punchInsTotal: 0, minutesTotal: 0 })
+const punchInsDiff = computed(() => todayPunchInsTotal.value - (yesterdayStat.value.punchInsTotal || 0))
+const minutesDiff = computed(() => todayMinutesTotal.value - (yesterdayStat.value.minutesTotal || 0))
+
 const animatedScheduled = useNumberAnimation(todayScheduledCount)
 const animatedUnstarted = useNumberAnimation(todayUnstartedCount)
 const animatedUnfinishedGoals = useNumberAnimation(unfinishedGoalsCount)
 const animatedPunchIns = useNumberAnimation(todayPunchInsTotal)
 const animatedMinutes = useNumberAnimation(todayMinutesTotal)
 const animatedConsecutive = useNumberAnimation(consecutivePunchDays)
+const animatedMaxConsecutive = useNumberAnimation(maxConsecutivePunchDays)
 
 const { heatmapLoading } = useTodoHeatmap({
   todayKey,
@@ -520,7 +542,8 @@ const formatShortDay = (dayKey: string) => {
                   <div class="flex flex-col gap-1">
                     <div class="flex items-center gap-2">
                       <span class="font-medium">{{ record.todoTitle }}</span>
-                      <t-tag size="small" variant="outline">{{ record.category }}</t-tag>
+                      <t-tag size="small" variant="outline" :theme="getCategoryTheme(record.category)">{{
+                        record.category }}</t-tag>
                       <span class="text-xs text-neutral-400">{{ dayjs(record.timestamp).format('HH:mm:ss') }}</span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -560,8 +583,11 @@ const formatShortDay = (dayKey: string) => {
 
         <div class="grid grid-cols-6 gap-2 mb-4">
           <div class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900">
-            <div class="text-xs text-neutral-500 text-center mb-1">今日任务</div>
-            <div class="text-3xl font-bold text-center text-green-600 dark:text-green-400">{{ animatedScheduled }}
+            <div class="text-xs text-neutral-500 text-center mb-1">今日可打卡任务</div>
+            <div class="flex flex-col items-center justify-center gap-1">
+              <div class="text-3xl font-bold text-center text-green-600 dark:text-green-400">{{ animatedScheduled }}
+              </div>
+              <t-tag size="small" variant="light" theme="success">已打卡: {{ todayPunchedCount }}</t-tag>
             </div>
           </div>
           <div
@@ -577,18 +603,33 @@ const formatShortDay = (dayKey: string) => {
           </div>
           <div class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">今日打卡次数</div>
-            <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ animatedPunchIns }}</div>
+            <div class="flex flex-col items-center justify-center gap-1">
+              <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ animatedPunchIns }}</div>
+              <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
+                较昨日增加: {{ punchInsDiff >= 0 ? '+' : '' }}{{ punchInsDiff }} 次
+              </t-tag>
+            </div>
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">今日累计分钟</div>
-            <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ animatedMinutes }}
+            <div class="flex flex-col items-center justify-center gap-1">
+              <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ animatedMinutes }}
+              </div>
+              <t-tag size="small" variant="light" :theme="minutesDiff >= 0 ? 'success' : 'danger'">
+                较昨日增加: {{ minutesDiff >= 0 ? '+' : '' }}{{ minutesDiff }} 分钟
+              </t-tag>
             </div>
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900">
             <div class="text-xs text-neutral-500 text-center mb-1">连续打卡天数</div>
-            <div class="text-3xl font-bold text-center text-orange-600 dark:text-orange-400">{{ animatedConsecutive }}
+            <div class="flex flex-col items-center justify-center gap-1">
+              <div class="text-3xl font-bold text-center text-orange-600 dark:text-orange-400">{{ animatedConsecutive }}
+              </div>
+              <t-tag size="small" variant="light" theme="warning">
+                最大连续: {{ animatedMaxConsecutive }} 天
+              </t-tag>
             </div>
           </div>
         </div>

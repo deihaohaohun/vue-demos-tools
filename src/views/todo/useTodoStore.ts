@@ -131,6 +131,49 @@ export const useTodoStore = () => {
     return days
   })
 
+  const maxConsecutivePunchDays = computed(() => {
+    const keys = Object.keys(dayStats.value).sort()
+    if (keys.length === 0) return 0
+
+    let maxStreak = 0
+    let currentStreak = 0
+    let prevDate: Date | null = null
+
+    for (const key of keys) {
+      const stat = dayStats.value[key]
+      if (!stat || stat.punchInsTotal === 0) {
+        currentStreak = 0
+        prevDate = null
+        continue
+      }
+
+      const parts = key.split('-').map(Number)
+      if (parts.length !== 3) continue
+      const [y, m, d] = parts as [number, number, number]
+      const currentDate = new Date(y, m - 1, d)
+
+      if (prevDate) {
+        const diffTime = Math.abs(currentDate.getTime() - prevDate.getTime())
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        if (diffDays === 1) {
+          currentStreak++
+        } else {
+          currentStreak = 1
+        }
+      } else {
+        currentStreak = 1
+      }
+
+      prevDate = currentDate
+      if (currentStreak > maxStreak) {
+        maxStreak = currentStreak
+      }
+    }
+
+    return maxStreak
+  })
+
   const ensureDayStat = (dayKey: string) => {
     if (!dayStats.value[dayKey]) {
       dayStats.value[dayKey] = {
@@ -959,6 +1002,7 @@ export const useTodoStore = () => {
     punchRecords,
     todayKey,
     consecutivePunchDays,
+    maxConsecutivePunchDays,
     formatDayKey,
     getTodoMinutesPerPunch,
 
