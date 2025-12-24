@@ -41,7 +41,7 @@ export const useTodoCharts = (args: {
   rangeLabels: ComputedRef<string[]>
   punchInsSeries: ComputedRef<number[]>
   minutesSeries: ComputedRef<number[]>
-  rangeCategoryCreated: ComputedRef<Record<string, number>>
+  categoryCounts: ComputedRef<Record<string, number>>
 }) => {
   const palette = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
 
@@ -270,9 +270,7 @@ export const useTodoCharts = (args: {
   })
 
   const categoryOption = computed((): EChartsOption => {
-    const data = Object.entries(args.rangeCategoryCreated.value).sort(
-      (a, b) => (b[1] || 0) - (a[1] || 0),
-    )
+    const data = Object.entries(args.categoryCounts.value).sort((a, b) => (b[1] || 0) - (a[1] || 0))
     const hasData = data.some((d) => (d[1] || 0) > 0)
     if (!hasData) {
       return {

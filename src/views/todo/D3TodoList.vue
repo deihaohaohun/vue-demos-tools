@@ -46,9 +46,9 @@ const {
   toggleTodoDone,
   applyTodoEdit,
   removeHistoryItem,
-  clearHistoryAll,
   consecutivePunchDays,
   maxConsecutivePunchDays,
+  templates,
 } = useTodoStore()
 
 const title = ref('')
@@ -78,6 +78,12 @@ const getCategoryTheme = (category: string) => {
   }
   return map[category] || 'primary'
 }
+
+const periodicHistory = computed(() => history.value.filter(h => h.period !== 'once'))
+const periodicCategories = computed(() => [...new Set(periodicHistory.value.map(h => h.category))])
+
+const unfinishedGoalTodos = computed(() => todos.value.filter(t => t.period === 'once' && !t.done))
+const completedGoalTodos = computed(() => todos.value.filter(t => t.period === 'once' && t.done))
 
 // 打卡弹窗相关
 const punchDialogVisible = ref(false)
@@ -188,19 +194,14 @@ const saveEdit = () => {
   MessagePlugin.success('已保存修改')
 }
 
-const pendingTodos = computed(() => todos.value.filter((todo) => !todo.done))
-const completedTodos = computed(() => todos.value.filter((todo) => todo.done))
+const allDisplayTodos = computed(() =>
+  [...todos.value].sort((a, b) => (a.category || '').localeCompare(b.category || 'zh'))
+)
 
 const removeHistory = (item: HistoryItem) => {
   const ok = removeHistoryItem(item)
   if (!ok) return
-  MessagePlugin.success('已删除历史任务记录')
-}
-
-const clearHistory = () => {
-  const ok = clearHistoryAll()
-  if (!ok) return
-  MessagePlugin.success('已清空历史任务记录')
+  MessagePlugin.success('已删除历史模板记录')
 }
 
 const handlePunchIn = (id: string) => {
@@ -246,7 +247,11 @@ const addFromHistory = (historyItem: HistoryItem) => {
     MessagePlugin.info('已存在相同名称任务')
     return
   }
-  MessagePlugin.success('已从历史任务记录添加')
+  if (res.kind === 'exists_unfinished') {
+    MessagePlugin.warning('上个目标还没达成')
+    return
+  }
+  MessagePlugin.success('已从历史模板记录添加')
 }
 
 const deleteTodo = (id: string) => {
@@ -365,14 +370,11 @@ const rangeLabels = computed(() => {
 const punchInsSeries = computed(() => rangeStats.value.map((s) => s.punchInsTotal))
 const minutesSeries = computed(() => rangeStats.value.map((s) => s.minutesTotal))
 
-const rangeCategoryCreated = computed(() => {
+const templateCategoryCounts = computed(() => {
   const map: Record<string, number> = {}
-  for (const dk of rangeDayKeys.value) {
-    const stat = dayStats.value[dk]
-    if (!stat) continue
-    for (const [c, v] of Object.entries(stat.categoryCreated || {})) {
-      map[c] = (map[c] || 0) + (v || 0)
-    }
+  for (const tpl of templates.value) {
+    const c = tpl.category || '未分类'
+    map[c] = (map[c] || 0) + 1
   }
   return map
 })
@@ -384,7 +386,7 @@ const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption 
   rangeLabels,
   punchInsSeries,
   minutesSeries,
-  rangeCategoryCreated,
+  categoryCounts: templateCategoryCounts,
 })
 
 const formatShortDay = (dayKey: string) => {
@@ -470,43 +472,69 @@ const formatShortDay = (dayKey: string) => {
     </div>
 
     <div class="w-[1200px] mx-auto mt-4 flex flex-wrap gap-2">
-      <div class="text-sm text-neutral-500 flex items-center">历史任务记录:</div>
-      <t-button v-if="history.length" size="small" theme="danger" variant="text" @click="clearHistory">
-        清空
-      </t-button>
-      <template v-if="history.length">
-        <t-tag v-for="item in history" :key="`${item.title}-${item.category}-${item.period}`" variant="outline"
-          class="transition-colors">
-          <span class="cursor-pointer hover:text-blue-600" @click="addFromHistory(item)">{{
-            item.title
-            }}</span>
-          <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
-            ×
-          </span>
-        </t-tag>
-      </template>
-      <div v-else class="text-sm text-neutral-400 flex items-center">暂无历史数据</div>
+      <div class="text-sm text-neutral-500 flex items-center">历史添加模板记录:</div>
+      <div v-if="!history.length" class="text-sm text-neutral-400 flex items-center">暂无历史数据</div>
+    </div>
+
+    <div class="w-[1200px] mx-auto mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <!-- Periodic Categories -->
+      <div v-for="cat in periodicCategories" :key="cat"
+        class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+        <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
+          <span>{{ cat }} (模板)</span>
+          <t-tag size="small" variant="light" :theme="getCategoryTheme(cat)">{{periodicHistory.filter(h => h.category
+            === cat).length}}</t-tag>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <t-tag v-for="item in periodicHistory.filter(h => h.category === cat)"
+            :key="`${item.title}-${item.category}-${item.period}`" variant="outline" class="transition-colors"
+            :theme="getCategoryTheme(cat)">
+            <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
+              item.title
+              }}</span>
+            <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
+              ×
+            </span>
+          </t-tag>
+        </div>
+      </div>
+
+      <!-- Unfinished Goals -->
+      <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+        <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
+          <span>未完成目标</span>
+          <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length }}</t-tag>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <t-tag v-for="todo in unfinishedGoalTodos" :key="todo.id" variant="outline" theme="warning">
+            <span>{{ todo.title }}</span>
+          </t-tag>
+          <div v-if="!unfinishedGoalTodos.length" class="text-xs text-neutral-400">暂无未完成目标</div>
+        </div>
+      </div>
+
+      <!-- Completed Goals -->
+      <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+        <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
+          <span>已完成目标</span>
+          <t-tag size="small" variant="light" theme="success">{{ completedGoalTodos.length }}</t-tag>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <t-tag v-for="todo in completedGoalTodos" :key="todo.id" variant="outline" theme="success">
+            <span>{{ todo.title }}</span>
+            <check-icon class="ml-1" />
+          </t-tag>
+          <div v-if="!completedGoalTodos.length" class="text-xs text-neutral-400">暂无已完成目标</div>
+        </div>
+      </div>
     </div>
 
     <div class="w-[1200px] mx-auto mt-4 rounded-md overflow-hidden">
       <t-tabs :default-value="1">
-        <t-tab-panel :value="1" :label="`待打卡 (${pendingTodos.length})`">
-          <div class="min-h-[300px]" :class="{ 'p-2': pendingTodos.length }">
-            <template v-if="pendingTodos.length">
-              <TodoItem v-for="todo in pendingTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
-                @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
-            </template>
-            <template v-else>
-              <div class="w-full h-[300px] flex flex-col items-center justify-center">
-                <t-empty />
-              </div>
-            </template>
-          </div>
-        </t-tab-panel>
-        <t-tab-panel :value="2" :label="`已打卡 (${completedTodos.length})`">
-          <div class="min-h-[300px]" :class="{ 'p-2': pendingTodos.length }">
-            <template v-if="completedTodos.length">
-              <TodoItem v-for="todo in completedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+        <t-tab-panel :value="1" :label="`任务列表 (${allDisplayTodos.length})`">
+          <div class="min-h-[300px]" :class="{ 'p-2': allDisplayTodos.length }">
+            <template v-if="allDisplayTodos.length">
+              <TodoItem v-for="todo in allDisplayTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                 @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
             </template>
             <template v-else>
@@ -606,7 +634,7 @@ const formatShortDay = (dayKey: string) => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ animatedPunchIns }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
-                较昨日增加: {{ punchInsDiff >= 0 ? '+' : '' }}{{ punchInsDiff }} 次
+                较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
             </div>
           </div>
@@ -617,7 +645,7 @@ const formatShortDay = (dayKey: string) => {
               <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ animatedMinutes }}
               </div>
               <t-tag size="small" variant="light" :theme="minutesDiff >= 0 ? 'success' : 'danger'">
-                较昨日增加: {{ minutesDiff >= 0 ? '+' : '' }}{{ minutesDiff }} 分钟
+                较昨日{{ minutesDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(minutesDiff) }} 分钟
               </t-tag>
             </div>
           </div>

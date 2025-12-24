@@ -753,9 +753,16 @@ export const useTodoStore = () => {
       deadline?: number
     },
   ) => {
-    const existing = todos.value.find((t) => t.title === text)
-    if (existing) {
-      return { kind: 'exists' as const }
+    if (params.period === 'once') {
+      const existingUnfinished = todos.value.find((t) => t.title === text && !t.done)
+      if (existingUnfinished) {
+        return { kind: 'exists_unfinished' as const }
+      }
+    } else {
+      const existing = todos.value.find((t) => t.title === text)
+      if (existing) {
+        return { kind: 'exists' as const }
+      }
     }
 
     const now = Date.now()

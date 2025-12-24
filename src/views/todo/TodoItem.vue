@@ -94,17 +94,27 @@ const getCategoryTheme = (category: string) => {
   }
   return map[category] || 'primary'
 }
+
+const getCategoryBackground = (category: string) => {
+  const map: Record<string, string> = {
+    '学习': 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30',
+    '娱乐': 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30',
+    '运动': 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-900/30',
+    '工作': 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30',
+    '生活': 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700',
+  }
+  return map[category] || 'bg-white dark:bg-neutral-900 border-transparent'
+}
 </script>
 
 <template>
-  <div
-    class="p-2 dark:hover:bg-neutral-950 hover:bg-neutral-100 transition-all ease-in-out duration-200 rounded-md flex items-center justify-between cursor-pointer mb-2 last-of-type:mb-0"
-    @click.stop="emit('toggle-select', todo.id)">
+  <div class="p-3 mb-2 rounded-lg border transition-all duration-200 flex items-center justify-between cursor-pointer"
+    :class="[getCategoryBackground(todo.category)]" @click.stop="emit('toggle-select', todo.id)">
     <div class="pointer-events-none flex items-center gap-2">
       <span>{{ todo.title }}</span>
       <t-tag v-if="todo.category" size="small" variant="outline" :theme="getCategoryTheme(todo.category)">{{
         todo.category
-        }}</t-tag>
+      }}</t-tag>
       <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
       <t-tag size="small" variant="light" theme="default">
         <template v-if="todo.unit === 'minutes'">
