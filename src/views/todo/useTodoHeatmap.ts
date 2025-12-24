@@ -15,6 +15,11 @@ type DayStatLike = {
 
 type CalendarRecord = { ts: number; value: number; minutes: number; completedCount: number }
 
+type CalHeatmapLike = {
+  paint: (options: unknown, plugins?: unknown) => unknown
+  destroy: () => unknown
+}
+
 const getDaysDiff = (a: Date, b: Date) => {
   const day = 24 * 60 * 60 * 1000
   const aa = new Date(a)
@@ -43,7 +48,7 @@ export const useTodoHeatmap = (args: {
   todayCompletedCount: ComputedRef<number>
   dayStats: Ref<Record<string, DayStatLike>>
 }) => {
-  let calHeatmap: any = null
+  let calHeatmap: CalHeatmapLike | null = null
   const heatmapLoading = ref(false)
 
   const calendarData = computed(() => {
@@ -105,14 +110,14 @@ export const useTodoHeatmap = (args: {
     dayjs.locale('zh-cn')
     const start = getHeatmapStartDate()
 
-    calHeatmap = new CalHeatmap()
+    calHeatmap = new CalHeatmap() as unknown as CalHeatmapLike
     calHeatmap.paint(
       {
         itemSelector: '#todo-cal-heatmap',
         date: { start },
         data: {
           source: calendarData.value.records,
-          x: (d: any) => d.ts,
+          x: (d: CalendarRecord) => d.ts,
           y: 'value',
           defaultValue: 0,
         },
@@ -141,16 +146,19 @@ export const useTodoHeatmap = (args: {
         [
           Tooltip,
           {
-            text: function (date: any, value: any, dayjsDate: any) {
-              const ts = typeof date === 'number' ? date : date?.getTime?.() || 0
+            text: function (
+              date: unknown,
+              value: unknown,
+              dayjsDate: { format?: (fmt: string) => string } | undefined,
+            ) {
+              const ts = typeof date === 'number' ? date : date instanceof Date ? date.getTime() : 0
               const punches = typeof value === 'number' ? value : 0
               const minutes = calendarData.value.minutesByTs[ts] || 0
-              const completedCount = calendarData.value.completedByTs[ts] || 0
-              const dateText = dayjsDate?.format?.('YYYY-MM-DD') || dayjs(date).format('YYYY-MM-DD')
-              return `${dateText}
-                <br/>打卡次数: ${punches} 次
-                <br/>累计分钟: ${minutes} 分钟
-                <br/>完成任务: ${completedCount} 个`
+              const dateText =
+                dayjsDate?.format?.('YYYY年MM月DD日') || dayjs(ts).format('YYYY年MM月DD日')
+              return `<p class="text-lg">${dateText}</p>
+                <p class="text-base">打卡次数: ${punches} 次</p>
+                <p class="text-base">分钟: ${minutes} 分钟</p>`
             },
           },
         ],

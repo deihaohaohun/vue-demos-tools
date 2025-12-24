@@ -36,7 +36,6 @@ const {
   punchRecords,
   todayKey,
   formatDayKey,
-  getTodoMinutesPerPunch,
   getTodoById,
   punchInTodo,
   updatePunchRecordNote,
@@ -277,16 +276,22 @@ const toggleDone = (id: string, done: boolean) => {
 
 const todayTodos = computed(() => todos.value.filter((t) => t.dayKey === todayKey.value))
 const todayCompletedCount = computed(() => todayTodos.value.filter((t) => t.done).length)
-// const todayPendingCount = computed(() => todayTodos.value.filter((t) => !t.done).length)
-const todayPunchInsTotal = computed(() =>
-  todayTodos.value.reduce((sum, t) => sum + (t.punchIns || 0), 0),
-)
-const todayMinutesTotal = computed(() =>
-  todayTodos.value.reduce((sum, t) => {
-    if (t.unit !== 'minutes') return sum
-    return sum + (t.punchIns || 0) * getTodoMinutesPerPunch(t)
-  }, 0),
-)
+const todayPunchRecords = computed(() => punchRecords.value.filter((r) => r.dayKey === todayKey.value))
+const todayPunchInsTotal = computed(() => todayPunchRecords.value.length)
+const todayMinutesTotal = computed(() => {
+  return todayPunchRecords.value.reduce((sum, r) => {
+    if (r.unit === 'minutes') {
+      const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
+      return sum + mins
+    }
+    const tpl = templates.value.find(
+      (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
+    )
+    if (!tpl || tpl.unit !== 'minutes') return sum
+    const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+    return sum + mins
+  }, 0)
+})
 
 
 // 当天可以打卡的总任务数 (所有今天显示的任务，排除一次性)
@@ -301,7 +306,13 @@ const unfinishedGoalsCount = computed(
 )
 
 // 今日已打卡任务数 (排除一次性)
-const todayPunchedCount = computed(() => todayTodos.value.filter((t) => t.period !== 'once' && t.punchIns > 0).length)
+const todayPunchedCount = computed(() => {
+  const set = new Set<string>()
+  for (const r of todayPunchRecords.value) {
+    set.add(`${r.todoTitle}@@${r.category || '未分类'}`)
+  }
+  return set.size
+})
 
 // 昨日数据对比
 const yesterdayKey = computed(() => dayjs().subtract(1, 'day').format('YYYY-MM-DD'))
@@ -379,6 +390,15 @@ const templateCategoryCounts = computed(() => {
   return map
 })
 
+const categoryCountsForChart = computed(() => {
+  const map: Record<string, number> = { ...templateCategoryCounts.value }
+  const goalsCount = todos.value.filter((t) => t.period === 'once').length
+  if (goalsCount > 0) {
+    map['目标'] = (map['目标'] || 0) + goalsCount
+  }
+  return map
+})
+
 const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption } = useTodoCharts({
   todos,
   dayStats,
@@ -386,7 +406,7 @@ const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption 
   rangeLabels,
   punchInsSeries,
   minutesSeries,
-  categoryCounts: templateCategoryCounts,
+  categoryCounts: categoryCountsForChart,
 })
 
 const formatShortDay = (dayKey: string) => {
@@ -400,7 +420,7 @@ const formatShortDay = (dayKey: string) => {
     <div class="w-[1200px] mx-auto pt-4">
       <div class="text-2xl text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
       <div class="flex gap-2 items-center justify-center">
-        <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加一个任务"></t-input>
+        <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加任务模板"></t-input>
         <t-button @click="addTodo">
           <template #icon>
             <add-icon size="24" />
@@ -491,7 +511,7 @@ const formatShortDay = (dayKey: string) => {
             :theme="getCategoryTheme(cat)">
             <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
               item.title
-              }}</span>
+            }}</span>
             <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
               ×
             </span>
@@ -719,7 +739,7 @@ const formatShortDay = (dayKey: string) => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-              }}</t-radio-button>
+            }}</t-radio-button>
           </t-radio-group>
         </div>
 

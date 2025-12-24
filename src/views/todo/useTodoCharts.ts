@@ -49,31 +49,29 @@ export const useTodoCharts = (args: {
     const dayKeys = args.rangeDayKeys.value
     const byDay: Record<string, Record<string, number>> = {}
     const categorySet = new Set<string>()
-    const daysFromStats = new Set<string>()
 
     for (const dk of dayKeys) byDay[dk] = {}
 
-    for (const dk of dayKeys) {
-      const stat = args.dayStats?.value?.[dk]
-      const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
-      if (!entries.length) continue
-      daysFromStats.add(dk)
-      for (const [c, v] of entries) {
-        if (!v) continue
+    if (args.dayStats) {
+      for (const dk of dayKeys) {
+        const stat = args.dayStats.value?.[dk]
+        const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
+        for (const [c, v] of entries) {
+          if (!v) continue
+          categorySet.add(c)
+          const bucket = byDay[dk] || (byDay[dk] = {})
+          bucket[c] = (bucket[c] || 0) + (v || 0)
+        }
+      }
+    } else {
+      for (const t of args.todos.value) {
+        const dk = t.dayKey
+        if (!byDay[dk]) continue
+        const c = t.category || '未分类'
         categorySet.add(c)
         const bucket = byDay[dk] || (byDay[dk] = {})
-        bucket[c] = (bucket[c] || 0) + (v || 0)
+        bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
       }
-    }
-
-    for (const t of args.todos.value) {
-      const dk = t.dayKey
-      if (!byDay[dk]) continue
-      if (daysFromStats.has(dk)) continue
-      const c = t.category || '未分类'
-      categorySet.add(c)
-      const bucket = byDay[dk] || (byDay[dk] = {})
-      bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
     }
 
     const categories = Array.from(categorySet)
@@ -100,35 +98,33 @@ export const useTodoCharts = (args: {
     const dayKeys = args.rangeDayKeys.value
     const byDay: Record<string, Record<string, number>> = {}
     const categorySet = new Set<string>()
-    const daysFromStats = new Set<string>()
 
     for (const dk of dayKeys) byDay[dk] = {}
 
-    for (const dk of dayKeys) {
-      const stat = args.dayStats?.value?.[dk]
-      const entries = stat?.categoryMinutes ? Object.entries(stat.categoryMinutes) : []
-      if (!entries.length) continue
-      daysFromStats.add(dk)
-      for (const [c, v] of entries) {
-        if (!v) continue
+    if (args.dayStats) {
+      for (const dk of dayKeys) {
+        const stat = args.dayStats.value?.[dk]
+        const entries = stat?.categoryMinutes ? Object.entries(stat.categoryMinutes) : []
+        for (const [c, v] of entries) {
+          if (!v) continue
+          categorySet.add(c)
+          const bucket = byDay[dk] || (byDay[dk] = {})
+          bucket[c] = (bucket[c] || 0) + (v || 0)
+        }
+      }
+    } else {
+      for (const t of args.todos.value) {
+        const dk = t.dayKey
+        if (!byDay[dk]) continue
+        if (t.unit !== 'minutes') continue
+
+        const c = t.category || '未分类'
         categorySet.add(c)
         const bucket = byDay[dk] || (byDay[dk] = {})
-        bucket[c] = (bucket[c] || 0) + (v || 0)
+        const mins =
+          (t.punchIns || 0) * (typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15)
+        bucket[c] = (bucket[c] || 0) + mins
       }
-    }
-
-    for (const t of args.todos.value) {
-      const dk = t.dayKey
-      if (!byDay[dk]) continue
-      if (daysFromStats.has(dk)) continue
-      if (t.unit !== 'minutes') continue
-
-      const c = t.category || '未分类'
-      categorySet.add(c)
-      const bucket = byDay[dk] || (byDay[dk] = {})
-      const mins =
-        (t.punchIns || 0) * (typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15)
-      bucket[c] = (bucket[c] || 0) + mins
     }
 
     const categories = Array.from(categorySet)
@@ -291,7 +287,22 @@ export const useTodoCharts = (args: {
     }
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis' },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params: unknown) => {
+          const first = Array.isArray(params) ? params[0] : params
+          if (!first || typeof first !== 'object') return ''
+
+          const p = first as { name?: unknown; axisValue?: unknown; value?: unknown }
+          const name =
+            typeof p.name === 'string' ? p.name : typeof p.axisValue === 'string' ? p.axisValue : ''
+          const value =
+            typeof p.value === 'number' ? p.value : typeof p.value === 'string' ? p.value : ''
+
+          return `${name}: ${value}`
+        },
+      },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: {
         type: 'category',

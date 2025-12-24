@@ -65,6 +65,8 @@ interface PunchRecord {
   category: string
   timestamp: number
   dayKey: string
+  unit?: TodoUnit
+  minutesPerTime?: number
   note?: string
 }
 
@@ -260,9 +262,67 @@ export const useTodoStore = () => {
     return now.startOf('day')
   }
 
+  const getCycleEndExclusive = (tpl: TodoTemplate, start: dayjs.Dayjs) => {
+    if (tpl.period === 'daily') return start.add(1, 'day')
+    if (tpl.period === 'weekly') return start.add(1, 'week')
+    if (tpl.period === 'monthly') return start.add(1, 'month')
+    if (tpl.period === 'yearly') return start.add(1, 'year')
+    return start.add(1, 'day')
+  }
+
+  const pruneTodosOutsideCurrentCycle = (tk: string, todayDate: Date) => {
+    const keep: Todo[] = []
+    const pickedByTemplateId = new Map<string, Todo>()
+
+    const pickBetter = (a: Todo, b: Todo) => {
+      const ap = a.punchIns || 0
+      const bp = b.punchIns || 0
+      if (ap !== bp) return ap > bp ? a : b
+      if (!!a.done !== !!b.done) return a.done ? a : b
+      const ac = typeof a.createdAt === 'number' ? a.createdAt : 0
+      const bc = typeof b.createdAt === 'number' ? b.createdAt : 0
+      return ac >= bc ? a : b
+    }
+
+    for (const t of todos.value) {
+      if (t.period === 'once') {
+        keep.push(t)
+        continue
+      }
+
+      if (!t.templateId) {
+        if (t.dayKey === tk) keep.push(t)
+        continue
+      }
+
+      const tpl = templates.value.find((tp) => tp.id === t.templateId)
+      if (!tpl) {
+        if (t.dayKey === tk) keep.push(t)
+        continue
+      }
+
+      const cycleStart = getCycleStart(tpl, todayDate)
+      const cycleEndExclusive = getCycleEndExclusive(tpl, cycleStart)
+      const createdAt = dayjs(t.createdAt)
+      const inCurrentCycle =
+        (createdAt.isAfter(cycleStart) || createdAt.isSame(cycleStart)) &&
+        createdAt.isBefore(cycleEndExclusive)
+      if (!inCurrentCycle) {
+        continue
+      }
+
+      const existing = pickedByTemplateId.get(t.templateId)
+      pickedByTemplateId.set(t.templateId, existing ? pickBetter(existing, t) : t)
+    }
+
+    todos.value = [...keep, ...pickedByTemplateId.values()]
+  }
+
   const materializeTodayTodosFromTemplates = () => {
     const tk = todayKey.value
     const todayDate = new Date()
+
+    pruneTodosOutsideCurrentCycle(tk, todayDate)
 
     // 1. 保留今天已有的任务
     const todayItems = todos.value.filter((t) => t.dayKey === tk)
@@ -270,17 +330,33 @@ export const useTodoStore = () => {
     // 2. 查找之前未完成的任务，并"滚动"到今天 (Rollover)
     // 策略：
     // - once: 一次性任务，如果没完成，必须顺延，否则就丢了
-    // - weekly/monthly/yearly: 周期性任务，如果没完成，也顺延 (用户期望看到它)
+    // - weekly/monthly/yearly: 周期性任务，只要还在当前周期内，就应该滚动到今天，以便继续打卡（即使已达到最低频率）
     // - daily: 每日任务，通常是"今日事今日毕"，如果没做完，第二天应该重置(从模板生成新的)，而不是堆积
     const overdueItems = todos.value.filter((t) => {
-      if (t.done) return false // 已完成的不顺延
       if (t.dayKey === tk) return false // 已经是今天的，上面 todayItems 处理了
-      // 排除 daily
-      if (t.period === 'daily') return false
-      return true
+
+      // 处理周期性任务 (非每日)
+      if (t.period !== 'once' && t.period !== 'daily' && t.templateId) {
+        const tpl = templates.value.find((tp) => tp.id === t.templateId)
+        if (tpl) {
+          const cycleStart = getCycleStart(tpl, todayDate)
+          const cycleEndExclusive = getCycleEndExclusive(tpl, cycleStart)
+          const createdAt = dayjs(t.createdAt)
+          const inCurrentCycle =
+            (createdAt.isAfter(cycleStart) || createdAt.isSame(cycleStart)) &&
+            createdAt.isBefore(cycleEndExclusive)
+
+          if (inCurrentCycle) return true // 还在周期内，滚动到今天
+        }
+      }
+
+      // 处理一次性任务
+      if (t.period === 'once' && !t.done) return true
+
+      return false
     })
 
-    // 将过期任务的 dayKey 更新为今天，以便在今日列表中显示
+    // 将滚动任务的 dayKey 更新为今天，以便在今日列表中显示
     overdueItems.forEach((t) => {
       t.dayKey = tk
     })
@@ -289,11 +365,7 @@ export const useTodoStore = () => {
     const instances: Todo[] = [...todayItems, ...overdueItems]
 
     // 3. 检查模板，是否需要生成"本周期"的新任务
-    // 关键点：即使今天不是"创建日"，只要本周期内没有生成过任务（且没完成），就应该显示
-    // 比如：每周任务是周一创建。今天是周二。如果周一没打开APP，今天应该生成。
-    // 如果周一打开了但没做，上面的 overdueItems 会把它带过来。
-    // 如果周一打开了并做了，todos里会有已完成记录（我们需要去原始 todos 里查，因为 instances 里可能过滤掉了）
-
+    // 关键点：即使今天不是"创建日"，只要本周期内没有生成过任务，就应该显示
     // 为了避免重复查询，我们建立一个"本周期已覆盖"的 Set
     const coveredTemplateIds = new Set<string>()
 
@@ -304,10 +376,14 @@ export const useTodoStore = () => {
       if (!tpl) return
 
       const cycleStart = getCycleStart(tpl, todayDate)
+      const cycleEndExclusive = getCycleEndExclusive(tpl, cycleStart)
       const createdAt = dayjs(t.createdAt)
 
       // 如果这个任务的创建时间在"本周期开始时间"之后（或相同），说明它是本周期的任务
-      if (createdAt.isAfter(cycleStart) || createdAt.isSame(cycleStart)) {
+      if (
+        (createdAt.isAfter(cycleStart) || createdAt.isSame(cycleStart)) &&
+        createdAt.isBefore(cycleEndExclusive)
+      ) {
         coveredTemplateIds.add(t.templateId)
       }
     })
@@ -356,13 +432,6 @@ export const useTodoStore = () => {
         }
       }
       grouped[dk].createdCount += 1
-      grouped[dk].punchInsTotal += t.punchIns || 0
-      incCategory(grouped[dk].categoryPunchIns, t.category || '未分类', t.punchIns || 0)
-      if (t.unit === 'minutes') {
-        const mins = (t.punchIns || 0) * getTodoMinutesPerPunch(t)
-        grouped[dk].minutesTotal += mins
-        incCategory(grouped[dk].categoryMinutes, t.category || '未分类', mins)
-      }
       incCategory(grouped[dk].categoryCreated, t.category || '未分类', 1)
       if (t.done) grouped[dk].completedCount += 1
       if (t.done) incCategory(grouped[dk].categoryCompleted, t.category || '未分类', 1)
@@ -372,8 +441,6 @@ export const useTodoStore = () => {
       const target = ensureDayStat(dk)
       target.createdCount = Math.max(target.createdCount, stat.createdCount)
       target.completedCount = Math.max(target.completedCount, stat.completedCount)
-      target.punchInsTotal = Math.max(target.punchInsTotal, stat.punchInsTotal)
-      target.minutesTotal = Math.max(target.minutesTotal, stat.minutesTotal)
 
       for (const [c, v] of Object.entries(stat.categoryCreated)) {
         target.categoryCreated[c] = Math.max(target.categoryCreated[c] || 0, v)
@@ -381,11 +448,37 @@ export const useTodoStore = () => {
       for (const [c, v] of Object.entries(stat.categoryCompleted)) {
         target.categoryCompleted[c] = Math.max(target.categoryCompleted[c] || 0, v)
       }
-      for (const [c, v] of Object.entries(stat.categoryPunchIns)) {
-        target.categoryPunchIns[c] = Math.max(target.categoryPunchIns[c] || 0, v)
+    }
+  }
+
+  const rebuildPunchStatsFromRecords = () => {
+    for (const s of Object.values(dayStats.value)) {
+      s.punchInsTotal = 0
+      s.minutesTotal = 0
+      s.categoryPunchIns = {}
+      s.categoryMinutes = {}
+    }
+
+    for (const r of punchRecords.value) {
+      if (!r.dayKey) continue
+      const stat = ensureDayStat(r.dayKey)
+      stat.punchInsTotal += 1
+      incCategory(stat.categoryPunchIns, r.category || '未分类', 1)
+
+      if (r.unit === 'minutes') {
+        const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
+        stat.minutesTotal += mins
+        incCategory(stat.categoryMinutes, r.category || '未分类', mins)
+        continue
       }
-      for (const [c, v] of Object.entries(stat.categoryMinutes)) {
-        target.categoryMinutes[c] = Math.max(target.categoryMinutes[c] || 0, v)
+
+      const tpl = templates.value.find(
+        (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
+      )
+      if (tpl && tpl.unit === 'minutes') {
+        const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+        stat.minutesTotal += mins
+        incCategory(stat.categoryMinutes, r.category || '未分类', mins)
       }
     }
   }
@@ -529,6 +622,9 @@ export const useTodoStore = () => {
             category: typeof item.category === 'string' ? item.category : '未分类',
             timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
             dayKey: typeof item.dayKey === 'string' ? item.dayKey : formatDayKey(Date.now()),
+            unit: item.unit === 'minutes' || item.unit === 'times' ? item.unit : undefined,
+            minutesPerTime:
+              typeof item.minutesPerTime === 'number' ? item.minutesPerTime : undefined,
             note: typeof item.note === 'string' ? item.note : undefined,
           }))
         }
@@ -563,9 +659,10 @@ export const useTodoStore = () => {
   onMounted(() => {
     loadData()
 
-    rebuildStatsFromTodos()
     syncTemplatesFromTodos()
     materializeTodayTodosFromTemplates()
+    rebuildStatsFromTodos()
+    rebuildPunchStatsFromRecords()
   })
 
   // 监听变化并保存
@@ -610,8 +707,10 @@ export const useTodoStore = () => {
     if (!todo) return { kind: 'not_found' as const }
     if (todo.period === 'once') return { kind: 'once' as const }
 
+    const punchDayKey = formatDayKey(Date.now())
+
     todo.punchIns = (todo.punchIns || 0) + 1
-    const stat = ensureDayStat(todo.dayKey)
+    const stat = ensureDayStat(punchDayKey)
     stat.punchInsTotal += 1
     if (todo.unit === 'minutes') {
       const mins = getTodoMinutesPerPunch(todo)
@@ -629,7 +728,9 @@ export const useTodoStore = () => {
       todoTitle: todo.title,
       category: todo.category || '未分类',
       timestamp: Date.now(),
-      dayKey: formatDayKey(Date.now()),
+      dayKey: punchDayKey,
+      unit: todo.unit,
+      minutesPerTime: todo.unit === 'minutes' ? getTodoMinutesPerPunch(todo) : undefined,
       note,
     })
     // 限制最大记录数，避免 localStorage 过大，比如最近 5000 条
