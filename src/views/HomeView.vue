@@ -5,8 +5,8 @@
         <div class="flex flex-wrap w-[80vw] gap-8">
           <div
             class="star icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl transition-all ease-in duration-100 border dark:border-neutral-300 border-neutral-500 flex items-center justify-center"
-            @click="navigateTo('/d3task')">
-            <span class="dark:text-white text-xl select-none">d3 task</span>
+            @click="navigateTo('/nihongo')">
+            <span class="dark:text-white text-xl select-none">霓虹语</span>
           </div>
           <div
             class="star icon w-26 h-26 rounded-2xl backdrop-filter backdrop-blur-xl transition-all ease-in duration-100 border border-neutral-500 flex items-center justify-center"

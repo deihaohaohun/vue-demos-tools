@@ -23,6 +23,9 @@ importers:
       '@vueuse/core':
         specifier: ^14.1.0
         version: 14.1.0(vue@3.5.24(typescript@5.9.3))
+      '@yeger/vue-masonry-wall':
+        specifier: ^5.1.4
+        version: 5.1.4(vue@3.5.24(typescript@5.9.3))
       cal-heatmap:
         specifier: ^4.2.4
         version: 4.2.4
@@ -1084,6 +1087,20 @@ packages:
     resolution: {integrity: sha512-EcKxtYvn6gx1F8z9J5/rsg3+lTQnvOruQd8fUecW99DCK04BkWD7z5KQ/wTAx+DazyoEE9dJt/zV8OIEQbM6kw==}
     peerDependencies:
       vue: ^3.5.0
+
+  '@yeger/debounce@2.0.17':
+    resolution: {integrity: sha512-wz9ARkGnY25yToyaZaCz887aRxsIg96uI/waBLkV/Qfh9/VHP+C6uAFpOg8FPba0KMS2QYo2dhCOqPvCoDigyA==}
+
+  '@yeger/vue-lib-adapter@2.0.16':
+    resolution: {integrity: sha512-fxD0xY5dOy5G/c59gQ/IMbZl1MWw8tPK+moJu2WiUqpFrRQBz2U8bx95k0VSFMZqBCTEhXXomCi93C7FVRQB6A==}
+
+  '@yeger/vue-masonry-wall-core@5.0.21':
+    resolution: {integrity: sha512-YX2kQaxjYk6hOxdS5EKeZRQJy5Dmx/F2S5883xMFSS6pePji5d+2U82jVdXEkWYisFjq+I5K+5xx/MSLgSt7Hw==}
+
+  '@yeger/vue-masonry-wall@5.1.4':
+    resolution: {integrity: sha512-13a6PihxVHTyYdQzJeFY9GNz1QdpvGxlGcPqPiG/AVVD6ccMqRsxjkRHB2Bmwzs5oBhFZmO/sx5s5hB9+L5iiw==}
+    peerDependencies:
+      vue: ^3.0.0
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -3390,6 +3407,20 @@ snapshots:
 
   '@vueuse/shared@14.1.0(vue@3.5.24(typescript@5.9.3))':
     dependencies:
+      vue: 3.5.24(typescript@5.9.3)
+
+  '@yeger/debounce@2.0.17': {}
+
+  '@yeger/vue-lib-adapter@2.0.16': {}
+
+  '@yeger/vue-masonry-wall-core@5.0.21':
+    dependencies:
+      '@yeger/debounce': 2.0.17
+      '@yeger/vue-lib-adapter': 2.0.16
+
+  '@yeger/vue-masonry-wall@5.1.4(vue@3.5.24(typescript@5.9.3))':
+    dependencies:
+      '@yeger/vue-masonry-wall-core': 5.0.21
       vue: 3.5.24(typescript@5.9.3)
 
   acorn-jsx@5.3.2(acorn@8.15.0):

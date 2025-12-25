@@ -21,6 +21,7 @@
     "@supabase/supabase-js": "^2.86.0",
     "@tailwindcss/vite": "^4.1.17",
     "@vueuse/core": "^14.1.0",
+    "@yeger/vue-masonry-wall": "^5.1.4",
     "cal-heatmap": "^4.2.4",
     "dayjs": "^1.11.13",
     "echarts": "^5.5.1",

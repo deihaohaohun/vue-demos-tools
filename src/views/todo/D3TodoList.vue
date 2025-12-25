@@ -420,12 +420,13 @@ const formatShortDay = (dayKey: string) => {
     <div class="w-[1200px] mx-auto pt-4">
       <div class="text-2xl text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
       <div class="flex gap-2 items-center justify-center">
-        <t-input autofocus v-model="title" :onEnter="addTodo" placeholder="添加任务模板"></t-input>
+        <t-input autofocus v-model="title" :onEnter="addTodo"
+          :placeholder="period === 'once' ? '添加目标' : '添加任务模板'"></t-input>
         <t-button @click="addTodo">
           <template #icon>
             <add-icon size="24" />
           </template>
-          新建任务模板
+          {{ period === 'once' ? '新建目标' : '新建任务模板' }}
         </t-button>
       </div>
     </div>
@@ -485,9 +486,9 @@ const formatShortDay = (dayKey: string) => {
         <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
       </div>
 
-      <div class="col-span-12 flex items-center gap-2" v-if="period === 'once'">
+      <div class="col-span-12 flex items-center gap-2">
         <div class="text-sm text-neutral-500 w-[72px]">截止日期</div>
-        <t-date-picker v-model="deadline" placeholder="可选：选择截止日期" class="flex-1" />
+        <t-date-picker :disabled="period !== 'once'" v-model="deadline" placeholder="可选：选择截止日期" class="flex-1" />
       </div>
     </div>
 
@@ -511,7 +512,7 @@ const formatShortDay = (dayKey: string) => {
             :theme="getCategoryTheme(cat)">
             <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
               item.title
-            }}</span>
+              }}</span>
             <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
               ×
             </span>
@@ -739,7 +740,7 @@ const formatShortDay = (dayKey: string) => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-            }}</t-radio-button>
+              }}</t-radio-button>
           </t-radio-group>
         </div>
 

@@ -9,9 +9,9 @@ const router = createRouter({
       component: () => import('@/views/HomeView.vue'),
     },
     {
-      path: '/d3task',
-      name: 'd3task',
-      component: () => import('@/views/d3task/D3Task.vue'),
+      path: '/nihongo',
+      name: 'nihongo',
+      component: () => import('@/views/nihongo/NihongoView.vue'),
     },
     {
       path: '/todo',
