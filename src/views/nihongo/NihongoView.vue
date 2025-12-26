@@ -4,10 +4,12 @@ import MasonryWall from '@yeger/vue-masonry-wall'
 import { useBreakpoints, breakpointsTailwind } from '@vueuse/core'
 import {
   StarFilledIcon,
-  CheckIcon,
-  CloseIcon,
+  HeartIcon,
+  HeartFilledIcon,
   ArrowUpIcon,
-  ArrowDownIcon
+  ArrowDownIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from 'tdesign-icons-vue-next'
 
 interface GrammarMeaning {
@@ -294,8 +296,8 @@ const updateMastery = (id: number, delta: number) => {
         :key="selectedLevel + sortType + sortOrder + showRemembered">
         <template #default="{ item }">
           <div
-            class="bg-white dark:bg-neutral-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-neutral-200 dark:border-neutral-700 cursor-pointer group"
-            :class="[getLevelStyle(item.level).border]" @click="toggleExpand(item.id)">
+            class="bg-white dark:bg-neutral-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-neutral-200 dark:border-neutral-700 group"
+            :class="[getLevelStyle(item.level).border]">
             <div class="p-4">
               <!-- Row 1: Commonality Stars (Centered) -->
               <div class="flex justify-center items-center gap-1 mb-3">
@@ -307,17 +309,16 @@ const updateMastery = (id: number, delta: number) => {
               <div
                 class="flex justify-between items-center mb-4 bg-neutral-50 dark:bg-neutral-900/50 p-2 rounded-lg border border-neutral-100 dark:border-neutral-800">
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 font-black rounded uppercase tracking-tighter"
+                  <span class="px-2 py-0.5 text-base font-black rounded uppercase tracking-tighter"
                     :class="[getLevelStyle(item.level).bg, getLevelStyle(item.level).text]">
                     {{ item.level }}
                   </span>
 
-                  <t-tooltip :content="item.isRemembered ? '移除已记住' : '加入已记住'">
-                    <t-button shape="circle" variant="text" :theme="item.isRemembered ? 'danger' : 'default'"
-                      @click.stop="toggleRemember(item.id)">
+                  <t-tooltip :content="item.isRemembered ? '取消标记' : '标记已记住'">
+                    <t-button shape="circle" variant="text" @click.stop="toggleRemember(item.id)">
                       <template #icon>
-                        <check-icon v-if="!item.isRemembered" class="text-red-500" />
-                        <close-icon v-else class="text-neutral-400" />
+                        <heart-filled-icon v-if="item.isRemembered" class="text-red-500" />
+                        <heart-icon v-else class="text-neutral-400" />
                       </template>
                     </t-button>
                   </t-tooltip>
@@ -329,7 +330,7 @@ const updateMastery = (id: number, delta: number) => {
                     @click.stop="updateMastery(item.id, -1)">
                     <template #icon><arrow-down-icon /></template>
                   </t-button>
-                  <div class="flex flex-col items-center px-1">
+                  <div class="flex flex-col items-center px-1 min-w-[28px]">
                     <span class="text-[9px] text-neutral-400 font-bold leading-none scale-90">熟练度</span>
                     <span class="text-xs font-black text-blue-600 dark:text-blue-400 leading-none mt-0.5">{{
                       item.mastery }}</span>
@@ -342,7 +343,7 @@ const updateMastery = (id: number, delta: number) => {
               </div>
 
               <h3
-                class="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2 group-hover:text-blue-600 transition-colors px-1">
+                class="text-lg font-bold text-neutral-800 dark:text-neutral-100 group-hover:text-blue-600 transition-colors px-1 mb-2">
                 {{ item.title }}
               </h3>
 
@@ -399,10 +400,13 @@ const updateMastery = (id: number, delta: number) => {
               </div>
 
               <div class="mt-4 flex justify-center">
-                <span
-                  class="text-xs text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors">
-                  {{ expandedCards.has(item.id) ? '点击收起' : '点击展开更多' }}
-                </span>
+                <t-button variant="text" theme="default" @click.stop="toggleExpand(item.id)">
+                  <template #icon>
+                    <chevron-up-icon v-if="expandedCards.has(item.id)" />
+                    <chevron-down-icon v-else />
+                  </template>
+                  {{ expandedCards.has(item.id) ? '收起详情' : '展开详情' }}
+                </t-button>
               </div>
             </div>
           </div>

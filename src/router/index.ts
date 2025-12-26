@@ -6,30 +6,39 @@ const router = createRouter({
     {
       path: '/',
       name: 'home',
+      meta: { title: '得好好混的小破站' },
       component: () => import('@/views/HomeView.vue'),
     },
     {
       path: '/nihongo',
       name: 'nihongo',
+      meta: { title: '日语学习' },
       component: () => import('@/views/nihongo/NihongoView.vue'),
     },
     {
       path: '/todo',
       name: 'todo',
+      meta: { title: '待办事项' },
       component: () => import('@/views/todo/D3TodoList.vue'),
     },
     {
       path: '/setting',
       name: 'setting',
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, title: '设置' },
       component: () => import('@/views/SettingView.vue'),
     },
     {
       path: '/login',
       name: 'login',
+      meta: { title: '登录' },
       component: () => import('@/views/LoginView.vue'),
     },
-    { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFound.vue') },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'NotFound',
+      meta: { title: '404' },
+      component: () => import('@/views/NotFound.vue'),
+    },
   ],
 })
 
@@ -41,6 +50,11 @@ function isAuthed(): boolean {
 }
 
 router.beforeEach((to, from, next) => {
+  // 设置页面标题
+  if (to.meta.title) {
+    document.title = `${to.meta.title}`
+  }
+
   const authed = isAuthed()
 
   // --- 1. 白名单直接放行 ---

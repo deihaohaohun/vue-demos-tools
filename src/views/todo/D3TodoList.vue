@@ -684,7 +684,7 @@ const formatShortDay = (dayKey: string) => {
         </div>
 
         <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 p-2 mb-3 relative h-[200px]">
-          <div class="text-xs text-neutral-500 mb-4">最近一年活跃热力图（打卡次数/分钟数）</div>
+          <div class="text-xs text-neutral-500 mb-[30px]">最近一年活跃热力图（打卡次数/分钟数）</div>
           <div class="w-full overflow-x-auto">
             <div class="w-fit mx-auto">
               <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
@@ -699,28 +699,28 @@ const formatShortDay = (dayKey: string) => {
         <div class="grid grid-cols-12 gap-3">
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">各任务类型的打卡趋势</div>
-            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
+            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
               <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">任务分类</div>
-            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
+            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
               <VChart :option="categoryOption" style="height: 100%; width: 100%" />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">每日打卡次数趋势</div>
-            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
+            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
               <VChart :option="punchInsOption" style="height: 100%; width: 100%" />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">每日打卡分钟数趋势</div>
-            <div class="h-[220px] w-full overflow-hidden" style="line-height: 0">
+            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
               <VChart :option="minutesOption" style="height: 100%; width: 100%" />
             </div>
           </div>
