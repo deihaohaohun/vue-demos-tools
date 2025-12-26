@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RefreshIcon, CheckIcon, EditIcon, Delete1Icon, CheckCircleIcon } from 'tdesign-icons-vue-next'
+import { RefreshIcon, CheckIcon, EditIcon, CheckCircleIcon, CloseIcon } from 'tdesign-icons-vue-next'
 import { computed } from 'vue'
 import dayjs from 'dayjs'
 
@@ -114,7 +114,7 @@ const getCategoryBackground = (category: string) => {
       <span>{{ todo.title }}</span>
       <t-tag v-if="todo.category" size="small" variant="outline" :theme="getCategoryTheme(todo.category)">{{
         todo.category
-      }}</t-tag>
+        }}</t-tag>
       <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
       <t-tag size="small" variant="light" theme="default">
         <template v-if="todo.unit === 'minutes'">
@@ -137,7 +137,7 @@ const getCategoryBackground = (category: string) => {
       </t-tag>
     </div>
 
-    <div class="flex gap-2">
+    <div class="flex gap-2 items-center">
       <t-button v-if="todo.period !== 'once'" theme="primary" size="small" @click.stop="emit('punch-in', todo.id)">
         <template #icon>
           <refresh-icon v-if="todo.punchIns > 0" size="12" />
@@ -161,11 +161,10 @@ const getCategoryBackground = (category: string) => {
         编辑
       </t-button>
 
-      <t-button theme="danger" size="small" @click.stop="emit('delete', todo.id)">
+      <t-button theme="danger" variant="text" size="small" shape="square" @click.stop="emit('delete', todo.id)">
         <template #icon>
-          <delete1-icon size="12" />
+          <close-icon />
         </template>
-        删除
       </t-button>
     </div>
   </div>

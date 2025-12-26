@@ -29,6 +29,9 @@ importers:
       cal-heatmap:
         specifier: ^4.2.4
         version: 4.2.4
+      canvas-confetti:
+        specifier: ^1.9.4
+        version: 1.9.4
       dayjs:
         specifier: ^1.11.13
         version: 1.11.19
@@ -72,6 +75,9 @@ importers:
       '@tsconfig/node22':
         specifier: ^22.0.2
         version: 22.0.5
+      '@types/canvas-confetti':
+        specifier: ^1.9.0
+        version: 1.9.0
       '@types/node':
         specifier: ^22.18.11
         version: 22.19.1
@@ -863,6 +869,9 @@ packages:
   '@tsconfig/node22@22.0.5':
     resolution: {integrity: sha512-hLf2ld+sYN/BtOJjHUWOk568dvjFQkHnLNa6zce25GIH+vxKfvTgm3qpaH6ToF5tu/NN0IH66s+Bb5wElHrLcw==}
 
+  '@types/canvas-confetti@1.9.0':
+    resolution: {integrity: sha512-aBGj/dULrimR1XDZLtG9JwxX1b4HPRF6CX9Yfwh3NvstZEm1ZL7RBnel4keCPSqs1ANRu1u2Aoz9R+VmtjYuTg==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -1180,6 +1189,9 @@ packages:
 
   caniuse-lite@1.0.30001756:
     resolution: {integrity: sha512-4HnCNKbMLkLdhJz3TToeVWHSnfJvPaq6vu/eRP0Ahub/07n484XHhBF5AJoSGHdVrS8tKFauUQz8Bp9P7LVx7A==}
+
+  canvas-confetti@1.9.4:
+    resolution: {integrity: sha512-yxQbJkAVrFXWNbTUjPqjF7G+g6pDotOUHGbkZq2NELZUMDpiJ85rIEazVb8GTaAptNW2miJAXbs1BtioA251Pw==}
 
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
@@ -3089,6 +3101,8 @@ snapshots:
 
   '@tsconfig/node22@22.0.5': {}
 
+  '@types/canvas-confetti@1.9.0': {}
+
   '@types/estree@1.0.8': {}
 
   '@types/json-schema@7.0.15': {}
@@ -3500,6 +3514,8 @@ snapshots:
   callsites@3.1.0: {}
 
   caniuse-lite@1.0.30001756: {}
+
+  canvas-confetti@1.9.4: {}
 
   chalk@4.1.2:
     dependencies:

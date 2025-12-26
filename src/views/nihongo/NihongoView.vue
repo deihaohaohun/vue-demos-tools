@@ -357,9 +357,12 @@ const updateMastery = (id: number, delta: number) => {
               <div v-if="expandedCards.has(item.id)"
                 class="mt-4 space-y-6 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-neutral-100 dark:border-neutral-700 pt-4">
                 <div v-for="(m, idx) in item.meanings" :key="idx" class="space-y-4">
-                  <div v-if="item.meanings.length > 1"
-                    class="text-xs font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider">
-                    含义 {{ idx + 1 }} 详情
+                  <div
+                    class="text-xs font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                    <span v-if="item.meanings.length > 1"
+                      class="bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 rounded text-[10px]">含义
+                      {{ idx + 1 }}</span>
+                    <span>{{ m.meaning }}</span>
                   </div>
 
                   <div>

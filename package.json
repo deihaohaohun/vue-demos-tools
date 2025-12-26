@@ -23,6 +23,7 @@
     "@vueuse/core": "^14.1.0",
     "@yeger/vue-masonry-wall": "^5.1.4",
     "cal-heatmap": "^4.2.4",
+    "canvas-confetti": "^1.9.4",
     "dayjs": "^1.11.13",
     "echarts": "^5.5.1",
     "gsap": "^3.14.2",
@@ -39,6 +40,7 @@
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.2",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.18.11",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/eslint-config-prettier": "^10.2.0",

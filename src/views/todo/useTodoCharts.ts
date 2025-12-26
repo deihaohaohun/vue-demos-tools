@@ -94,7 +94,77 @@ export const useTodoCharts = (args: {
     return { categories, series }
   })
 
-  const minutesByCategory = computed((): { categories: string[]; series: LineSeriesLike[] } => {
+  const punchInsByCategoryOption = computed((): EChartsOption => {
+    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v) => v > 0))
+    if (!hasData) {
+      return {
+        backgroundColor: 'transparent',
+        title: {
+          text: '暂无数据',
+          left: 'center',
+          top: 'middle',
+          textStyle: {
+            color: '#999',
+            fontSize: 14,
+          },
+        },
+        xAxis: { show: false },
+        yAxis: { show: false },
+        series: [],
+      }
+    }
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { data: punchInsByCategory.value.categories, top: 0 },
+      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
+      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
+      yAxis: { type: 'value', name: '次', minInterval: 1 },
+      series: punchInsByCategory.value.series as unknown as EChartsOption['series'],
+    }
+  })
+
+  const punchInsOption = computed((): EChartsOption => {
+    const hasData = args.punchInsSeries.value.some((v: number) => v > 0)
+    if (!hasData) {
+      return {
+        backgroundColor: 'transparent',
+        title: {
+          text: '暂无数据',
+          left: 'center',
+          top: 'middle',
+          textStyle: {
+            color: '#999',
+            fontSize: 14,
+          },
+        },
+        xAxis: { show: false },
+        yAxis: { show: false },
+        series: [],
+      }
+    }
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { data: ['每日打卡次数'], top: 0 },
+      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
+      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
+      yAxis: { type: 'value', name: '次', minInterval: 1 },
+      series: [
+        {
+          name: '每日打卡次数',
+          type: 'line',
+          data: args.punchInsSeries.value,
+          smooth: true,
+          symbolSize: 6,
+          itemStyle: { color: '#a78bfa' },
+          areaStyle: { color: 'rgba(167,139,250,0.2)' },
+        },
+      ],
+    }
+  })
+
+  const minutesOption = computed((): EChartsOption => {
     const dayKeys = args.rangeDayKeys.value
     const byDay: Record<string, Record<string, number>> = {}
     const categorySet = new Set<string>()
@@ -130,138 +200,47 @@ export const useTodoCharts = (args: {
     const categories = Array.from(categorySet)
     categories.sort((a, b) => a.localeCompare(b, 'zh'))
 
+    const hasData =
+      categories.length > 0 &&
+      dayKeys.some((dk) => categories.some((c) => (byDay[dk]?.[c] || 0) > 0))
+
+    if (!hasData) {
+      return {
+        backgroundColor: 'transparent',
+        title: {
+          text: '暂无数据',
+          left: 'center',
+          top: 'middle',
+          textStyle: {
+            color: '#999',
+            fontSize: 14,
+          },
+        },
+        xAxis: { show: false },
+        yAxis: { show: false },
+        series: [],
+      }
+    }
+
     const series = categories.map((c, idx) => {
-      const color = palette[idx % palette.length] ?? '#fb923c'
+      const color = palette[idx % palette.length] ?? '#60a5fa'
       return {
         name: c,
-        type: 'line' as const,
+        type: 'bar',
         data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
+        stack: 'minutes',
         itemStyle: { color },
-        areaStyle: { color: toRgba(color, 0.12) },
       }
     })
 
-    return { categories, series }
-  })
-
-  const punchInsByCategoryOption = computed((): EChartsOption => {
-    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v) => v > 0))
-    if (!hasData) {
-      return {
-        backgroundColor: 'transparent',
-        title: {
-          text: '暂无数据',
-          left: 'center',
-          top: 'middle',
-          textStyle: {
-            color: '#999',
-            fontSize: 14,
-          },
-        },
-        xAxis: { show: false },
-        yAxis: { show: false },
-        series: [],
-      }
-    }
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis' },
-      legend: { data: punchInsByCategory.value.categories, top: 0 },
-      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
-      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
-      yAxis: { type: 'value', name: '次', minInterval: 1 },
-      series: punchInsByCategory.value.series as unknown as EChartsOption['series'],
-    }
-  })
-
-  const punchInsOption = computed((): EChartsOption => {
-    const hasData = args.punchInsSeries.value.some((v: number) => v > 0)
-    if (!hasData) {
-      return {
-        backgroundColor: 'transparent',
-        title: {
-          text: '暂无数据',
-          left: 'center',
-          top: 'middle',
-          textStyle: {
-            color: '#999',
-            fontSize: 14,
-          },
-        },
-        xAxis: { show: false },
-        yAxis: { show: false },
-        series: [],
-      }
-    }
-    return {
-      backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['每日打卡次数'], top: 0 },
-      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
-      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
-      yAxis: { type: 'value', name: '次', minInterval: 1 },
-      series: [
-        {
-          name: '每日打卡次数',
-          type: 'line',
-          data: args.punchInsSeries.value,
-          smooth: true,
-          symbolSize: 6,
-          itemStyle: { color: '#a78bfa' },
-          areaStyle: { color: 'rgba(167,139,250,0.2)' },
-        },
-      ],
-    }
-  })
-
-  const minutesOption = computed((): EChartsOption => {
-    const hasData =
-      args.minutesSeries.value.some((v: number) => v > 0) ||
-      minutesByCategory.value.series.some((s) => s.data.some((v) => v > 0))
-
-    if (!hasData) {
-      return {
-        backgroundColor: 'transparent',
-        title: {
-          text: '暂无数据',
-          left: 'center',
-          top: 'middle',
-          textStyle: {
-            color: '#999',
-            fontSize: 14,
-          },
-        },
-        xAxis: { show: false },
-        yAxis: { show: false },
-        series: [],
-      }
-    }
-
-    const totalSeries = {
-      name: '打卡总分钟',
-      type: 'line',
-      data: args.minutesSeries.value,
-      smooth: true,
-      symbolSize: 6,
-      itemStyle: { color: '#ef4444' }, // 红色，突出显示
-      lineStyle: { width: 3, type: 'dashed' }, // 虚线，加粗
-      areaStyle: { color: 'rgba(239,68,68,0.1)' },
-    }
-
-    return {
-      backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['打卡总分钟', ...minutesByCategory.value.categories], top: 0 },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { data: categories, top: 0 },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
       yAxis: { type: 'value', name: '分钟', minInterval: 1 },
-      series: [
-        totalSeries,
-        ...minutesByCategory.value.series,
-      ] as unknown as EChartsOption['series'],
+      series: series as unknown as EChartsOption['series'],
     }
   })
 

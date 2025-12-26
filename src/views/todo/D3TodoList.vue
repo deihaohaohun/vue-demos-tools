@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -18,6 +18,7 @@ import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem, type Pu
 import { AddIcon, ChevronLeftIcon, ChevronRightIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
+import confetti from 'canvas-confetti'
 
 use([
   CanvasRenderer,
@@ -101,6 +102,20 @@ const confirmPunch = () => {
 
   const res = punchInTodo(currentPunchId.value, punchNote.value)
   if (res.kind === 'not_found') return
+
+  // 播放 Rainbow 碎纸屑效果
+  const colors = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
+  confetti({
+    particleCount: 150,
+    spread: 70,
+    origin: { y: 0.6 },
+    colors: colors,
+    ticks: 200,
+    gravity: 1.2,
+    scalar: 0.8,
+    shapes: ['circle', 'square'],
+  })
+
   if (res.kind === 'once') return
   if (res.kind === 'auto_done') {
     MessagePlugin.success('已达成目标，自动完成')
@@ -254,12 +269,26 @@ const addFromHistory = (historyItem: HistoryItem) => {
 }
 
 const deleteTodo = (id: string) => {
-  const res = deleteTodoById(id)
-  if (res.kind === 'not_found') return
+  const confirmDialog = DialogPlugin.confirm({
+    header: '确认删除',
+    body: '确定要删除这个任务吗？如果是周期性任务，相关的打卡记录也会受到影响。',
+    confirmBtn: {
+      content: '删除',
+      theme: 'danger',
+    },
+    onConfirm: () => {
+      const res = deleteTodoById(id)
+      if (res.kind === 'not_found') {
+        confirmDialog.hide()
+        return
+      }
 
-  for (const rid of res.removedIds) selectedIds.value.delete(rid)
+      for (const rid of res.removedIds) selectedIds.value.delete(rid)
 
-  MessagePlugin.success('任务已删除')
+      MessagePlugin.success('任务已删除')
+      confirmDialog.hide()
+    },
+  })
 }
 
 const toggleSelect = (id: string) => {
