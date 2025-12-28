@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -333,6 +333,19 @@ const todayUnstartedCount = computed(() =>
 const unfinishedGoalsCount = computed(
   () => todayTodos.value.filter((t) => t.period === 'once' && !t.done).length,
 )
+const totalGoalsCountForToday = computed(
+  () => todayTodos.value.filter((t) => t.period === 'once').length,
+)
+
+const unstartedTaskRatio = computed(() => {
+  if (todayScheduledCount.value === 0) return '0.00'
+  return ((todayUnstartedCount.value / todayScheduledCount.value) * 100).toFixed(2)
+})
+
+const unfinishedGoalRatio = computed(() => {
+  if (totalGoalsCountForToday.value === 0) return '0.00'
+  return ((unfinishedGoalsCount.value / totalGoalsCountForToday.value) * 100).toFixed(2)
+})
 
 // 今日已打卡任务数 (排除一次性)
 const todayPunchedCount = computed(() => {
@@ -442,35 +455,56 @@ const formatShortDay = (dayKey: string) => {
   // YYYY-MM-DD -> MM-DD
   return dayKey.slice(5)
 }
+
+const windowWidth = ref(window.innerWidth)
+const updateWidth = () => {
+  windowWidth.value = window.innerWidth
+}
+
+onMounted(() => {
+  window.addEventListener('resize', updateWidth)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateWidth)
+})
+
+const editDialogWidth = computed(() => {
+  return windowWidth.value < 640 ? '95%' : '560px'
+})
+
+const punchDialogWidth = computed(() => {
+  return windowWidth.value < 640 ? '95%' : '400px'
+})
 </script>
 
 <template>
-  <div class="w-screen h-screen dark:bg-neutral-900 overflow-auto bg-neutral-50 pb-4">
-    <div class="w-[1200px] mx-auto pt-4">
-      <div class="text-2xl text-neutral-500 mb-2">今天是: {{ todayDisplay }}</div>
-      <div class="flex gap-2 items-center justify-center">
-        <t-input autofocus v-model="title" :onEnter="addTodo"
-          :placeholder="period === 'once' ? '添加目标' : '添加任务模板'"></t-input>
-        <t-button @click="addTodo">
+  <div class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4">
+    <div class="max-w-[1200px] mx-auto px-4 pt-4">
+      <div class="text-lg md:text-2xl text-neutral-500 mb-4">今天是: {{ todayDisplay }}</div>
+      <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+        <t-input autofocus v-model="title" :onEnter="addTodo" :placeholder="period === 'once' ? '添加目标' : '添加任务模板'"
+          class="flex-1"></t-input>
+        <t-button @click="addTodo" class="w-full sm:w-auto">
           <template #icon>
-            <add-icon size="24" />
+            <add-icon size="20" />
           </template>
           {{ period === 'once' ? '新建目标' : '新建任务模板' }}
         </t-button>
       </div>
     </div>
 
-    <div class="w-[1200px] mx-auto mt-4 grid grid-cols-12 gap-2">
-      <div class="col-span-12 md:col-span-6 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">任务分类</div>
-        <t-radio-group v-model="category" variant="default-filled" size="small">
+    <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3">
+      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务分类</div>
+        <t-radio-group v-model="category" variant="default-filled" size="small" class="flex flex-wrap">
           <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
         </t-radio-group>
       </div>
 
-      <div class="col-span-12 md:col-span-6 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">任务周期</div>
-        <t-radio-group v-model="period" variant="default-filled" size="small">
+      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务周期</div>
+        <t-radio-group v-model="period" variant="default-filled" size="small" class="flex flex-wrap">
           <t-radio-button value="daily">每天</t-radio-button>
           <t-radio-button value="weekly">每周</t-radio-button>
           <t-radio-button value="monthly">每月</t-radio-button>
@@ -479,54 +513,60 @@ const formatShortDay = (dayKey: string) => {
         </t-radio-group>
       </div>
 
-      <div class="col-span-12 md:col-span-6 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">任务单位</div>
-        <t-radio-group v-model="unit" variant="default-filled" size="small" :disabled="period === 'once'">
+      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务单位</div>
+        <t-radio-group v-model="unit" variant="default-filled" size="small" :disabled="period === 'once'"
+          class="flex flex-wrap">
           <t-radio-button value="times">次数</t-radio-button>
           <t-radio-button value="minutes">分钟</t-radio-button>
         </t-radio-group>
       </div>
 
-      <div class="col-span-12 md:col-span-6 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">最小频率</div>
-        <t-radio-group v-model="minFrequency" variant="default-filled" size="small" :disabled="period === 'once'">
-          <t-radio-button :value="1">1</t-radio-button>
-          <t-radio-button :value="2">2</t-radio-button>
-          <t-radio-button :value="3">3</t-radio-button>
-          <t-radio-button :value="4">4</t-radio-button>
-        </t-radio-group>
-        <div class="text-sm text-neutral-400">次</div>
+      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">最小频率</div>
+        <div class="flex items-center gap-2">
+          <t-radio-group v-model="minFrequency" variant="default-filled" size="small" :disabled="period === 'once'"
+            class="flex flex-wrap">
+            <t-radio-button :value="1">1</t-radio-button>
+            <t-radio-button :value="2">2</t-radio-button>
+            <t-radio-button :value="3">3</t-radio-button>
+            <t-radio-button :value="4">4</t-radio-button>
+          </t-radio-group>
+          <div class="text-sm text-neutral-400">次</div>
+        </div>
       </div>
 
-      <div class="col-span-12 md:col-span-6 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">每次分钟</div>
-        <t-radio-group v-model="minutesPerTime" variant="default-filled" size="small"
-          :disabled="period === 'once' || unit !== 'minutes'">
-          <t-radio-button :value="12">12</t-radio-button>
-          <t-radio-button :value="15">15</t-radio-button>
-          <t-radio-button :value="18">18</t-radio-button>
-          <t-radio-button :value="20">20</t-radio-button>
-        </t-radio-group>
-        <div class="text-sm text-neutral-400">分钟</div>
+      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">每次分钟</div>
+        <div class="flex items-center gap-2 flex-1">
+          <t-radio-group v-model="minutesPerTime" variant="default-filled" size="small"
+            :disabled="period === 'once' || unit !== 'minutes'" class="flex flex-wrap">
+            <t-radio-button :value="12">12</t-radio-button>
+            <t-radio-button :value="15">15</t-radio-button>
+            <t-radio-button :value="18">18</t-radio-button>
+            <t-radio-button :value="20">20</t-radio-button>
+          </t-radio-group>
+          <div class="text-sm text-neutral-400">分钟</div>
+        </div>
       </div>
 
-      <div class="col-span-12 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">任务描述</div>
+      <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务描述</div>
         <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
       </div>
 
-      <div class="col-span-12 flex items-center gap-2">
-        <div class="text-sm text-neutral-500 w-[72px]">截止日期</div>
-        <t-date-picker :disabled="period !== 'once'" v-model="deadline" placeholder="可选：选择截止日期" class="flex-1" />
+      <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">截止日期</div>
+        <t-date-picker :disabled="period !== 'once'" v-model="deadline" placeholder="可选：选择截止日期" class="flex-1 w-full" />
       </div>
     </div>
 
-    <div class="w-[1200px] mx-auto mt-4 flex flex-wrap gap-2">
+    <div class="max-w-[1200px] mx-auto mt-6 px-4 flex flex-wrap gap-2">
       <div class="text-sm text-neutral-500 flex items-center">历史添加模板记录:</div>
       <div v-if="!history.length" class="text-sm text-neutral-400 flex items-center">暂无历史数据</div>
     </div>
 
-    <div class="w-[1200px] mx-auto mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <!-- Periodic Categories -->
       <div v-for="cat in periodicCategories" :key="cat"
         class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
@@ -579,10 +619,10 @@ const formatShortDay = (dayKey: string) => {
       </div>
     </div>
 
-    <div class="w-[1200px] mx-auto mt-4 rounded-md overflow-hidden">
+    <div class="max-w-[1200px] mx-auto mt-4 px-4 rounded-md overflow-hidden">
       <t-tabs :default-value="1">
         <t-tab-panel :value="1" :label="`任务列表 (${allDisplayTodos.length})`">
-          <div class="min-h-[300px]" :class="{ 'p-2': allDisplayTodos.length }">
+          <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': allDisplayTodos.length }">
             <template v-if="allDisplayTodos.length">
               <TodoItem v-for="todo in allDisplayTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                 @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -597,13 +637,13 @@ const formatShortDay = (dayKey: string) => {
         <t-tab-panel :value="3" label="打卡记录">
           <div class="min-h-[300px] p-2">
             <div
-              class="flex items-center justify-between mb-3 border-b border-neutral-200 dark:border-neutral-800 pb-2">
+              class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-neutral-200 dark:border-neutral-800 pb-2 gap-2">
               <div class="flex items-center gap-2">
                 <t-button variant="text" shape="square" @click="prevDay">
                   <template #icon><chevron-left-icon /></template>
                 </t-button>
-                <div class="font-medium text-lg">{{ historyDate }}</div>
-                <div class="text-sm text-neutral-500" v-if="isToday">(今天)</div>
+                <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
+                <div class="text-sm text-neutral-500 shrink-0" v-if="isToday">(今天)</div>
                 <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
                   <template #icon><chevron-right-icon /></template>
                 </t-button>
@@ -616,20 +656,22 @@ const formatShortDay = (dayKey: string) => {
             <template v-if="currentHistoryRecords.length">
               <div class="flex flex-col gap-2">
                 <div v-for="record in currentHistoryRecords" :key="record.id"
-                  class="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-between">
+                  class="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div class="flex flex-col gap-1">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
                       <span class="font-medium">{{ record.todoTitle }}</span>
                       <t-tag size="small" variant="outline" :theme="getCategoryTheme(record.category)">{{
                         record.category }}</t-tag>
                       <span class="text-xs text-neutral-400">{{ dayjs(record.timestamp).format('HH:mm:ss') }}</span>
                     </div>
                     <div class="flex items-center gap-2">
-                      <div v-if="editingRecordId === record.id" class="flex items-center gap-2">
+                      <div v-if="editingRecordId === record.id" class="flex flex-wrap items-center gap-2">
                         <t-input v-model="editingRecordNote" size="small" placeholder="输入备注..." auto-width />
-                        <t-button size="small" theme="primary" variant="text" @click="saveRecordNote">保存</t-button>
-                        <t-button size="small" theme="default" variant="text"
-                          @click="editingRecordId = null">取消</t-button>
+                        <div class="flex gap-1">
+                          <t-button size="small" theme="primary" variant="text" @click="saveRecordNote">保存</t-button>
+                          <t-button size="small" theme="default" variant="text"
+                            @click="editingRecordId = null">取消</t-button>
+                        </div>
                       </div>
                       <div v-else class="flex items-center gap-2 group cursor-pointer" @click="startEditRecord(record)">
                         <span class="text-sm text-neutral-600 dark:text-neutral-400">
@@ -650,8 +692,8 @@ const formatShortDay = (dayKey: string) => {
         </t-tab-panel>
       </t-tabs>
 
-      <div class="p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800">
-        <div class="flex items-center justify-between gap-2 mb-3">
+      <div class="p-2 sm:p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
           <div class="text-sm text-neutral-500">数据统计</div>
           <t-radio-group v-model="statsRange" variant="default-filled" size="small">
             <t-radio-button value="7d">7天</t-radio-button>
@@ -659,51 +701,67 @@ const formatShortDay = (dayKey: string) => {
           </t-radio-group>
         </div>
 
-        <div class="grid grid-cols-6 gap-2 mb-4">
-          <div class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+          <div
+            class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
             <div class="text-xs text-neutral-500 text-center mb-1">今日可打卡任务</div>
             <div class="flex flex-col items-center justify-center gap-1">
-              <div class="text-3xl font-bold text-center text-green-600 dark:text-green-400">{{ animatedScheduled }}
+              <div class="text-2xl sm:text-3xl font-bold text-center text-green-600 dark:text-green-400">{{
+                animatedScheduled }}
               </div>
               <t-tag size="small" variant="light" theme="success">已打卡: {{ todayPunchedCount }}</t-tag>
             </div>
           </div>
           <div
-            class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900">
+            class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
             <div class="text-xs text-neutral-500 text-center mb-1">未开始</div>
-            <div class="text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{ animatedUnstarted }}
+            <div class="flex flex-col items-center justify-center gap-1">
+              <div class="text-2xl sm:text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{
+                animatedUnstarted }}
+              </div>
+              <t-tag size="small" variant="light" theme="warning">占比: {{ unstartedTaskRatio }}%</t-tag>
             </div>
           </div>
-          <div class="p-2 rounded bg-linear-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-neutral-900">
+          <div
+            class="p-2 rounded bg-linear-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
             <div class="text-xs text-neutral-500 text-center mb-1">未完成目标</div>
-            <div class="text-3xl font-bold text-center text-red-600 dark:text-red-400">{{ animatedUnfinishedGoals }}
+            <div class="flex flex-col items-center justify-center gap-1">
+              <div class="text-2xl sm:text-3xl font-bold text-center text-red-600 dark:text-red-400">{{
+                animatedUnfinishedGoals }}
+              </div>
+              <t-tag size="small" variant="light" theme="danger">占比: {{ unfinishedGoalRatio }}%</t-tag>
             </div>
           </div>
-          <div class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900">
+          <div
+            class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
             <div class="text-xs text-neutral-500 text-center mb-1">今日打卡次数</div>
             <div class="flex flex-col items-center justify-center gap-1">
-              <div class="text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{ animatedPunchIns }}</div>
+              <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
+                animatedPunchIns
+              }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
-                较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
+                {{ punchInsDiff >= 0 ? '+' : '-' }}{{ Math.abs(punchInsDiff) }} 次
               </t-tag>
             </div>
           </div>
           <div
-            class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900">
+            class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
             <div class="text-xs text-neutral-500 text-center mb-1">今日累计分钟</div>
             <div class="flex flex-col items-center justify-center gap-1">
-              <div class="text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{ animatedMinutes }}
+              <div class="text-2xl sm:text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{
+                animatedMinutes }}
               </div>
               <t-tag size="small" variant="light" :theme="minutesDiff >= 0 ? 'success' : 'danger'">
-                较昨日{{ minutesDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(minutesDiff) }} 分钟
+                {{ minutesDiff >= 0 ? '+' : '-' }}{{ Math.abs(minutesDiff) }} 分
               </t-tag>
             </div>
           </div>
           <div
-            class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900">
+            class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
             <div class="text-xs text-neutral-500 text-center mb-1">连续打卡天数</div>
             <div class="flex flex-col items-center justify-center gap-1">
-              <div class="text-3xl font-bold text-center text-orange-600 dark:text-orange-400">{{ animatedConsecutive }}
+              <div class="text-2xl sm:text-3xl font-bold text-center text-orange-600 dark:text-orange-400">{{
+                animatedConsecutive }}
               </div>
               <t-tag size="small" variant="light" theme="warning">
                 最大连续: {{ animatedMaxConsecutive }} 天
@@ -729,36 +787,36 @@ const formatShortDay = (dayKey: string) => {
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">各任务类型的打卡趋势</div>
             <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" />
+              <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" autoresize />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">任务分类</div>
             <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="categoryOption" style="height: 100%; width: 100%" />
+              <VChart :option="categoryOption" style="height: 100%; width: 100%" autoresize />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">每日打卡次数趋势</div>
             <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="punchInsOption" style="height: 100%; width: 100%" />
+              <VChart :option="punchInsOption" style="height: 100%; width: 100%" autoresize />
             </div>
           </div>
 
           <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
             <div class="text-xs text-neutral-500 mb-2">每日打卡分钟数趋势</div>
             <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="minutesOption" style="height: 100%; width: 100%" />
+              <VChart :option="minutesOption" style="height: 100%; width: 100%" autoresize />
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <t-dialog v-model:visible="editVisible" header="编辑任务" width="560px" :footer="false">
-      <div class="grid grid-cols-12 gap-3">
+    <t-dialog v-model:visible="editVisible" header="编辑任务" :width="editDialogWidth" :footer="false">
+      <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务名称</div>
           <t-input v-model="editTitle" placeholder="请输入任务名称" />
@@ -832,7 +890,8 @@ const formatShortDay = (dayKey: string) => {
       </div>
     </t-dialog>
 
-    <t-dialog v-model:visible="punchDialogVisible" header="打卡备注" width="400px" :footer="false" @close="confirmPunch">
+    <t-dialog v-model:visible="punchDialogVisible" header="打卡备注" :width="punchDialogWidth" :footer="false"
+      @close="confirmPunch">
       <div class="flex flex-col gap-3">
         <div class="text-sm text-neutral-500">请输入本次打卡备注（可选），关闭弹窗自动保存：</div>
         <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />

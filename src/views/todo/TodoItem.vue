@@ -108,36 +108,47 @@ const getCategoryBackground = (category: string) => {
 </script>
 
 <template>
-  <div class="p-3 mb-2 rounded-lg border transition-all duration-200 flex items-center justify-between cursor-pointer"
+  <div
+    class="p-3 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer"
     :class="[getCategoryBackground(todo.category)]" @click.stop="emit('toggle-select', todo.id)">
-    <div class="pointer-events-none flex items-center gap-2">
-      <span>{{ todo.title }}</span>
-      <t-tag v-if="todo.category" size="small" variant="outline" :theme="getCategoryTheme(todo.category)">{{
-        todo.category
+    <div class="pointer-events-none flex flex-col sm:flex-row sm:items-center gap-y-2 gap-x-3 flex-1">
+      <!-- 任务名称行 -->
+      <div class="text-base font-medium text-neutral-800 dark:text-neutral-200 shrink-0">
+        {{ todo.title }}
+      </div>
+
+      <!-- 任务分类, 周期, 频率行 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <t-tag v-if="todo.category" size="small" variant="outline" :theme="getCategoryTheme(todo.category)">{{
+          todo.category
         }}</t-tag>
-      <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
-      <t-tag size="small" variant="light" theme="default">
-        <template v-if="todo.unit === 'minutes'">
-          目标 {{ todo.minFrequency }} 次 × {{ todo.minutesPerTime || 0 }} 分钟
-        </template>
-        <template v-else>目标 {{ todo.minFrequency }} 次</template>
-      </t-tag>
-      <template v-if="todo.description">
-        <span>任务详情: </span>
-        <t-tag size="small">
-          {{ todo.description }}
+        <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
+        <t-tag size="small" variant="light" theme="default">
+          <template v-if="todo.unit === 'minutes'">
+            目标 {{ todo.minFrequency }} 次 × {{ todo.minutesPerTime || 0 }} 分钟
+          </template>
+          <template v-else>目标 {{ todo.minFrequency }} 次</template>
         </t-tag>
-      </template>
-      <t-tag v-if="todo.punchIns > 0" size="small" variant="light" theme="primary">
-        <template v-if="todo.unit === 'minutes'"> 已打卡 {{ getMinutesDone(todo) }} 分钟 </template>
-        <template v-else>已打卡 {{ todo.punchIns }} 次</template>
-      </t-tag>
-      <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
-        打卡时间还剩: {{ remainingTime }}
-      </t-tag>
+      </div>
+
+      <!-- 其他信息行 (描述, 打卡进度, 剩余时间) -->
+      <div class="flex flex-wrap items-center gap-2">
+        <template v-if="todo.description">
+          <t-tag size="small" variant="outline" theme="default" class="max-w-[200px] truncate">
+            {{ todo.description }}
+          </t-tag>
+        </template>
+        <t-tag v-if="todo.punchIns > 0" size="small" variant="light" theme="primary">
+          <template v-if="todo.unit === 'minutes'"> 已打卡 {{ getMinutesDone(todo) }} 分 </template>
+          <template v-else>已打卡 {{ todo.punchIns }} 次</template>
+        </t-tag>
+        <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
+          {{ remainingTime }}
+        </t-tag>
+      </div>
     </div>
 
-    <div class="flex gap-2 items-center">
+    <div class="flex gap-2 items-center mt-3 sm:mt-0 justify-end shrink-0">
       <t-button v-if="todo.period !== 'once'" theme="primary" size="small" @click.stop="emit('punch-in', todo.id)">
         <template #icon>
           <refresh-icon v-if="todo.punchIns > 0" size="12" />
