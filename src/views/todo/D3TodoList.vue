@@ -212,6 +212,14 @@ const allDisplayTodos = computed(() =>
   [...todos.value].sort((a, b) => (a.category || '').localeCompare(b.category || 'zh'))
 )
 
+const unstartedTodos = computed(() =>
+  allDisplayTodos.value.filter((t) => t.punchIns === 0 && !t.done)
+)
+
+const punchedTodos = computed(() =>
+  allDisplayTodos.value.filter((t) => t.punchIns > 0 || t.done)
+)
+
 const removeHistory = (item: HistoryItem) => {
   const ok = removeHistoryItem(item)
   if (!ok) return
@@ -313,12 +321,15 @@ const todayMinutesTotal = computed(() => {
       const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
       return sum + mins
     }
+    // 兼容旧记录或次数类型的打卡（如果后来改成了分钟单位）
     const tpl = templates.value.find(
       (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
     )
-    if (!tpl || tpl.unit !== 'minutes') return sum
-    const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
-    return sum + mins
+    if (tpl && tpl.unit === 'minutes') {
+      const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+      return sum + mins
+    }
+    return sum
   }, 0)
 })
 
@@ -581,7 +592,7 @@ const punchDialogWidth = computed(() => {
             :theme="getCategoryTheme(cat)">
             <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
               item.title
-              }}</span>
+            }}</span>
             <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
               ×
             </span>
@@ -624,8 +635,27 @@ const punchDialogWidth = computed(() => {
         <t-tab-panel :value="1" :label="`任务列表 (${allDisplayTodos.length})`">
           <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': allDisplayTodos.length }">
             <template v-if="allDisplayTodos.length">
-              <TodoItem v-for="todo in allDisplayTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
-                @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
+              <!-- 未开始任务 -->
+              <div v-if="unstartedTodos.length" class="mb-6">
+                <div class="flex items-center gap-2 mb-3 px-1">
+                  <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
+                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
+                    }})</span>
+                </div>
+                <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
+              </div>
+
+              <!-- 已打卡任务 -->
+              <div v-if="punchedTodos.length">
+                <div class="flex items-center gap-2 mb-3 px-1">
+                  <div class="w-1 h-4 bg-green-500 rounded-full"></div>
+                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
+                    }})</span>
+                </div>
+                <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
+              </div>
             </template>
             <template v-else>
               <div class="w-full h-[300px] flex flex-col items-center justify-center">
@@ -738,9 +768,9 @@ const punchDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-              }}</div>
+                }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
-                {{ punchInsDiff >= 0 ? '+' : '-' }}{{ Math.abs(punchInsDiff) }} 次
+                较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
             </div>
           </div>
@@ -752,7 +782,7 @@ const punchDialogWidth = computed(() => {
                 animatedMinutes }}
               </div>
               <t-tag size="small" variant="light" :theme="minutesDiff >= 0 ? 'success' : 'danger'">
-                {{ minutesDiff >= 0 ? '+' : '-' }}{{ Math.abs(minutesDiff) }} 分
+                较昨日{{ minutesDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(minutesDiff) }} 分钟
               </t-tag>
             </div>
           </div>
@@ -770,11 +800,15 @@ const punchDialogWidth = computed(() => {
           </div>
         </div>
 
-        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 p-2 mb-3 relative h-[200px]">
-          <div class="text-xs text-neutral-500 mb-[30px]">最近一年活跃热力图（打卡次数/分钟数）</div>
-          <div class="w-full overflow-x-auto">
-            <div class="w-fit mx-auto">
-              <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
+        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden mb-3 relative">
+          <div class="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+            <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">最近一年活跃热力图（打卡次数/分钟数）</div>
+          </div>
+          <div class="p-3">
+            <div class="w-full overflow-x-auto">
+              <div class="w-fit mx-auto">
+                <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
+              </div>
             </div>
           </div>
           <div v-if="heatmapLoading"
@@ -784,31 +818,54 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div class="grid grid-cols-12 gap-3">
-          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">各任务类型的打卡趋势</div>
-            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" autoresize />
+          <div
+            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800">
+            <div class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30">
+              <div class="text-xs font-bold text-blue-600 dark:text-blue-400">各任务类型的打卡趋势</div>
+            </div>
+            <div class="p-2">
+              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" autoresize />
+              </div>
             </div>
           </div>
 
-          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">任务分类</div>
-            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="categoryOption" style="height: 100%; width: 100%" autoresize />
+          <div
+            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800">
+            <div
+              class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-900/30">
+              <div class="text-xs font-bold text-purple-600 dark:text-purple-400">任务分类</div>
+            </div>
+            <div class="p-2">
+              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                <VChart :option="categoryOption" style="height: 100%; width: 100%" autoresize />
+              </div>
             </div>
           </div>
 
-          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">每日打卡次数趋势</div>
-            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="punchInsOption" style="height: 100%; width: 100%" autoresize />
+          <div
+            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800">
+            <div
+              class="px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border-b border-green-100 dark:border-green-900/30">
+              <div class="text-xs font-bold text-green-600 dark:text-green-400">每日打卡次数趋势</div>
+            </div>
+            <div class="p-2">
+              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                <VChart :option="punchInsOption" style="height: 100%; width: 100%" autoresize />
+              </div>
             </div>
           </div>
 
-          <div class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
-            <div class="text-xs text-neutral-500 mb-2">每日打卡分钟数趋势</div>
-            <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-              <VChart :option="minutesOption" style="height: 100%; width: 100%" autoresize />
+          <div
+            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800">
+            <div
+              class="px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-900/30">
+              <div class="text-xs font-bold text-orange-600 dark:text-orange-400">每日打卡分钟数趋势</div>
+            </div>
+            <div class="p-2">
+              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                <VChart :option="minutesOption" style="height: 100%; width: 100%" autoresize />
+              </div>
             </div>
           </div>
         </div>
@@ -827,7 +884,7 @@ const punchDialogWidth = computed(() => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-              }}</t-radio-button>
+            }}</t-radio-button>
           </t-radio-group>
         </div>
 

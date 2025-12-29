@@ -233,33 +233,23 @@ export const useTodoStore = () => {
   }
 
   const getCycleStart = (tpl: TodoTemplate, today: Date) => {
-    const anchor = dayjs(tpl.createdAt)
-    const now = dayjs(today)
+    const anchor = dayjs(tpl.createdAt).startOf('day')
+    const now = dayjs(today).startOf('day')
 
     if (tpl.period === 'daily') {
-      return now.startOf('day')
+      return now
     } else if (tpl.period === 'weekly') {
-      // 找到本周的"anchor day"
-      let start = now.day(anchor.day()).startOf('day')
-      // 如果本周的这一天还没到（比如今天是周一，anchor是周五），那应该是上周五
-      if (start.isAfter(now)) {
-        start = start.subtract(1, 'week')
-      }
-      return start
+      const diffDays = now.diff(anchor, 'day')
+      const weeksElapsed = Math.floor(diffDays / 7)
+      return anchor.add(weeksElapsed * 7, 'day')
     } else if (tpl.period === 'monthly') {
-      let start = now.date(anchor.date()).startOf('day')
-      if (start.isAfter(now)) {
-        start = start.subtract(1, 'month')
-      }
-      return start
+      const diffMonths = now.diff(anchor, 'month')
+      return anchor.add(diffMonths, 'month')
     } else if (tpl.period === 'yearly') {
-      let start = now.month(anchor.month()).date(anchor.date()).startOf('day')
-      if (start.isAfter(now)) {
-        start = start.subtract(1, 'year')
-      }
-      return start
+      const diffYears = now.diff(anchor, 'year')
+      return anchor.add(diffYears, 'year')
     }
-    return now.startOf('day')
+    return now
   }
 
   const getCycleEndExclusive = (tpl: TodoTemplate, start: dayjs.Dayjs) => {
@@ -452,33 +442,66 @@ export const useTodoStore = () => {
   }
 
   const rebuildPunchStatsFromRecords = () => {
-    for (const s of Object.values(dayStats.value)) {
-      s.punchInsTotal = 0
-      s.minutesTotal = 0
-      s.categoryPunchIns = {}
-      s.categoryMinutes = {}
-    }
+    const newStats: Record<
+      string,
+      {
+        punchInsTotal: number
+        minutesTotal: number
+        categoryPunchIns: Record<string, number>
+        categoryMinutes: Record<string, number>
+      }
+    > = {}
 
     for (const r of punchRecords.value) {
       if (!r.dayKey) continue
-      const stat = ensureDayStat(r.dayKey)
-      stat.punchInsTotal += 1
-      incCategory(stat.categoryPunchIns, r.category || '未分类', 1)
-
-      if (r.unit === 'minutes') {
-        const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
-        stat.minutesTotal += mins
-        incCategory(stat.categoryMinutes, r.category || '未分类', mins)
-        continue
+      if (!newStats[r.dayKey]) {
+        newStats[r.dayKey] = {
+          punchInsTotal: 0,
+          minutesTotal: 0,
+          categoryPunchIns: {},
+          categoryMinutes: {},
+        }
       }
+      const s = newStats[r.dayKey]
+      if (s) {
+        s.punchInsTotal += 1
+        incCategory(s.categoryPunchIns, r.category || '未分类', 1)
 
-      const tpl = templates.value.find(
-        (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
-      )
-      if (tpl && tpl.unit === 'minutes') {
-        const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
-        stat.minutesTotal += mins
-        incCategory(stat.categoryMinutes, r.category || '未分类', mins)
+        let mins = 0
+        if (r.unit === 'minutes') {
+          mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
+        } else {
+          const tpl = templates.value.find(
+            (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
+          )
+          if (tpl && tpl.unit === 'minutes') {
+            mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+          }
+        }
+
+        if (mins > 0) {
+          s.minutesTotal += mins
+          incCategory(s.categoryMinutes, r.category || '未分类', mins)
+        }
+      }
+    }
+
+    // 更新 dayStats，保留 createdCount 等其他统计
+    for (const [dk, s] of Object.entries(newStats)) {
+      const target = ensureDayStat(dk)
+      target.punchInsTotal = s.punchInsTotal
+      target.minutesTotal = s.minutesTotal
+      target.categoryPunchIns = { ...s.categoryPunchIns }
+      target.categoryMinutes = { ...s.categoryMinutes }
+    }
+
+    // 对于没有打卡记录的日期，也要清空打卡统计（以防是删除记录后的重建）
+    for (const [dk, target] of Object.entries(dayStats.value)) {
+      if (!newStats[dk]) {
+        target.punchInsTotal = 0
+        target.minutesTotal = 0
+        target.categoryPunchIns = {}
+        target.categoryMinutes = {}
       }
     }
   }
@@ -491,7 +514,16 @@ export const useTodoStore = () => {
         const parsed = JSON.parse(storedTodos)
         todos.value = parsed.map(
           (t: Partial<Todo> & { title: string; id: string; done: boolean }) => {
-            const createdAt = typeof t.createdAt === 'number' ? t.createdAt : Date.now()
+            let createdAt = typeof t.createdAt === 'number' ? t.createdAt : undefined
+            if (!createdAt && typeof t.dayKey === 'string') {
+              // 尝试从 dayKey 恢复创建时间
+              const d = dayjs(t.dayKey)
+              if (d.isValid()) {
+                createdAt = d.valueOf()
+              }
+            }
+            if (!createdAt) createdAt = Date.now()
+
             const dayKey = typeof t.dayKey === 'string' ? t.dayKey : formatDayKey(createdAt)
             const normalized: Todo = {
               title: t.title,
@@ -928,24 +960,7 @@ export const useTodoStore = () => {
     const target = todos.value.find((t) => t.id === id)
     if (!target) return { kind: 'not_found' as const, removedIds: [] as string[] }
 
-    const dk = target.dayKey
-    const stat = ensureDayStat(dk)
-
-    stat.createdCount = Math.max(0, stat.createdCount - 1)
-    incCategory(stat.categoryCreated, target.category || '未分类', -1)
-    const punch = target.punchIns || 0
-    stat.punchInsTotal = Math.max(0, stat.punchInsTotal - punch)
-    incCategory(stat.categoryPunchIns, target.category || '未分类', -punch)
-    if (target.unit === 'minutes') {
-      const mins = punch * getTodoMinutesPerPunch(target)
-      stat.minutesTotal = Math.max(0, stat.minutesTotal - mins)
-      incCategory(stat.categoryMinutes, target.category || '未分类', -mins)
-    }
-    if (target.done) {
-      stat.completedCount = Math.max(0, stat.completedCount - 1)
-      incCategory(stat.categoryCompleted, target.category || '未分类', -1)
-    }
-
+    // 仅从当前任务列表中移除，不修改历史统计数据和打卡记录
     todos.value = todos.value.filter((todo) => todo.id !== id)
 
     // 如果删除的任务有模板，检查是否还有其他任务使用该模板

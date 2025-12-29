@@ -146,13 +146,13 @@ export const useTodoCharts = (args: {
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { data: ['每日打卡次数'], top: 0 },
+      legend: { data: ['打卡次数'], top: 0 },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
       yAxis: { type: 'value', name: '次', minInterval: 1 },
       series: [
         {
-          name: '每日打卡次数',
+          name: '打卡次数',
           type: 'line',
           data: args.punchInsSeries.value,
           smooth: true,
@@ -235,7 +235,39 @@ export const useTodoCharts = (args: {
 
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params: unknown) => {
+          const list = params as Array<{
+            axisValue: string
+            value: number
+            seriesName: string
+            color: string
+          }>
+          if (!list || list.length === 0) return ''
+          let total = 0
+          const firstItem = list[0]
+          let html = `<div class="font-bold mb-1">${firstItem?.axisValue || ''}</div>`
+          list.forEach((p) => {
+            const val = p.value || 0
+            total += val
+            html += `<div class="flex items-center justify-between gap-4">
+              <span class="flex items-center gap-1">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background-color:${p.color};"></span>
+                ${p.seriesName}
+              </span>
+              <span class="font-medium">${val} 分钟</span>
+            </div>`
+          })
+          const hours = (total / 60).toFixed(1)
+          html += `<div class="mt-1 pt-1 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-between gap-4 font-bold">
+            <span>总计</span>
+            <span>${total} 分钟 ${total >= 60 ? `(${hours} 小时)` : ''}</span>
+          </div>`
+          return html
+        },
+      },
       legend: { data: categories, top: 0 },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
