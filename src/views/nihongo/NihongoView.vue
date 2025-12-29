@@ -11,167 +11,11 @@ import {
   ChevronDownIcon,
   ChevronUpIcon
 } from 'tdesign-icons-vue-next'
+import type { GrammarItem } from './types'
+import { grammarData as initialData } from './data'
 
-interface GrammarMeaning {
-  meaning: string
-  usage: string[]
-  examples: string[]
-  references?: { name: string; url: string; logo?: string }[]
-}
+const grammarData = ref<GrammarItem[]>(initialData)
 
-interface GrammarItem {
-  id: number
-  title: string
-  level: string
-  commonality: number // 1-5, higher is more common
-  mastery: number // 1-5, higher is more mastered
-  meanings: GrammarMeaning[]
-  isRemembered?: boolean
-}
-
-const grammarData = ref<GrammarItem[]>([
-  {
-    id: 1,
-    title: '〜てください',
-    level: 'N5',
-    commonality: 5,
-    mastery: 5,
-    meanings: [
-      {
-        meaning: '请...',
-        usage: ['动词て形 + ください'],
-        examples: ['ここに名前を書いてください。', 'ちょっと待ってください。'],
-        references: [
-          { name: 'Muji', url: 'https://www.moji-series.com/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' },
-          { name: 'NHK', url: 'https://www.nhk.or.jp/lesson/zh/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' }
-        ]
-      }
-    ],
-    isRemembered: false
-  },
-  {
-    id: 2,
-    title: '〜ことがある',
-    level: 'N4',
-    commonality: 4,
-    mastery: 3,
-    meanings: [
-      {
-        meaning: '有...的时候',
-        usage: ['动词连体形 + ことがある'],
-        examples: ['たまに朝ごはんを食べないことがあります。'],
-        references: [
-          { name: 'Maggie Sensei', url: 'https://maggiesensei.com/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' }
-        ]
-      },
-      {
-        meaning: '曾有过...（经验）',
-        usage: ['动词た形 + ことがある'],
-        examples: ['日本へ行ったことがあります。'],
-        references: [
-          { name: 'JGram', url: 'http://www.jgram.org/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' }
-        ]
-      }
-    ],
-    isRemembered: false
-  },
-  {
-    id: 3,
-    title: '〜わけにはいかない',
-    level: 'N2',
-    commonality: 3,
-    mastery: 2,
-    meanings: [
-      {
-        meaning: '（心理/道德上）不能...；不可以...',
-        usage: ['动词连体形 + わけにはいかない'],
-        examples: ['大事な会议だから、遅れるわけにはいかない。'],
-        references: [
-          { name: 'Bunpro', url: 'https://bunpro.jp/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' }
-        ]
-      },
-      {
-        meaning: '（心理/道德上）必须...；不得不...',
-        usage: ['动词ない形 + わけにはいかない'],
-        examples: ['明日は試験があるので、勉強しないわけにはいかない。']
-      }
-    ],
-    isRemembered: false
-  },
-  {
-    id: 4,
-    title: '〜に際して',
-    level: 'N1',
-    commonality: 2,
-    mastery: 1,
-    meanings: [
-      {
-        meaning: '在...之际；当...的时候',
-        usage: ['名词 + に際して', '动词连体形 + に際して'],
-        examples: ['日本を访问するに際して、多くの准备をした。'],
-        references: [
-          { name: 'Tae Kim', url: 'http://www.guidetojapanese.org/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' }
-        ]
-      }
-    ],
-    isRemembered: false
-  },
-  {
-    id: 5,
-    title: '〜从〜にかけて',
-    level: 'N3',
-    commonality: 4,
-    mastery: 4,
-    meanings: [
-      {
-        meaning: '从...到...（范围模糊）',
-        usage: ['名词 + から + 名词 + にかけて'],
-        examples: ['昨夜から今朝にかけて雨が降りました。', '関東地方から東北地方にかけて地震があった。']
-      }
-    ],
-    isRemembered: false
-  },
-  {
-    id: 6,
-    title: '〜たほうがいい',
-    level: 'N5',
-    commonality: 5,
-    mastery: 5,
-    meanings: [
-      {
-        meaning: '最好...（建议）',
-        usage: ['动词た形 + ほうがいい'],
-        examples: ['早く寝たほうがいいですよ。']
-      },
-      {
-        meaning: '最好不...（建议）',
-        usage: ['动词ない形 + ほうがいい'],
-        examples: ['あまりお酒を饮まないほうがいいですよ。']
-      }
-    ],
-    isRemembered: false
-  },
-  {
-    id: 11,
-    title: '〜うちに',
-    level: 'N3',
-    commonality: 4,
-    mastery: 3,
-    meanings: [
-      {
-        meaning: '趁着...（在状态改变前）',
-        usage: ['动词连体形 + うちに', '形容词 + うちに', '名词 + のうちに'],
-        examples: ['若いうちに勉強しておきなさい。', '忘れないうちにメモしておきます。']
-      },
-      {
-        meaning: '在...期间（不知不觉间发生了变化）',
-        usage: ['动词进行时 + うちに'],
-        examples: ['本を读んでいるうちに、寝てしまいました。']
-      }
-    ],
-    isRemembered: false
-  }
-])
 
 const selectedLevel = ref<string>('All')
 const sortType = ref<'common' | 'mastery'>('mastery')
@@ -363,6 +207,13 @@ const updateMastery = (id: number, delta: number) => {
                       class="bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 rounded text-[10px]">含义
                       {{ idx + 1 }}</span>
                     <span>{{ m.meaning }}</span>
+                  </div>
+
+                  <div v-if="m.tips && m.tips.length > 0" class="flex flex-wrap gap-2">
+                    <t-tag v-for="(tip, tIdx) in m.tips" :key="tIdx" theme="warning" variant="light-outline"
+                      size="small" class="text-[10px]">
+                      {{ tip }}
+                    </t-tag>
                   </div>
 
                   <div>
