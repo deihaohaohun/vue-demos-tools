@@ -1011,12 +1011,14 @@ export const useTodoStore = () => {
     const todo = todos.value.find((t) => t.id === id)
     if (!todo) return false
 
+    const oldTitle = todo.title
+    const oldCategory = todo.category || '未分类'
+    const oldPeriod = todo.period
+
     const dk = todo.dayKey
     const stat = ensureDayStat(dk)
 
-    const oldCategory = todo.category || '未分类'
-    const newCategory = patch.category || '未分类'
-
+    const nextCategory = patch.category || '未分类'
     const nextMinFrequency = patch.period === 'once' ? 1 : patch.minFrequency
     const nextMinutesPerTime = patch.unit === 'minutes' ? patch.minutesPerTime : undefined
 
@@ -1028,11 +1030,11 @@ export const useTodoStore = () => {
     const wasDone = !!todo.done
     const shouldDone = patch.period !== 'once' ? (todo.punchIns || 0) >= nextMinFrequency : wasDone
 
-    if (oldCategory !== newCategory) {
+    if (oldCategory !== nextCategory) {
       incCategory(stat.categoryCreated, oldCategory, -1)
-      incCategory(stat.categoryCreated, newCategory, 1)
+      incCategory(stat.categoryCreated, nextCategory, 1)
       incCategory(stat.categoryPunchIns, oldCategory, -(todo.punchIns || 0))
-      incCategory(stat.categoryPunchIns, newCategory, todo.punchIns || 0)
+      incCategory(stat.categoryPunchIns, nextCategory, todo.punchIns || 0)
     }
 
     if (wasDone) {
@@ -1041,15 +1043,15 @@ export const useTodoStore = () => {
     }
     if (shouldDone) {
       stat.completedCount += 1
-      incCategory(stat.categoryCompleted, newCategory, 1)
+      incCategory(stat.categoryCompleted, nextCategory, 1)
     }
 
     stat.minutesTotal = Math.max(0, stat.minutesTotal - oldMinutes + newMinutes)
     incCategory(stat.categoryMinutes, oldCategory, -oldMinutes)
-    incCategory(stat.categoryMinutes, newCategory, newMinutes)
+    incCategory(stat.categoryMinutes, nextCategory, newMinutes)
 
     todo.title = patch.title
-    todo.category = newCategory
+    todo.category = nextCategory
     todo.period = patch.period
     todo.minFrequency = nextMinFrequency
     todo.unit = patch.unit
@@ -1076,7 +1078,7 @@ export const useTodoStore = () => {
           templates.value.push({
             id: tplId,
             title: patch.title,
-            category: newCategory,
+            category: nextCategory,
             period: patch.period,
             minFrequency: nextMinFrequency,
             unit: patch.unit,
@@ -1090,7 +1092,7 @@ export const useTodoStore = () => {
         const tpl = templates.value.find((t) => t.id === tplId)
         if (tpl) {
           tpl.title = patch.title
-          tpl.category = newCategory
+          tpl.category = nextCategory
           tpl.period = patch.period
           tpl.minFrequency = nextMinFrequency
           tpl.unit = patch.unit
@@ -1108,6 +1110,49 @@ export const useTodoStore = () => {
         }
         todo.templateId = undefined
       }
+    }
+
+    // 更新历史记录：如果配置发生了变化，尝试在历史记录中找到旧的并更新它，或者添加新的
+    const hasChanged =
+      oldTitle !== patch.title || oldCategory !== nextCategory || oldPeriod !== patch.period
+
+    if (hasChanged) {
+      // 检查旧配置是否还在使用
+      const isOldConfigStillUsed =
+        todos.value.some(
+          (t) =>
+            t.id !== id &&
+            t.title === oldTitle &&
+            (t.category || '未分类') === oldCategory &&
+            t.period === oldPeriod,
+        ) ||
+        templates.value.some(
+          (tpl) =>
+            tpl.title === oldTitle &&
+            (tpl.category || '未分类') === oldCategory &&
+            tpl.period === oldPeriod,
+        )
+
+      if (!isOldConfigStillUsed) {
+        // 如果旧配置不再使用，从历史记录中移除它
+        const oldHistoryIndex = history.value.findIndex(
+          (h) => h.title === oldTitle && h.category === oldCategory && h.period === oldPeriod,
+        )
+        if (oldHistoryIndex > -1) {
+          history.value.splice(oldHistoryIndex, 1)
+        }
+      }
+
+      // 添加/更新新配置到历史记录
+      updateHistory({
+        title: patch.title,
+        category: nextCategory,
+        period: patch.period,
+        minFrequency: nextMinFrequency,
+        unit: patch.unit,
+        minutesPerTime: nextMinutesPerTime,
+        description: patch.description,
+      })
     }
 
     return true

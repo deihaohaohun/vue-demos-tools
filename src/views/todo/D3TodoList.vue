@@ -279,7 +279,7 @@ const addFromHistory = (historyItem: HistoryItem) => {
 const deleteTodo = (id: string) => {
   const confirmDialog = DialogPlugin.confirm({
     header: '确认删除',
-    body: '确定要删除这个任务吗？如果是周期性任务，相关的打卡记录也会受到影响。',
+    body: '确定要删除这个任务吗？',
     confirmBtn: {
       content: '删除',
       theme: 'danger',
@@ -592,7 +592,7 @@ const punchDialogWidth = computed(() => {
             :theme="getCategoryTheme(cat)">
             <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
               item.title
-              }}</span>
+            }}</span>
             <span class="cursor-pointer hover:text-red-500" @click.stop="removeHistory(item)">
               ×
             </span>
@@ -640,7 +640,7 @@ const punchDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -651,7 +651,7 @@ const punchDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -768,7 +768,7 @@ const punchDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-              }}</div>
+                }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -884,7 +884,7 @@ const punchDialogWidth = computed(() => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-              }}</t-radio-button>
+            }}</t-radio-button>
           </t-radio-group>
         </div>
 
