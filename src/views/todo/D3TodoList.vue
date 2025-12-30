@@ -583,17 +583,17 @@ const punchDialogWidth = computed(() => {
         class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
         <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
           <span>{{ cat }} (模板)</span>
-          <t-tag size="small" variant="light" :theme="getCategoryTheme(cat)">{{periodicHistory.filter(h => h.category
+          <t-tag size="small" variant="dark" :theme="getCategoryTheme(cat)">{{periodicHistory.filter(h => h.category
             === cat).length}}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
           <t-tag v-for="item in periodicHistory.filter(h => h.category === cat)"
-            :key="`${item.title}-${item.category}-${item.period}`" variant="outline" class="transition-colors"
+            :key="`${item.title}-${item.category}-${item.period}`" variant="dark" class="transition-colors"
             :theme="getCategoryTheme(cat)">
             <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
               item.title
-            }}</span>
-            <span class="ml-2 cursor-pointer text-neutral-400 hover:text-red-500" @click.stop="removeHistory(item)">
+              }}</span>
+            <span class="cursor-pointer hover:text-red-500" @click.stop="removeHistory(item)">
               ×
             </span>
           </t-tag>
@@ -640,7 +640,7 @@ const punchDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -651,7 +651,7 @@ const punchDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -690,7 +690,7 @@ const punchDialogWidth = computed(() => {
                   <div class="flex flex-col gap-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="font-medium">{{ record.todoTitle }}</span>
-                      <t-tag size="small" variant="outline" :theme="getCategoryTheme(record.category)">{{
+                      <t-tag size="small" variant="dark" :theme="getCategoryTheme(record.category)">{{
                         record.category }}</t-tag>
                       <span class="text-xs text-neutral-400">{{ dayjs(record.timestamp).format('HH:mm:ss') }}</span>
                     </div>
@@ -768,7 +768,7 @@ const punchDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-                }}</div>
+              }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -884,7 +884,7 @@ const punchDialogWidth = computed(() => {
           <t-radio-group v-model="editCategory" variant="default-filled" size="small">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
               c
-            }}</t-radio-button>
+              }}</t-radio-button>
           </t-radio-group>
         </div>
 

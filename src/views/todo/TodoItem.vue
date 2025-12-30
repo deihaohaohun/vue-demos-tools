@@ -95,6 +95,17 @@ const getCategoryTheme = (category: string) => {
   return map[category] || 'primary'
 }
 
+const getPeriodTheme = (period: string) => {
+  const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
+    'daily': 'primary',
+    'weekly': 'success',
+    'monthly': 'warning',
+    'yearly': 'danger',
+    'once': 'default',
+  }
+  return map[period] || 'default'
+}
+
 const getCategoryBackground = (category: string) => {
   const map: Record<string, string> = {
     '学习': 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30',
@@ -119,19 +130,17 @@ const getCategoryBackground = (category: string) => {
 
       <!-- 任务分类, 周期, 频率行 -->
       <div class="flex flex-wrap items-center gap-2">
-        <t-tag v-if="todo.category" size="small" variant="outline" :theme="getCategoryTheme(todo.category)">{{
+        <t-tag v-if="todo.category" size="small" variant="dark" :theme="getCategoryTheme(todo.category)">{{
           todo.category
-        }}</t-tag>
-        <t-tag size="small" variant="outline" theme="default">{{ periodTextMap[todo.period] }}</t-tag>
+          }}</t-tag>
+        <t-tag size="small" variant="dark" :theme="getPeriodTheme(todo.period)">{{ periodTextMap[todo.period] }}</t-tag>
         <t-tag size="small" variant="light" theme="default">
           <template v-if="todo.unit === 'minutes'">
             目标 {{ todo.minFrequency }} 次 × {{ todo.minutesPerTime || 0 }} 分钟
           </template>
           <template v-else>目标 {{ todo.minFrequency }} 次</template>
         </t-tag>
-      </div>
-
-      <!-- 其他信息行 (描述, 打卡进度, 剩余时间) -->
+      </div> <!-- 其他信息行 (描述, 打卡进度, 剩余时间) -->
       <div class="flex flex-wrap items-center gap-2">
         <template v-if="todo.description">
           <t-tag size="small" variant="outline" theme="default" class="max-w-[200px] truncate">
