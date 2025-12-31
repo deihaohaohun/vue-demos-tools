@@ -23,6 +23,7 @@ const emit = defineEmits<{
   (e: 'detail', id: string): void
   (e: 'edit', id: string): void
   (e: 'history', id: string): void
+  (e: 'delete', id: string): void
 }>()
 
 const store = useKnowledgeStore()
@@ -36,6 +37,18 @@ const typeColor = computed(() =>
     ? 'text-purple-500 bg-purple-50 dark:bg-purple-900/20'
     : 'text-blue-500 bg-blue-50 dark:bg-blue-900/20',
 )
+
+const videoPlatformLabel = computed(() => {
+  if (props.resource.type !== 'video') return ''
+  return props.resource.videoPlatform === 'youtube' ? '油管' : 'B站'
+})
+
+const videoPlatformColor = computed(() => {
+  if (props.resource.videoPlatform === 'youtube') {
+    return 'text-red-600 bg-red-50 dark:bg-red-900/20'
+  }
+  return 'text-sky-600 bg-sky-50 dark:bg-sky-900/20'
+})
 
 const formatDate = (ts: number) => {
   return dayjs(ts).format('YYYY-MM-DD')
@@ -62,7 +75,12 @@ const openSource = () => {
       @click="openSource">
       <img :src="resource.cover"
         class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="cover" />
-      <div
+      <div v-if="resource.type === 'video'"
+        class="absolute top-2 left-2 px-2 h-7 rounded bg-white/80 dark:bg-black/50 backdrop-blur-md flex items-center justify-center text-xs font-bold"
+        :class="videoPlatformColor">
+        {{ videoPlatformLabel }}
+      </div>
+      <div v-else
         class="absolute top-2 right-2 w-7 h-7 rounded bg-white/80 dark:bg-black/50 backdrop-blur-md flex items-center justify-center"
         :class="typeColor">
         <component :is="typeIcon" size="14" />
@@ -75,15 +93,17 @@ const openSource = () => {
         <component :is="typeIcon" size="20" />
       </div>
       <div class="px-2 py-1 rounded-md text-xs font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
-        <span class="capitalize">{{ typeLabel }}</span>
+        <span class="capitalize">{{ resource.type === 'video' ? videoPlatformLabel : typeLabel }}</span>
       </div>
     </div>
 
     <div class="p-4 flex flex-col flex-1">
-      <h3
-        class="text-base font-bold text-neutral-800 dark:text-neutral-100 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
-        {{ resource.title }}
-      </h3>
+      <t-tooltip :content="resource.title">
+        <h3
+          class="text-base font-bold text-neutral-800 dark:text-neutral-100 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+          {{ resource.title }}
+        </h3>
+      </t-tooltip>
 
       <div class="mt-auto pt-3 flex items-center justify-between gap-2">
         <div class="flex flex-wrap gap-1">
@@ -96,15 +116,18 @@ const openSource = () => {
 
         <div class="text-xs text-neutral-400 flex items-center gap-1">
           <time-icon />
-          <span v-if="resource.lastViewedAt">上次查看 {{ formatViewedAt(resource.lastViewedAt) }}</span>
-          <span v-else>{{ formatDate(resource.createdAt) }}</span>
+          <span>看过 {{ resource.viewCount || 0 }} 次</span>
+          <span v-if="resource.lastViewedAt">· 上次查看 {{ formatViewedAt(resource.lastViewedAt) }}</span>
+          <span v-else>· {{ formatDate(resource.createdAt) }}</span>
         </div>
       </div>
 
       <ResourceCardActionsVideo v-if="resource.type === 'video'" class="mt-3" :has-source="!!resource.sourceUrl"
-        @source="openSource" @edit="emit('edit', resource.id)" @history="emit('history', resource.id)" />
+        @source="openSource" @edit="emit('edit', resource.id)" @delete="emit('delete', resource.id)"
+        @history="emit('history', resource.id)" />
       <ResourceCardActionsArticle v-else class="mt-3" @detail="emit('detail', resource.id)"
-        @edit="emit('edit', resource.id)" @history="emit('history', resource.id)" />
+        @edit="emit('edit', resource.id)" @delete="emit('delete', resource.id)"
+        @history="emit('history', resource.id)" />
     </div>
   </div>
 </template>

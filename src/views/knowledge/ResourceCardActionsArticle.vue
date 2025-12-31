@@ -4,18 +4,22 @@ import { HistoryIcon } from 'tdesign-icons-vue-next'
 const emit = defineEmits<{
   (e: 'detail'): void
   (e: 'edit'): void
+  (e: 'delete'): void
   (e: 'history'): void
 }>()
 </script>
 
 <template>
   <div class="mt-3 flex gap-2">
-    <div class="grid grid-cols-2 gap-2 flex-1">
+    <div class="grid grid-cols-3 gap-2 flex-1">
       <t-button size="small" theme="primary" @click.stop="emit('detail')">
         详情
       </t-button>
       <t-button size="small" variant="outline" theme="default" @click.stop="emit('edit')">
         编辑
+      </t-button>
+      <t-button size="small" variant="outline" theme="danger" @click.stop="emit('delete')">
+        删除
       </t-button>
     </div>
     <t-button size="small" variant="outline" theme="default" shape="square" @click.stop="emit('history')"

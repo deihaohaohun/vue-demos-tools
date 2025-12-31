@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useKnowledgeStore } from './useKnowledgeStore'
-import { AiEditor } from 'aieditor'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { AddIcon, RollbackIcon, HistoryIcon } from 'tdesign-icons-vue-next'
+import { HistoryIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 
 const props = defineProps<{
@@ -17,165 +16,106 @@ const emit = defineEmits<{
 
 const store = useKnowledgeStore()
 const resource = computed(() => store.getResourceById(props.resourceId))
-const reviews = computed(() => {
-  const list = store.getReviewsByResourceId(props.resourceId)
+const views = computed(() => {
+  const list = store.getViewsByResourceId(props.resourceId)
   return [...list].sort((a, b) => b.timestamp - a.timestamp)
 })
 
-const mode = ref<'list' | 'add'>('list')
-const editorEl = ref<HTMLElement | null>(null)
-let editor: AiEditor | null = null
+const editingId = ref<string | null>(null)
+const draftDescription = ref('')
 
-const formatDate = (ts: number) => dayjs(ts).format('YYYY-MM-DD HH:mm')
+const formatDate = (ts: number) => dayjs(ts).format('YYYY-MM-DD HH:mm:ss')
 
 const handleClose = () => {
   emit('update:visible', false)
-  mode.value = 'list'
-}
-
-const disableAiEditorResize = (root: HTMLElement | null) => {
-  if (!root) return
-  const nodes = root.querySelectorAll<HTMLElement>('*')
-  nodes.forEach((el) => {
-    el.style.setProperty('resize', 'none', 'important')
-  })
-}
-
-const syncEditorLayout = () => {
-  requestAnimationFrame(() => {
-    window.dispatchEvent(new Event('resize'))
-  })
-  setTimeout(() => {
-    window.dispatchEvent(new Event('resize'))
-  }, 60)
+  editingId.value = null
+  draftDescription.value = ''
 }
 
 watch(
   () => props.visible,
   (val) => {
     if (!val) {
-      mode.value = 'list'
-      if (editor) {
-        editor.destroy()
-        editor = null
-      }
+      editingId.value = null
+      draftDescription.value = ''
     }
-  }
+  },
 )
 
-watch(
-  () => mode.value,
-  async (val) => {
-    if (val === 'add') {
-      await nextTick()
-      if (!editorEl.value) return
-      if (editor) editor.destroy()
-      editor = new AiEditor({
-        element: editorEl.value,
-        placeholder: '写下你的感悟、笔记或复习心得...',
-        content: ''
-      })
-      disableAiEditorResize(editorEl.value)
-      syncEditorLayout()
-    } else {
-      if (editor) {
-        editor.destroy()
-        editor = null
-      }
-    }
-  }
-)
-
-const handleSave = () => {
-  if (!editor) return
-  const content = editor.getHtml()
-  if (!content.trim() || content === '<p><br></p>') {
-    MessagePlugin.warning('请输入内容')
-    return
-  }
-  store.addReview(props.resourceId, content)
-  MessagePlugin.success('记录添加成功')
-  mode.value = 'list'
+const startEdit = (id: string) => {
+  const target = views.value.find((v) => v.id === id)
+  if (!target) return
+  editingId.value = id
+  draftDescription.value = target.description || ''
 }
 
-onBeforeUnmount(() => {
-  if (editor) {
-    editor.destroy()
-    editor = null
+const cancelEdit = () => {
+  editingId.value = null
+  draftDescription.value = ''
+}
+
+const saveEdit = () => {
+  if (!editingId.value) return
+  const ok = store.updateViewRecordDescription(editingId.value, draftDescription.value)
+  if (ok) {
+    MessagePlugin.success('保存成功')
+    editingId.value = null
+    draftDescription.value = ''
+  } else {
+    MessagePlugin.error('保存失败')
   }
-})
+}
 </script>
 
 <template>
   <t-dialog :visible="visible" :header="resource ? `回顾历史 - ${resource.title}` : '回顾历史'" width="800px" :footer="false"
     @close="handleClose">
     <div class="min-h-[400px] max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-      <!-- List Mode -->
-      <div v-if="mode === 'list'" class="space-y-6">
-        <div
-          class="flex justify-between items-center sticky top-0 bg-white dark:bg-neutral-800 z-10 py-2 border-b border-neutral-100 dark:border-neutral-700">
-          <div class="text-neutral-500 text-sm">
-            共 {{ reviews.length }} 条记录
-          </div>
-          <t-button theme="primary" @click="mode = 'add'">
-            <template #icon><add-icon /></template>
-            记录新心得
-          </t-button>
-        </div>
-
-        <t-timeline v-if="reviews.length > 0" mode="left">
-          <t-timeline-item v-for="review in reviews" :key="review.id" :label="formatDate(review.timestamp)">
-            <div
-              class="bg-neutral-50 dark:bg-neutral-900 p-4 rounded-lg border border-neutral-100 dark:border-neutral-700">
-              <div v-if="review.content" class="text-sm text-neutral-700 dark:text-neutral-300 rich-text-content"
-                v-html="review.content"></div>
-              <div v-else class="text-sm text-neutral-400">无内容</div>
-            </div>
-          </t-timeline-item>
-        </t-timeline>
-
-        <div v-else class="py-12 flex flex-col items-center justify-center text-neutral-400 gap-2">
-          <history-icon size="32" />
-          <span>暂无回顾历史，开始第一次复习吧</span>
+      <div
+        class="flex justify-between items-center sticky mb-2 top-0 bg-white dark:bg-neutral-800 z-10 py-2 border-b border-neutral-100 dark:border-neutral-700">
+        <div class="text-neutral-500 text-sm">
+          共 {{ views.length }} 条记录
         </div>
       </div>
 
-      <!-- Add Mode -->
-      <div v-else class="space-y-4">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-lg">记录心得</h3>
-          <t-button variant="text" theme="default" @click="mode = 'list'">
-            <template #icon><rollback-icon /></template>
-            返回列表
-          </t-button>
-        </div>
+      <t-timeline v-if="views.length > 0" mode="left" class="mt-4">
+        <t-timeline-item v-for="item in views" :key="item.id" :label="formatDate(item.timestamp)">
+          <div
+            class="bg-neutral-50 dark:bg-neutral-900 p-4 rounded-lg border border-neutral-100 dark:border-neutral-700">
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <div class="text-xs text-neutral-400">
+                查看时间：{{ formatDate(item.timestamp) }}
+              </div>
+              <t-button v-if="editingId !== item.id" size="small" variant="text" theme="default"
+                @click="startEdit(item.id)">
+                修改描述
+              </t-button>
+            </div>
 
-        <div ref="editorEl"
-          class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900">
-        </div>
+            <div v-if="editingId === item.id" class="space-y-3">
+              <t-textarea v-model="draftDescription" placeholder="可选：为这次查看写一句描述..." />
+              <div class="flex justify-end gap-2">
+                <t-button size="small" variant="outline" @click="cancelEdit">取消</t-button>
+                <t-button size="small" theme="primary" @click="saveEdit">保存</t-button>
+              </div>
+            </div>
+            <div v-else class="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
+              <span v-if="item.description">{{ item.description }}</span>
+              <span v-else class="text-neutral-400">无描述</span>
+            </div>
+          </div>
+        </t-timeline-item>
+      </t-timeline>
 
-        <div class="flex justify-end gap-2 pt-4">
-          <t-button variant="outline" @click="mode = 'list'">取消</t-button>
-          <t-button theme="primary" @click="handleSave">保存记录</t-button>
-        </div>
+      <div v-else class="py-12 flex flex-col items-center justify-center text-neutral-400 gap-2">
+        <history-icon size="32" />
+        <span>暂无查看记录</span>
       </div>
     </div>
   </t-dialog>
 </template>
 
 <style scoped>
-.aieditor-host {
-  height: 400px;
-}
-
-/* Reusing the styles for aieditor */
-.aieditor-host :deep(.aie-container),
-.aieditor-host :deep(.aie-main),
-.aieditor-host :deep(.aie-editor),
-.aieditor-host :deep(.aie-content) {
-  height: 100% !important;
-}
-
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }

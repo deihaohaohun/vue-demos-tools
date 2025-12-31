@@ -12,7 +12,7 @@ import {
   ArticleIcon,
   FilterIcon
 } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 
 const router = useRouter()
 const store = useKnowledgeStore()
@@ -66,18 +66,20 @@ const form = ref({
   title: '',
   type: 'video' as ResourceType,
   videoPlatform: 'bilibili' as VideoPlatform,
-  tag: '历史',
+  tags: ['历史'],
   cover: '',
   sourceUrl: '',
   content: '',
 })
+
+const tagOptions = ['历史', '空难', '案件', '奇葩', '重口', '涨知识', '老司机']
 
 const handleAdd = () => {
   form.value = {
     title: '',
     type: 'video',
     videoPlatform: 'bilibili',
-    tag: '历史',
+    tags: ['历史'],
     cover: '',
     sourceUrl: '',
     content: '',
@@ -156,15 +158,13 @@ const confirmAdd = () => {
     form.value.content = addEditor.getHtml()
   }
 
-  const tagsArray = form.value.tag ? [form.value.tag] : []
-
   store.addResource({
     title: form.value.title,
     type: form.value.type,
     videoPlatform: form.value.type === 'video' ? form.value.videoPlatform : undefined,
     cover: form.value.cover,
     sourceUrl: form.value.sourceUrl.trim() || undefined,
-    tags: tagsArray,
+    tags: form.value.tags,
     content: form.value.content
   })
 
@@ -174,6 +174,22 @@ const confirmAdd = () => {
 
 const goToDetail = (id: string) => {
   router.push(`/knowledge/${id}`)
+}
+
+const handleDelete = (id: string) => {
+  const res = store.getResourceById(id)
+  const title = res?.title || ''
+  const confirmDialog = DialogPlugin.confirm({
+    header: '确认删除',
+    body: title ? `确定要删除「${title}」吗？相关查看记录也会被删除。` : '确定要删除这个资源吗？相关查看记录也会被删除。',
+    confirmBtn: { content: '删除', theme: 'danger' },
+    onConfirm: () => {
+      if (store.deleteResource(id)) {
+        MessagePlugin.success('删除成功')
+        confirmDialog.hide()
+      }
+    },
+  })
 }
 
 // History Dialog
@@ -192,7 +208,7 @@ const editForm = ref({
   title: '',
   type: 'video' as ResourceType,
   videoPlatform: 'bilibili' as VideoPlatform,
-  tag: '历史',
+  tags: ['历史'],
   cover: '',
   sourceUrl: '',
   content: '',
@@ -209,7 +225,7 @@ const openEdit = (id: string) => {
     title: res.title,
     type: res.type,
     videoPlatform: res.videoPlatform || 'bilibili',
-    tag: res.tags?.[0] || '历史',
+    tags: res.tags?.length ? res.tags : ['历史'],
     cover: res.cover || '',
     sourceUrl: res.sourceUrl || '',
     content: res.content || '',
@@ -227,15 +243,13 @@ const confirmEdit = () => {
   if (editEditor) {
     editForm.value.content = editEditor.getHtml()
   }
-
-  const tagsArray = editForm.value.tag ? [editForm.value.tag] : []
   store.updateResource(editingId.value, {
     title: editForm.value.title,
     type: editForm.value.type,
     videoPlatform: editForm.value.type === 'video' ? editForm.value.videoPlatform : undefined,
     cover: editForm.value.cover,
     sourceUrl: editForm.value.sourceUrl.trim() || undefined,
-    tags: tagsArray,
+    tags: editForm.value.tags,
     content: editForm.value.content,
   })
 
@@ -282,7 +296,7 @@ watch(
   <div class="w-full min-h-screen bg-neutral-50 dark:bg-neutral-900 flex flex-col">
     <!-- Header -->
     <header class="bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 sticky top-0 z-10">
-      <div class="max-w-[1400px] mx-auto px-4 h-16 flex items-center justify-between gap-4">
+      <div class="mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <div class="flex items-center gap-2">
           <div
             class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-blue-200 shadow-md">
@@ -306,7 +320,7 @@ watch(
       </div>
     </header>
 
-    <div class="flex-1 max-w-[1400px] w-full mx-auto px-4 py-6 flex flex-col md:flex-row gap-6">
+    <div class="flex-1 w-full mx-auto px-4 py-6 flex flex-col md:flex-row gap-6">
       <!-- Sidebar Filters -->
       <aside class="w-full md:w-64 shrink-0 space-y-6">
         <!-- Type Filter -->
@@ -341,9 +355,9 @@ watch(
       <!-- Main Grid -->
       <main class="flex-1">
         <div v-if="filteredResources.length > 0"
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
           <ResourceCard v-for="item in filteredResources" :key="item.id" :resource="item" @detail="goToDetail"
-            @edit="openEdit" @history="handleHistory" />
+            @edit="openEdit" @delete="handleDelete" @history="handleHistory" />
         </div>
         <div v-else class="h-64 flex flex-col items-center justify-center text-neutral-400">
           <t-empty description="暂无相关资源，快去添加吧" />
@@ -383,10 +397,11 @@ watch(
         <div v-if="form.type === 'video'" class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">视频平台</label>
-            <t-select v-model="form.videoPlatform">
-              <t-option value="bilibili" label="B站" />
-              <t-option value="youtube" label="油管" />
-            </t-select>
+            <t-radio-group v-model="form.videoPlatform" variant="default-filled" size="small"
+              class="flex flex-wrap gap-2">
+              <t-radio-button value="bilibili">B站</t-radio-button>
+              <t-radio-button value="youtube">油管</t-radio-button>
+            </t-radio-group>
           </div>
           <div />
         </div>
@@ -398,15 +413,9 @@ watch(
 
         <div>
           <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标签</label>
-          <t-radio-group v-model="form.tag" variant="default-filled" size="small" class="flex flex-wrap gap-2">
-            <t-radio-button value="历史">历史</t-radio-button>
-            <t-radio-button value="空难">空难</t-radio-button>
-            <t-radio-button value="案件">案件</t-radio-button>
-            <t-radio-button value="奇葩">奇葩</t-radio-button>
-            <t-radio-button value="重口">重口</t-radio-button>
-            <t-radio-button value="涨知识">涨知识</t-radio-button>
-            <t-radio-button value="老司机">老司机</t-radio-button>
-          </t-radio-group>
+          <t-checkbox-group v-model="form.tags" class="flex flex-wrap gap-2">
+            <t-checkbox v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</t-checkbox>
+          </t-checkbox-group>
         </div>
 
         <div>
@@ -452,10 +461,11 @@ watch(
         <div v-if="editForm.type === 'video'" class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">视频平台</label>
-            <t-select v-model="editForm.videoPlatform">
-              <t-option value="bilibili" label="B站" />
-              <t-option value="youtube" label="油管" />
-            </t-select>
+            <t-radio-group v-model="editForm.videoPlatform" variant="default-filled" size="small"
+              class="flex flex-wrap gap-2">
+              <t-radio-button value="bilibili">B站</t-radio-button>
+              <t-radio-button value="youtube">油管</t-radio-button>
+            </t-radio-group>
           </div>
           <div />
         </div>
@@ -467,15 +477,9 @@ watch(
 
         <div>
           <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标签</label>
-          <t-radio-group v-model="editForm.tag" variant="default-filled" size="small" class="flex flex-wrap gap-2">
-            <t-radio-button value="历史">历史</t-radio-button>
-            <t-radio-button value="空难">空难</t-radio-button>
-            <t-radio-button value="案件">案件</t-radio-button>
-            <t-radio-button value="奇葩">奇葩</t-radio-button>
-            <t-radio-button value="重口">重口</t-radio-button>
-            <t-radio-button value="涨知识">涨知识</t-radio-button>
-            <t-radio-button value="老司机">老司机</t-radio-button>
-          </t-radio-group>
+          <t-checkbox-group v-model="editForm.tags" class="flex flex-wrap gap-2">
+            <t-checkbox v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</t-checkbox>
+          </t-checkbox-group>
         </div>
 
         <div>
