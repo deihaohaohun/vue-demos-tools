@@ -341,17 +341,16 @@ onBeforeUnmount(() => {
     <!-- Edit Dialog -->
     <t-dialog v-model:visible="editDialogVisible" header="编辑资源" width="860px" :footer="false">
       <div class="space-y-4">
-        <t-input v-model="editForm.title" label="标题" placeholder="资源标题" />
-
+        <div>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标题</label>
+          <t-input v-model="editForm.title" placeholder="请输入资源标题" />
+        </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm text-neutral-500 mb-1">类型</label>
             <t-select v-model="editForm.type">
               <t-option value="video" label="视频" />
               <t-option value="article" label="文章" />
-              <t-option value="image" label="图片" />
-              <t-option value="website" label="网站" />
-              <t-option value="other" label="其他" />
             </t-select>
           </div>
           <div>
@@ -371,8 +370,10 @@ onBeforeUnmount(() => {
           <div />
         </div>
 
-        <t-input v-model="editForm.sourceUrl" label="原始链接" placeholder="https://..." />
-
+        <div>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">原始链接 (可选)</label>
+          <t-input v-model="editForm.sourceUrl" placeholder="https://..." />
+        </div>
         <div>
           <label class="block text-sm text-neutral-500 mb-1">标签</label>
           <t-radio-group v-model="editForm.tag" variant="default-filled" size="small" class="flex flex-wrap gap-2">

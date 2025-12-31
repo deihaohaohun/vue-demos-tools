@@ -19,7 +19,6 @@ const store = useKnowledgeStore()
 const resource = computed(() => store.getResourceById(props.resourceId))
 const reviews = computed(() => {
   const list = store.getReviewsByResourceId(props.resourceId)
-  // Ensure reactivity by creating a new array
   return [...list].sort((a, b) => b.timestamp - a.timestamp)
 })
 

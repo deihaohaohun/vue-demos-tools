@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { HistoryIcon } from 'tdesign-icons-vue-next'
 
-defineProps<{
-  canOpenSource: boolean
-}>()
-
 const emit = defineEmits<{
-  (e: 'open-source'): void
   (e: 'detail'): void
   (e: 'edit'): void
   (e: 'history'): void

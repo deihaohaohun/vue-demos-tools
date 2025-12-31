@@ -1,7 +1,7 @@
 import { ref, watch, computed } from 'vue'
 import { nanoid } from 'nanoid'
 
-export type ResourceType = 'video' | 'article' | 'image' | 'website' | 'other'
+export type ResourceType = 'video' | 'article'
 export type VideoPlatform = 'bilibili' | 'youtube'
 
 export interface Resource {
@@ -37,7 +37,12 @@ export const useKnowledgeStore = () => {
     const storedResources = localStorage.getItem(RESOURCES_KEY)
     if (storedResources) {
       try {
-        resources.value = JSON.parse(storedResources)
+        const parsed = JSON.parse(storedResources) as unknown
+        const list: unknown[] = Array.isArray(parsed) ? parsed : []
+        resources.value = list.filter((r) => {
+          const t = (r as { type?: unknown } | null)?.type
+          return t === 'video' || t === 'article'
+        }) as Resource[]
       } catch (e) {
         console.error('Failed to load resources', e)
       }

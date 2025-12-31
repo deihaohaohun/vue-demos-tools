@@ -3,15 +3,9 @@ import { computed } from 'vue'
 import { useKnowledgeStore, type Resource } from './useKnowledgeStore'
 import ResourceCardActionsVideo from './ResourceCardActionsVideo.vue'
 import ResourceCardActionsArticle from './ResourceCardActionsArticle.vue'
-import ResourceCardActionsImage from './ResourceCardActionsImage.vue'
-import ResourceCardActionsWebsite from './ResourceCardActionsWebsite.vue'
-import ResourceCardActionsOther from './ResourceCardActionsOther.vue'
 import {
   VideoIcon,
   ArticleIcon,
-  ImageIcon,
-  BrowseIcon,
-  FileIcon,
   TimeIcon
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
@@ -33,35 +27,15 @@ const emit = defineEmits<{
 
 const store = useKnowledgeStore()
 
-const typeLabel = computed(() => {
-  switch (props.resource.type) {
-    case 'video': return '视频'
-    case 'article': return '文章'
-    case 'image': return '图片'
-    case 'website': return '网站'
-    default: return '其他'
-  }
-})
+const typeLabel = computed(() => (props.resource.type === 'video' ? '视频' : '文章'))
 
-const typeIcon = computed(() => {
-  switch (props.resource.type) {
-    case 'video': return VideoIcon
-    case 'article': return ArticleIcon
-    case 'image': return ImageIcon
-    case 'website': return BrowseIcon
-    default: return FileIcon
-  }
-})
+const typeIcon = computed(() => (props.resource.type === 'video' ? VideoIcon : ArticleIcon))
 
-const typeColor = computed(() => {
-  switch (props.resource.type) {
-    case 'video': return 'text-purple-500 bg-purple-50 dark:bg-purple-900/20'
-    case 'article': return 'text-blue-500 bg-blue-50 dark:bg-blue-900/20'
-    case 'image': return 'text-green-500 bg-green-50 dark:bg-green-900/20'
-    case 'website': return 'text-orange-500 bg-orange-50 dark:bg-orange-900/20'
-    default: return 'text-gray-500 bg-gray-50 dark:bg-gray-800'
-  }
-})
+const typeColor = computed(() =>
+  props.resource.type === 'video'
+    ? 'text-purple-500 bg-purple-50 dark:bg-purple-900/20'
+    : 'text-blue-500 bg-blue-50 dark:bg-blue-900/20',
+)
 
 const formatDate = (ts: number) => {
   return dayjs(ts).format('YYYY-MM-DD')
@@ -77,16 +51,6 @@ const openSource = () => {
   store.markResourceViewed(props.resource.id)
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-
-const actionsComponent = computed(() => {
-  switch (props.resource.type) {
-    case 'video': return ResourceCardActionsVideo
-    case 'article': return ResourceCardActionsArticle
-    case 'image': return ResourceCardActionsImage
-    case 'website': return ResourceCardActionsWebsite
-    default: return ResourceCardActionsOther
-  }
-})
 </script>
 
 <template>
@@ -100,7 +64,7 @@ const actionsComponent = computed(() => {
         class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="cover" />
       <div
         class="absolute top-2 right-2 w-7 h-7 rounded bg-white/80 dark:bg-black/50 backdrop-blur-md flex items-center justify-center"
-        :class="typeColor.replace(/px-2|py-1/g, '')">
+        :class="typeColor">
         <component :is="typeIcon" size="14" />
       </div>
     </div>
@@ -137,10 +101,10 @@ const actionsComponent = computed(() => {
         </div>
       </div>
 
-      <component :is="actionsComponent" class="mt-3" :has-source="!!resource.sourceUrl"
-        :can-open-source="!!resource.sourceUrl" @source="openSource" @open-source="openSource"
-        @detail="emit('detail', resource.id)" @edit="emit('edit', resource.id)"
-        @history="emit('history', resource.id)" />
+      <ResourceCardActionsVideo v-if="resource.type === 'video'" class="mt-3" :has-source="!!resource.sourceUrl"
+        @source="openSource" @edit="emit('edit', resource.id)" @history="emit('history', resource.id)" />
+      <ResourceCardActionsArticle v-else class="mt-3" @detail="emit('detail', resource.id)"
+        @edit="emit('edit', resource.id)" @history="emit('history', resource.id)" />
     </div>
   </div>
 </template>

@@ -10,9 +10,6 @@ import {
   SearchIcon,
   VideoIcon,
   ArticleIcon,
-  ImageIcon,
-  BrowseIcon,
-  FileIcon,
   FilterIcon
 } from 'tdesign-icons-vue-next'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -28,9 +25,6 @@ const typeOptions = [
   { label: '全部', value: 'all', icon: FilterIcon },
   { label: '视频', value: 'video', icon: VideoIcon },
   { label: '文章', value: 'article', icon: ArticleIcon },
-  { label: '图片', value: 'image', icon: ImageIcon },
-  { label: '网站', value: 'website', icon: BrowseIcon },
-  { label: '其他', value: 'other', icon: FileIcon },
 ]
 
 const filteredResources = computed(() => {
@@ -432,7 +426,10 @@ watch(
     <!-- Edit Resource Dialog -->
     <t-dialog v-model:visible="editDialogVisible" header="编辑资源" width="800px" :footer="false">
       <div class="space-y-4">
-        <t-input v-model="editForm.title" label="标题" placeholder="资源标题" />
+        <div>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标题</label>
+          <t-input v-model="editForm.title" placeholder="请输入资源标题" />
+        </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
