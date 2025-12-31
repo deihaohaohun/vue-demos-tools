@@ -8,6 +8,7 @@ import './app.css'
 
 import TDesign from 'tdesign-vue-next'
 import 'tdesign-vue-next/es/style/index.css'
+import 'aieditor/dist/style.css'
 import './lib/spaghetti.ts'
 
 const app = createApp(App)

@@ -22,6 +22,7 @@
     "@tailwindcss/vite": "^4.1.17",
     "@vueuse/core": "^14.1.0",
     "@yeger/vue-masonry-wall": "^5.1.4",
+    "aieditor": "^1.4.2",
     "cal-heatmap": "^4.2.4",
     "canvas-confetti": "^1.9.4",
     "dayjs": "^1.11.13",

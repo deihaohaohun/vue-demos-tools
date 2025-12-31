@@ -28,6 +28,18 @@ const router = createRouter({
       component: () => import('@/views/SettingView.vue'),
     },
     {
+      path: '/knowledge',
+      name: 'knowledge',
+      meta: { title: '温故知新' },
+      component: () => import('@/views/knowledge/KnowledgeView.vue'),
+    },
+    {
+      path: '/knowledge/:id',
+      name: 'knowledge-detail',
+      meta: { title: '资源详情' },
+      component: () => import('@/views/knowledge/ResourceDetail.vue'),
+    },
+    {
       path: '/login',
       name: 'login',
       meta: { title: '登录' },
