@@ -630,13 +630,13 @@ const punchDialogWidth = computed(() => {
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-4 px-4 rounded-md overflow-hidden">
-      <t-tabs :default-value="1">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4">
+      <t-tabs :default-value="1" class="rounded-md overflow-hidden">
         <t-tab-panel :value="1" :label="`任务列表 (${allDisplayTodos.length})`">
           <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': allDisplayTodos.length }">
             <template v-if="allDisplayTodos.length">
               <!-- 未开始任务 -->
-              <div v-if="unstartedTodos.length" class="mb-6">
+              <div v-if="unstartedTodos.length" class="mb-2">
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
@@ -722,7 +722,8 @@ const punchDialogWidth = computed(() => {
         </t-tab-panel>
       </t-tabs>
 
-      <div class="p-2 sm:p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800">
+      <div
+        class="p-2 sm:p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 rounded-md mt-2">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
           <div class="text-sm text-neutral-500">数据统计</div>
           <t-radio-group v-model="statsRange" variant="default-filled" size="small">

@@ -120,7 +120,7 @@ const getCategoryBackground = (category: string) => {
 
 <template>
   <div
-    class="p-3 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer"
+    class="p-3 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0"
     :class="[getCategoryBackground(todo.category)]" @click.stop="emit('toggle-select', todo.id)">
     <div class="pointer-events-none flex flex-col sm:flex-row sm:items-center gap-y-2 gap-x-3 flex-1">
       <!-- 任务名称行 -->
@@ -132,7 +132,7 @@ const getCategoryBackground = (category: string) => {
       <div class="flex flex-wrap items-center gap-2">
         <t-tag v-if="todo.category" size="small" variant="dark" :theme="getCategoryTheme(todo.category)">{{
           todo.category
-          }}</t-tag>
+        }}</t-tag>
         <t-tag size="small" variant="dark" :theme="getPeriodTheme(todo.period)">{{ periodTextMap[todo.period] }}</t-tag>
         <t-tag size="small" variant="light" theme="default">
           <template v-if="todo.unit === 'minutes'">

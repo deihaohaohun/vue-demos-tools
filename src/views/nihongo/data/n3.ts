@@ -28,7 +28,7 @@ export const n3Data: GrammarItem[] = [
     meanings: [
       {
         meaning: 'A 发生之后 B 立刻发生了',
-        tips: ['A 和 B 多为原因和结果的关系', 'B 为意料之外的结果', '非意志/非将来的预定'],
+        tips: ['A 和 B 多为原因和结果的关系居多', 'B 为意料之外的结果', '非意志/非将来的预定'],
         usage: ['动词た + とたん'],
         examples: [
           '家を出たとたん、雨が降ってきた。',
@@ -38,6 +38,84 @@ export const n3Data: GrammarItem[] = [
           {
             name: '出口仁 N3',
             url: 'https://www.bilibili.com/video/BV1x64y1u7ZD/?p=29&vd_source=746624b9a1ec9fffe506951b4f299202',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 12,
+    title: '〜たびに',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '每次~, 每当~',
+        tips: [],
+        usage: ['动词る + たびに', '名词 + たびに'],
+        examples: [
+          'おばあちゃんは会うたびに、お菓子をくれます。',
+          '彼はiPhoneの新機種が出るたびに、買い替えている。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=30',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 13,
+    title: '〜だらけ',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '满是~, 全是~',
+        tips: ['负面居多'],
+        usage: ['名词 + だらけ'],
+        examples: [
+          'うちの職場は男だらけで、出会い機会いがない。',
+          '彼の部屋は掃除や片付けをしていないようで、ゴミだらけでした。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=31',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 14,
+    title: '〜ついでに',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '顺便~',
+        tips: ['一些小事, 不麻烦, 不费精力的事'],
+        usage: ['动词る/た + ついでに', '名词 + ついでに'],
+        examples: [
+          '友達を駅まで送ったついでに、スーパーで夜食を買ってきた。',
+          '毎晩、夕食を作るついでに、明日のお弁当のおかずも作っておきます。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=32',
             logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
           },
         ],
