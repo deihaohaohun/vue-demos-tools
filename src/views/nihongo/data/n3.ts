@@ -107,7 +107,7 @@ export const n3Data: GrammarItem[] = [
       {
         meaning: '顺便~',
         tips: ['一些小事, 不麻烦, 不费精力的事'],
-        usage: ['动词る/た + ついでに', '名词 + ついでに'],
+        usage: ['动词る/た + ついでに', '名词の + ついでに'],
         examples: [
           '友達を駅まで送ったついでに、スーパーで夜食を買ってきた。',
           '毎晩、夕食を作るついでに、明日のお弁当のおかずも作っておきます。',
@@ -124,7 +124,7 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 11,
+    id: 15,
     title: '〜うちに',
     level: 'N3',
     commonality: 4,
@@ -139,6 +139,58 @@ export const n3Data: GrammarItem[] = [
         meaning: '在...期间（不知不觉间发生了变化）',
         usage: ['动词进行时 + うちに'],
         examples: ['本を读んでいるうちに、寝てしまいました。'],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 16,
+    title: '〜っけ',
+    level: 'N3',
+    commonality: 4,
+    mastery: 3,
+    meanings: [
+      {
+        meaning: '~来着(表示回忆或确认)',
+        usage: ['普通形(だ・だ) + っけ', '敬体(でした・ました) + っけ'],
+        examples: [
+          'この店、以前来たことがあったっけ？',
+          '彼の名前、何だったっけ？',
+          '学生のころ、よく彼女とこの喫茶店に来たっけ。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=33',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 17,
+    title: '〜っぽい',
+    level: 'N3',
+    commonality: 4,
+    mastery: 3,
+    meanings: [
+      {
+        meaning: '经常~, 有点~(接近A的状态), 像~(不是A但是像A的样子)',
+        usage: ['动词ます形 + っぽい', '名词 + っぽい'],
+        examples: [
+          'この店、以前来たことがあったっけ？',
+          '彼の名前、何だったっけ？',
+          '学生のころ、よく彼女とこの喫茶店に来たっけ。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=34',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
       },
     ],
     isRemembered: false,
