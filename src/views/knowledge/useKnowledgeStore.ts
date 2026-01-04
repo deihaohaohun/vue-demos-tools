@@ -2,7 +2,7 @@ import { ref, watch, computed } from 'vue'
 import { nanoid } from 'nanoid'
 
 export type ResourceType = 'video' | 'article'
-export type VideoPlatform = 'bilibili' | 'youtube'
+export type VideoPlatform = 'bilibili' | 'youtube' | 'douyin'
 
 export interface Resource {
   id: string

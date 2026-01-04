@@ -15,7 +15,7 @@ import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
 import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem, type PunchRecord } from './useTodoStore'
-import { AddIcon, ChevronLeftIcon, ChevronRightIcon } from 'tdesign-icons-vue-next'
+import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
 import confetti from 'canvas-confetti'
@@ -154,7 +154,90 @@ const saveRecordNote = () => {
   }
 }
 
-const categoryOptions = ['学习', '娱乐', '运动', '工作', '生活']
+
+// --- UI Configuration Logic ---
+type TodoUiConfig = {
+  categories: string[]
+  minFrequencies: number[]
+  minutesPerTimes: number[]
+}
+
+const defaultUiConfig: TodoUiConfig = {
+  categories: ['学习', '娱乐', '运动', '工作', '生活'],
+  minFrequencies: [1, 2, 3, 4],
+  minutesPerTimes: [12, 15, 18, 20],
+}
+
+const uiConfig = ref<TodoUiConfig>({ ...defaultUiConfig })
+const configDrawerVisible = ref(false)
+const draftCategoriesList = ref<string[]>([])
+const draftMinFrequenciesList = ref<number[]>([])
+const draftMinutesPerTimesList = ref<number[]>([])
+
+const loadUiConfig = () => {
+  const s = localStorage.getItem('todo_ui_config')
+  if (s) {
+    try {
+      const parsed = JSON.parse(s)
+      uiConfig.value = {
+        categories: parsed.categories || defaultUiConfig.categories,
+        minFrequencies: parsed.minFrequencies || defaultUiConfig.minFrequencies,
+        minutesPerTimes: parsed.minutesPerTimes || defaultUiConfig.minutesPerTimes,
+      }
+    } catch (e) {
+      console.error('Failed to parse todo_ui_config', e)
+    }
+  }
+}
+
+const saveUiConfig = () => {
+  localStorage.setItem('todo_ui_config', JSON.stringify(uiConfig.value))
+}
+
+const openConfigDrawer = () => {
+  draftCategoriesList.value = [...uiConfig.value.categories]
+  draftMinFrequenciesList.value = [...uiConfig.value.minFrequencies]
+  draftMinutesPerTimesList.value = [...uiConfig.value.minutesPerTimes]
+  configDrawerVisible.value = true
+}
+
+const saveUiConfigFromDraft = () => {
+  const cats = draftCategoriesList.value.map(s => s.trim()).filter(Boolean)
+  const freqs = draftMinFrequenciesList.value.filter(n => typeof n === 'number' && !isNaN(n))
+  const mins = draftMinutesPerTimesList.value.filter(n => typeof n === 'number' && !isNaN(n))
+
+  if (cats.length) uiConfig.value.categories = cats
+  if (freqs.length) uiConfig.value.minFrequencies = freqs
+  if (mins.length) uiConfig.value.minutesPerTimes = mins
+
+  saveUiConfig()
+  configDrawerVisible.value = false
+  MessagePlugin.success('配置已保存')
+}
+
+const resetUiConfig = () => {
+  draftCategoriesList.value = [...defaultUiConfig.categories]
+  draftMinFrequenciesList.value = [...defaultUiConfig.minFrequencies]
+  draftMinutesPerTimesList.value = [...defaultUiConfig.minutesPerTimes]
+}
+
+const addDraftCategory = () => draftCategoriesList.value.push('')
+const removeDraftCategory = (index: number) => draftCategoriesList.value.splice(index, 1)
+
+const addDraftFrequency = () => draftMinFrequenciesList.value.push(1)
+const removeDraftFrequency = (index: number) => draftMinFrequenciesList.value.splice(index, 1)
+
+const addDraftMinute = () => draftMinutesPerTimesList.value.push(15)
+const removeDraftMinute = (index: number) => draftMinutesPerTimesList.value.splice(index, 1)
+
+onMounted(() => {
+  loadUiConfig()
+})
+
+const categoryOptions = computed(() => uiConfig.value.categories)
+const minFrequencyOptions = computed(() => uiConfig.value.minFrequencies)
+const minutesPerTimeOptions = computed(() => uiConfig.value.minutesPerTimes)
+
 const selectedIds = ref<Set<string>>(new Set())
 
 const editVisible = ref(false)
@@ -508,9 +591,14 @@ const punchDialogWidth = computed(() => {
     <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3">
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务分类</div>
-        <t-radio-group v-model="category" variant="default-filled" size="small" class="flex flex-wrap">
-          <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
-        </t-radio-group>
+        <div class="flex items-center gap-2 flex-1">
+          <t-radio-group v-model="category" variant="default-filled" size="small" class="flex flex-wrap">
+            <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
+          </t-radio-group>
+          <t-button variant="text" size="small" @click="openConfigDrawer">
+            <template #icon><setting-icon /></template>
+          </t-button>
+        </div>
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -538,12 +626,12 @@ const punchDialogWidth = computed(() => {
         <div class="flex items-center gap-2">
           <t-radio-group v-model="minFrequency" variant="default-filled" size="small" :disabled="period === 'once'"
             class="flex flex-wrap">
-            <t-radio-button :value="1">1</t-radio-button>
-            <t-radio-button :value="2">2</t-radio-button>
-            <t-radio-button :value="3">3</t-radio-button>
-            <t-radio-button :value="4">4</t-radio-button>
+            <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{ freq }}</t-radio-button>
           </t-radio-group>
           <div class="text-sm text-neutral-400">次</div>
+          <t-button variant="text" size="small" @click="openConfigDrawer">
+            <template #icon><setting-icon /></template>
+          </t-button>
         </div>
       </div>
 
@@ -552,12 +640,12 @@ const punchDialogWidth = computed(() => {
         <div class="flex items-center gap-2 flex-1">
           <t-radio-group v-model="minutesPerTime" variant="default-filled" size="small"
             :disabled="period === 'once' || unit !== 'minutes'" class="flex flex-wrap">
-            <t-radio-button :value="12">12</t-radio-button>
-            <t-radio-button :value="15">15</t-radio-button>
-            <t-radio-button :value="18">18</t-radio-button>
-            <t-radio-button :value="20">20</t-radio-button>
+            <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{ mins }}</t-radio-button>
           </t-radio-group>
           <div class="text-sm text-neutral-400">分钟</div>
+          <t-button variant="text" size="small" @click="openConfigDrawer">
+            <template #icon><setting-icon /></template>
+          </t-button>
         </div>
       </div>
 
@@ -592,7 +680,7 @@ const punchDialogWidth = computed(() => {
             :theme="getCategoryTheme(cat)">
             <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
               item.title
-              }}</span>
+            }}</span>
             <span class="cursor-pointer hover:text-red-500" @click.stop="removeHistory(item)">
               ×
             </span>
@@ -640,7 +728,7 @@ const punchDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -651,7 +739,7 @@ const punchDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-3 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
@@ -769,7 +857,7 @@ const punchDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-              }}</div>
+                }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -882,11 +970,16 @@ const punchDialogWidth = computed(() => {
 
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务分类</div>
-          <t-radio-group v-model="editCategory" variant="default-filled" size="small">
-            <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
-              c
+          <div class="flex items-center gap-2">
+            <t-radio-group v-model="editCategory" variant="default-filled" size="small">
+              <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
+                c
               }}</t-radio-button>
-          </t-radio-group>
+            </t-radio-group>
+            <t-button variant="text" shape="circle" size="small" @click="openConfigDrawer">
+              <template #icon><setting-icon /></template>
+            </t-button>
+          </div>
         </div>
 
         <div class="col-span-12">
@@ -910,26 +1003,31 @@ const punchDialogWidth = computed(() => {
 
         <div class="col-span-12 md:col-span-6">
           <div class="text-sm text-neutral-500 mb-1">最小频率</div>
-          <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
-            :disabled="editPeriod === 'once'">
-            <t-radio-button :value="1">1</t-radio-button>
-            <t-radio-button :value="2">2</t-radio-button>
-            <t-radio-button :value="3">3</t-radio-button>
-            <t-radio-button :value="4">4</t-radio-button>
-          </t-radio-group>
-          <div class="text-sm text-neutral-400">次</div>
+          <div class="flex items-center gap-2">
+            <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
+              :disabled="editPeriod === 'once'">
+              <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{ freq }}</t-radio-button>
+            </t-radio-group>
+            <div class="text-sm text-neutral-400">次</div>
+            <t-button variant="text" shape="circle" size="small" @click="openConfigDrawer">
+              <template #icon><setting-icon /></template>
+            </t-button>
+          </div>
         </div>
 
         <div class="col-span-12 md:col-span-6">
           <div class="text-sm text-neutral-500 mb-1">每次分钟</div>
-          <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
-            :disabled="editPeriod === 'once' || editUnit !== 'minutes'">
-            <t-radio-button :value="12">12</t-radio-button>
-            <t-radio-button :value="15">15</t-radio-button>
-            <t-radio-button :value="18">18</t-radio-button>
-            <t-radio-button :value="20">20</t-radio-button>
-          </t-radio-group>
-          <div class="text-sm text-neutral-400">分钟</div>
+          <div class="flex items-center gap-2">
+            <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
+              :disabled="editPeriod === 'once' || editUnit !== 'minutes'">
+              <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{ mins
+                }}</t-radio-button>
+            </t-radio-group>
+            <div class="text-sm text-neutral-400">分钟</div>
+            <t-button variant="text" shape="circle" size="small" @click="openConfigDrawer">
+              <template #icon><setting-icon /></template>
+            </t-button>
+          </div>
         </div>
 
         <div class="col-span-12">
@@ -959,6 +1057,63 @@ const punchDialogWidth = computed(() => {
         </div>
       </div>
     </t-dialog>
+    <t-drawer v-model:visible="configDrawerVisible" placement="right" size="420px" header="配置管理" :footer="false">
+      <div class="p-4 space-y-6">
+        <div>
+          <div class="text-sm text-neutral-500 mb-2 font-medium">任务分类</div>
+          <div class="space-y-2 mb-2">
+            <div v-for="(cat, idx) in draftCategoriesList" :key="idx" class="flex items-center gap-2">
+              <t-input v-model="draftCategoriesList[idx]" placeholder="请输入分类名称" />
+              <t-button variant="text" shape="square" size="small" theme="danger" @click="removeDraftCategory(idx)">
+                <template #icon><delete-icon /></template>
+              </t-button>
+            </div>
+          </div>
+          <t-button block variant="dashed" theme="default" class="mt-2" @click="addDraftCategory">
+            <template #icon><add-icon /></template>
+            添加分类
+          </t-button>
+        </div>
+
+        <div>
+          <div class="text-sm text-neutral-500 mb-2 font-medium">最小频率</div>
+          <div class="space-y-2 mb-2">
+            <div v-for="(freq, idx) in draftMinFrequenciesList" :key="idx" class="flex items-center gap-2">
+              <t-input-number v-model="draftMinFrequenciesList[idx]" :min="1" theme="column" class="flex-1" />
+              <t-button variant="text" shape="square" size="small" theme="danger" @click="removeDraftFrequency(idx)">
+                <template #icon><delete-icon /></template>
+              </t-button>
+            </div>
+          </div>
+          <t-button block variant="dashed" theme="default" class="mt-2" @click="addDraftFrequency">
+            <template #icon><add-icon /></template>
+            添加频率
+          </t-button>
+        </div>
+
+        <div>
+          <div class="text-sm text-neutral-500 mb-2 font-medium">每次分钟</div>
+          <div class="space-y-2 mb-2">
+            <div v-for="(min, idx) in draftMinutesPerTimesList" :key="idx" class="flex items-center gap-2">
+              <t-input-number v-model="draftMinutesPerTimesList[idx]" :min="1" :step="5" theme="column"
+                class="flex-1" />
+              <t-button variant="text" shape="square" size="small" theme="danger" @click="removeDraftMinute(idx)">
+                <template #icon><delete-icon /></template>
+              </t-button>
+            </div>
+          </div>
+          <t-button block variant="dashed" theme="default" class="mt-2" @click="addDraftMinute">
+            <template #icon><add-icon /></template>
+            添加分钟配置
+          </t-button>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+          <t-button variant="outline" @click="resetUiConfig">恢复默认</t-button>
+          <t-button theme="primary" @click="saveUiConfigFromDraft">保存</t-button>
+        </div>
+      </div>
+    </t-drawer>
   </div>
 </template>
 
