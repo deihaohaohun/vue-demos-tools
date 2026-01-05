@@ -350,7 +350,7 @@ export const useTodoStore = () => {
 
     // 2. 查找之前未完成的任务，并"滚动"到今天 (Rollover)
     // 策略：
-    // - once: 一次性任务，如果没完成，必须顺延，否则就丢了
+    // - once: 目标任务，如果没完成，必须顺延，否则就丢了
     // - weekly/monthly/yearly: 周期性任务，只要还在当前周期内，就应该滚动到今天，以便继续打卡（即使已达到最低频率）
     // - daily: 每日任务，通常是"今日事今日毕"，如果没做完，第二天应该重置(从模板生成新的)，而不是堆积
     const overdueItems = todos.value.filter((t) => {
@@ -371,7 +371,7 @@ export const useTodoStore = () => {
         }
       }
 
-      // 处理一次性任务
+      // 处理目标任务
       if (t.period === 'once' && !t.done) return true
 
       return false
@@ -1287,7 +1287,7 @@ export const useTodoStore = () => {
         }
       }
     } else {
-      // 如果改为一次性，删除模板关联
+      // 如果改为目标，删除模板关联
       if (todo.templateId) {
         const hasOtherTodos = todos.value.some(
           (t) => t.id !== id && t.templateId === todo.templateId,

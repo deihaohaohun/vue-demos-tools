@@ -157,7 +157,7 @@ const getCategoryExportTagStyle = (category: string) => {
     const p = exportPalette.value
     return {
       ...exportBadgeBaseStyle,
-      backgroundColor: isDark.value ? '#111827' : '#f3f4f6',
+      backgroundColor: isDark.value ? '#0f0f0f' : '#f3f4f6',
       borderColor: p.itemBorder,
       color: p.rootText,
     } as Record<string, string>
@@ -228,7 +228,7 @@ const periodTextMap: Record<TodoPeriod, string> = {
   weekly: '每周',
   monthly: '每月',
   yearly: '每年',
-  once: '一次性',
+  once: '目标',
 }
 
 const getPeriodTheme = (p: TodoPeriod) => {
@@ -699,13 +699,13 @@ const todayMinutesTotal = computed(() => {
 })
 
 
-// 当天可以打卡的总任务数 (所有今天显示的任务，排除一次性)
+// 当天可以打卡的总任务数 (所有今天显示的任务，排除目标)
 const todayScheduledCount = computed(() => todayTodos.value.filter((t) => t.period !== 'once').length)
-// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0，排除一次性)
+// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0，排除目标)
 const todayUnstartedCount = computed(() =>
   todayTodos.value.filter((t) => t.period !== 'once' && t.punchIns === 0).length,
 )
-// 未完成目标数 (一次性任务 && 未完成)
+// 未完成目标数 (目标任务 && 未完成)
 const unfinishedGoalsCount = computed(
   () => todayTodos.value.filter((t) => t.period === 'once' && !t.done).length,
 )
@@ -723,7 +723,7 @@ const unfinishedGoalRatio = computed(() => {
   return ((unfinishedGoalsCount.value / totalGoalsCountForToday.value) * 100).toFixed(2)
 })
 
-// 今日已打卡任务数 (排除一次性)
+// 今日已打卡任务数 (排除目标)
 const todayPunchedCount = computed(() => {
   const set = new Set<string>()
   for (const r of todayPunchRecords.value) {
@@ -848,16 +848,16 @@ const exportImageFileName = computed(() => {
 const exportPalette = computed(() => {
   if (isDark.value) {
     return {
-      rootBg: '#0b1220',
-      rootText: '#e5e7eb',
-      rootBorder: '#1f2937',
-      cardBg: '#0f172a',
-      cardBorder: '#243041',
-      itemBg: '#111827',
-      itemBorder: '#243041',
-      mutedText: '#9ca3af',
-      noteText: '#cbd5e1',
-      divider: '#243041',
+      rootBg: '#0a0a0a',
+      rootText: '#e5e5e5',
+      rootBorder: '#262626',
+      cardBg: '#171717',
+      cardBorder: '#262626',
+      itemBg: '#0f0f0f',
+      itemBorder: '#262626',
+      mutedText: '#a3a3a3',
+      noteText: '#d4d4d4',
+      divider: '#262626',
     }
   }
   return {
@@ -1171,7 +1171,7 @@ const exportDialogWidth = computed(() => {
           <t-radio-button value="weekly" :disabled="!categoryOptions.length">每周</t-radio-button>
           <t-radio-button value="monthly" :disabled="!categoryOptions.length">每月</t-radio-button>
           <t-radio-button value="yearly" :disabled="!categoryOptions.length">每年</t-radio-button>
-          <t-radio-button value="once" :disabled="!categoryOptions.length">一次性</t-radio-button>
+          <t-radio-button value="once" :disabled="!categoryOptions.length">目标</t-radio-button>
         </t-radio-group>
       </div>
 
@@ -1252,7 +1252,7 @@ const exportDialogWidth = computed(() => {
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>未完成目标</span>
           <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length
-          }}</t-tag>
+            }}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
           <span v-for="todo in unfinishedGoalTodos" :key="todo.id"
@@ -1293,7 +1293,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1304,7 +1304,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1359,7 +1359,7 @@ const exportDialogWidth = computed(() => {
                       </span>
                       <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
                       <span class="text-xs text-neutral-400">放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                        }}</span>
                       <span v-if="g.deadline" class="text-xs text-neutral-400">截止 {{
                         dayjs(g.deadline).format('YYYY-MM-DD') }}</span>
                     </div>
@@ -1457,7 +1457,7 @@ const exportDialogWidth = computed(() => {
                         <template v-else>目标 {{ item.minFrequency }} 次</template>
                       </t-tag>
                       <span class="text-xs text-neutral-400">归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm')
-                        }}</span>
+                      }}</span>
                     </div>
                     <div v-if="item.description" class="text-sm text-neutral-600 dark:text-neutral-400">
                       {{ item.description }}
@@ -1527,7 +1527,7 @@ const exportDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-                }}</div>
+              }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -1657,7 +1657,7 @@ const exportDialogWidth = computed(() => {
                   <div v-for="r in d.records" :key="r.id" class="p-2 rounded border" :style="exportItemStyle">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-xs" :style="exportMutedTextStyle">{{ dayjs(r.timestamp).format('HH:mm')
-                      }}</span>
+                        }}</span>
                       <span class="font-medium">{{ r.todoTitle }}</span>
                       <span v-if="r.category" :style="getCategoryExportTagStyle(r.category)">
                         {{ r.category }}
@@ -1692,7 +1692,7 @@ const exportDialogWidth = computed(() => {
                     </span>
                     <span class="text-xs" :style="exportMutedTextStyle">完成于 {{
                       dayjs(g.completedAt).format('YYYY-MM-DD HH:mm')
-                    }}</span>
+                      }}</span>
                   </div>
                 </div>
               </div>
@@ -1737,7 +1737,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-button value="weekly">每周</t-radio-button>
             <t-radio-button value="monthly">每月</t-radio-button>
             <t-radio-button value="yearly">每年</t-radio-button>
-            <t-radio-button value="once">一次性</t-radio-button>
+            <t-radio-button value="once">目标</t-radio-button>
           </t-radio-group>
         </div>
 
@@ -1756,7 +1756,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
               :disabled="editOnlyDescription || editPeriod === 'once'" class="flex flex-wrap">
               <t-radio-button v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{ freq
-              }}</t-radio-button>
+                }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
             <t-button variant="text" size="small" disabled>
@@ -1771,7 +1771,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
               :disabled="editOnlyDescription || editPeriod === 'once' || editUnit !== 'minutes'" class="flex flex-wrap">
               <t-radio-button v-for="mins in editMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-              }}</t-radio-button>
+                }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
             <t-button variant="text" size="small" disabled>

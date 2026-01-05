@@ -38,7 +38,7 @@ const periodTextMap: Record<Todo['period'], string> = {
   weekly: '每周',
   monthly: '每月',
   yearly: '每年',
-  once: '一次性',
+  once: '目标',
 }
 
 const getMinutesDone = (todo: Todo) => {
