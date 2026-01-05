@@ -26,7 +26,7 @@ interface Emits {
   (e: 'toggle-done', id: string, done: boolean): void
   (e: 'punch-in', id: string): void
   (e: 'edit', id: string): void
-  (e: 'delete', id: string): void
+  (e: 'archive', id: string): void
 }
 
 const props = defineProps<Props>()
@@ -191,7 +191,8 @@ const getPeriodTheme = (period: string) => {
         编辑
       </t-button>
 
-      <t-button theme="danger" variant="text" size="small" shape="square" @click.stop="emit('delete', todo.id)">
+      <t-button :title="todo.period === 'once' ? '放弃目标' : '归档'" :theme="todo.period === 'once' ? 'danger' : 'warning'"
+        variant="text" size="small" shape="square" @click.stop="emit('archive', todo.id)">
         <template #icon>
           <close-icon />
         </template>

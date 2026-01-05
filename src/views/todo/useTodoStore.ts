@@ -35,6 +35,8 @@ interface TodoTemplate {
   description?: string
   createdAt: number
   deadline?: number
+  archived?: boolean
+  archivedAt?: number
 }
 
 interface DayStat {
@@ -58,6 +60,20 @@ interface HistoryItem {
   description?: string
 }
 
+interface ArchivedHistoryItem extends HistoryItem {
+  archivedAt: number
+}
+
+interface AbandonedGoal {
+  id: string
+  title: string
+  category: string
+  createdAt: number
+  deadline?: number
+  description?: string
+  abandonedAt: number
+}
+
 interface PunchRecord {
   id: string
   todoId: string
@@ -72,17 +88,31 @@ interface PunchRecord {
 
 const STORAGE_KEY = 'todos'
 const HISTORY_KEY = 'todo_history'
+const ARCHIVED_HISTORY_KEY = 'todo_archived_history'
+const ABANDONED_GOALS_KEY = 'todo_abandoned_goals'
 const TEMPLATES_KEY = 'todo_templates'
 const DAY_STATS_KEY = 'todo_day_stats'
 const PUNCH_RECORDS_KEY = 'todo_punch_records'
 
-export type { Todo, TodoTemplate, DayStat, TodoPeriod, TodoUnit, HistoryItem, PunchRecord }
+export type {
+  Todo,
+  TodoTemplate,
+  DayStat,
+  TodoPeriod,
+  TodoUnit,
+  HistoryItem,
+  ArchivedHistoryItem,
+  AbandonedGoal,
+  PunchRecord,
+}
 
 export const useTodoStore = () => {
   const todos = ref<Todo[]>([])
   const templates = ref<TodoTemplate[]>([])
   const dayStats = ref<Record<string, DayStat>>({})
   const history = ref<HistoryItem[]>([])
+  const archivedHistory = ref<ArchivedHistoryItem[]>([])
+  const abandonedGoals = ref<AbandonedGoal[]>([])
   const punchRecords = ref<PunchRecord[]>([])
 
   const formatDayKey = (ts: number) => {
@@ -209,6 +239,7 @@ export const useTodoStore = () => {
       if (t.templateId) continue
       const existing = templates.value.find(
         (tpl) =>
+          !tpl.archived &&
           tpl.title === t.title &&
           tpl.period === t.period &&
           tpl.category === (t.category || '未分类'),
@@ -379,6 +410,7 @@ export const useTodoStore = () => {
     })
 
     for (const tpl of templates.value) {
+      if (tpl.archived) continue
       // 如果本周期已经有任务了（无论完成与否，或者是rolled over过来的），就不再生成
       if (coveredTemplateIds.has(tpl.id)) continue
 
@@ -576,6 +608,9 @@ export const useTodoStore = () => {
                 : undefined,
             description: typeof t.description === 'string' ? t.description : undefined,
             createdAt,
+            deadline: typeof t.deadline === 'number' ? t.deadline : undefined,
+            archived: typeof t.archived === 'boolean' ? t.archived : false,
+            archivedAt: typeof t.archivedAt === 'number' ? t.archivedAt : undefined,
           }
         })
       } catch (e) {
@@ -642,6 +677,51 @@ export const useTodoStore = () => {
       }
     }
 
+    const storedArchivedHistory = localStorage.getItem(ARCHIVED_HISTORY_KEY)
+    if (storedArchivedHistory) {
+      try {
+        const parsed = JSON.parse(storedArchivedHistory)
+        if (Array.isArray(parsed)) {
+          archivedHistory.value = parsed.map((item: HistoryItem | ArchivedHistoryItem) => ({
+            title: typeof item.title === 'string' ? item.title : '',
+            category: typeof item.category === 'string' ? item.category : '',
+            period: (item.period as TodoPeriod) || 'daily',
+            minFrequency: typeof item.minFrequency === 'number' ? item.minFrequency : 1,
+            unit: (item.unit as TodoUnit) || 'times',
+            minutesPerTime:
+              typeof item.minutesPerTime === 'number' ? item.minutesPerTime : undefined,
+            description: typeof item.description === 'string' ? item.description : undefined,
+            archivedAt:
+              typeof (item as ArchivedHistoryItem).archivedAt === 'number'
+                ? (item as ArchivedHistoryItem).archivedAt
+                : Date.now(),
+          }))
+        }
+      } catch (e) {
+        console.error('加载归档模板记录失败:', e)
+      }
+    }
+
+    const storedAbandonedGoals = localStorage.getItem(ABANDONED_GOALS_KEY)
+    if (storedAbandonedGoals) {
+      try {
+        const parsed = JSON.parse(storedAbandonedGoals)
+        if (Array.isArray(parsed)) {
+          abandonedGoals.value = parsed.map((item: Partial<AbandonedGoal>) => ({
+            id: typeof item.id === 'string' ? item.id : nanoid(),
+            title: typeof item.title === 'string' ? item.title : '',
+            category: typeof item.category === 'string' ? item.category : '',
+            createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+            deadline: typeof item.deadline === 'number' ? item.deadline : undefined,
+            description: typeof item.description === 'string' ? item.description : undefined,
+            abandonedAt: typeof item.abandonedAt === 'number' ? item.abandonedAt : Date.now(),
+          }))
+        }
+      } catch (e) {
+        console.error('加载已放弃目标失败:', e)
+      }
+    }
+
     const storedPunchRecords = localStorage.getItem(PUNCH_RECORDS_KEY)
     if (storedPunchRecords) {
       try {
@@ -675,6 +755,14 @@ export const useTodoStore = () => {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value))
   }
 
+  const saveArchivedHistory = () => {
+    localStorage.setItem(ARCHIVED_HISTORY_KEY, JSON.stringify(archivedHistory.value))
+  }
+
+  const saveAbandonedGoals = () => {
+    localStorage.setItem(ABANDONED_GOALS_KEY, JSON.stringify(abandonedGoals.value))
+  }
+
   const saveTemplates = () => {
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates.value))
   }
@@ -700,6 +788,8 @@ export const useTodoStore = () => {
   // 监听变化并保存
   watch(todos, saveTodos, { deep: true })
   watch(history, saveHistory, { deep: true })
+  watch(archivedHistory, saveArchivedHistory, { deep: true })
+  watch(abandonedGoals, saveAbandonedGoals, { deep: true })
   watch(templates, saveTemplates, { deep: true })
   watch(dayStats, saveDayStats, { deep: true })
   watch(punchRecords, savePunchRecords, { deep: true })
@@ -844,7 +934,10 @@ export const useTodoStore = () => {
     if (params.period !== 'once') {
       const existingTpl = templates.value.find(
         (tpl) =>
-          tpl.title === text && tpl.period === params.period && tpl.category === params.category,
+          !tpl.archived &&
+          tpl.title === text &&
+          tpl.period === params.period &&
+          tpl.category === params.category,
       )
       if (existingTpl) {
         templateId = existingTpl.id
@@ -928,7 +1021,10 @@ export const useTodoStore = () => {
     if (params.period !== 'once') {
       const existingTpl = templates.value.find(
         (tpl) =>
-          tpl.title === text && tpl.period === params.period && tpl.category === params.category,
+          !tpl.archived &&
+          tpl.title === text &&
+          tpl.period === params.period &&
+          tpl.category === params.category,
       )
       if (existingTpl) {
         templateId = existingTpl.id
@@ -979,33 +1075,89 @@ export const useTodoStore = () => {
     return { kind: 'added' as const }
   }
 
-  const deleteTodoById = (id: string) => {
+  const archiveTodoById = (id: string) => {
     const target = todos.value.find((t) => t.id === id)
     if (!target) return { kind: 'not_found' as const, removedIds: [] as string[] }
 
     todos.value = todos.value.filter((todo) => todo.id !== id)
 
     if (target.templateId) {
-      const hasOtherTodosWithTemplate = todos.value.some((t) => t.templateId === target.templateId)
-      if (!hasOtherTodosWithTemplate) {
-        templates.value = templates.value.filter((t) => t.id !== target.templateId)
+      const tpl = templates.value.find((t) => t.id === target.templateId)
+      const now = Date.now()
+      if (tpl) {
+        tpl.archived = true
+        tpl.archivedAt = now
+      }
+
+      const normalizeCategory = (c: string | undefined) => (c || '未分类').trim() || '未分类'
+      const title = (tpl?.title || target.title).trim()
+      const category = normalizeCategory(tpl?.category || target.category)
+      const period = (tpl?.period || target.period) as TodoPeriod
+
+      const idx = history.value.findIndex(
+        (h) =>
+          h.title.trim() === title &&
+          normalizeCategory(h.category) === category &&
+          h.period === period,
+      )
+
+      if (idx > -1) {
+        const removed = history.value.splice(idx, 1)
+        const item = removed[0]
+        if (item) {
+          archivedHistory.value.unshift({
+            ...item,
+            archivedAt: now,
+          })
+        }
+      } else {
+        archivedHistory.value.unshift({
+          title,
+          category: tpl?.category || target.category,
+          period,
+          minFrequency:
+            typeof tpl?.minFrequency === 'number'
+              ? tpl.minFrequency
+              : typeof target.minFrequency === 'number'
+                ? target.minFrequency
+                : 1,
+          unit: (tpl?.unit || target.unit) as TodoUnit,
+          minutesPerTime:
+            (tpl?.unit || target.unit) === 'minutes'
+              ? typeof tpl?.minutesPerTime === 'number'
+                ? tpl.minutesPerTime
+                : typeof target.minutesPerTime === 'number'
+                  ? target.minutesPerTime
+                  : 15
+              : undefined,
+          description: typeof tpl?.description === 'string' ? tpl.description : target.description,
+          archivedAt: now,
+        })
       }
     }
 
-    // 清理已不再使用的历史记录：如果某条历史记录对应的配置在 todos 和 templates 中都不存在，则移除
-    history.value = history.value.filter((h) => {
-      const hc = h.category || '未分类'
-      const stillUsedInTodos = todos.value.some(
-        (t) => t.title === h.title && (t.category || '未分类') === hc && t.period === h.period,
-      )
-      const stillUsedInTemplates = templates.value.some(
-        (tpl) =>
-          tpl.title === h.title && (tpl.category || '未分类') === hc && tpl.period === h.period,
-      )
-      return stillUsedInTodos || stillUsedInTemplates
+    return { kind: 'archived' as const, removedIds: [id] }
+  }
+
+  const giveUpGoalById = (id: string) => {
+    const target = todos.value.find((t) => t.id === id)
+    if (!target) return { kind: 'not_found' as const, removedIds: [] as string[] }
+    if (target.period !== 'once') return { kind: 'not_goal' as const, removedIds: [] as string[] }
+
+    todos.value = todos.value.filter((todo) => todo.id !== id)
+
+    const now = Date.now()
+    abandonedGoals.value.unshift({
+      id: nanoid(),
+      title: target.title,
+      category: target.category,
+      createdAt: typeof target.createdAt === 'number' ? target.createdAt : now,
+      deadline: typeof target.deadline === 'number' ? target.deadline : undefined,
+      description: target.description,
+      abandonedAt: now,
     })
 
-    return { kind: 'deleted' as const, removedIds: [id] }
+    return { kind: 'abandoned' as const, removedIds: [id] }
   }
 
   const toggleTodoDone = (id: string, done: boolean) => {
@@ -1104,7 +1256,7 @@ export const useTodoStore = () => {
       let tplId = todo.templateId
       if (!tplId) {
         const existingTpl = templates.value.find(
-          (tpl) => tpl.title === patch.title && tpl.period === patch.period,
+          (tpl) => !tpl.archived && tpl.title === patch.title && tpl.period === patch.period,
         )
         tplId = existingTpl ? existingTpl.id : nanoid()
         if (!existingTpl) {
@@ -1200,6 +1352,8 @@ export const useTodoStore = () => {
     templates,
     dayStats,
     history,
+    archivedHistory,
+    abandonedGoals,
     punchRecords,
     todayKey,
     consecutivePunchDays,
@@ -1212,7 +1366,8 @@ export const useTodoStore = () => {
     updatePunchRecordNote,
     createTodo,
     addTodoFromHistory,
-    deleteTodoById,
+    archiveTodoById,
+    giveUpGoalById,
     toggleTodoDone,
     applyTodoEdit,
     removeHistoryItem,

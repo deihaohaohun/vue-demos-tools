@@ -19,7 +19,6 @@ type LineSeriesLike = {
   type: 'line'
   data: number[]
   smooth: boolean
-  symbol: string
   symbolSize: number
   itemStyle: { color: string }
   areaStyle: { color: string }
@@ -84,7 +83,6 @@ export const useTodoCharts = (args: {
         type: 'line' as const,
         data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
         smooth: true,
-        symbol: 'circle',
         symbolSize: 6,
         itemStyle: { color },
         areaStyle: { color: toRgba(color, 0.12) },

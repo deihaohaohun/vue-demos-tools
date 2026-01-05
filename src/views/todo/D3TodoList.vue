@@ -14,7 +14,7 @@ import {
 import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
-import { useTodoStore, type TodoPeriod, type TodoUnit, type HistoryItem, type PunchRecord } from './useTodoStore'
+import { useTodoStore, type TodoPeriod, type TodoUnit, type PunchRecord } from './useTodoStore'
 import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -34,6 +34,8 @@ const {
   todos,
   dayStats,
   history,
+  archivedHistory,
+  abandonedGoals,
   punchRecords,
   todayKey,
   formatDayKey,
@@ -41,11 +43,10 @@ const {
   punchInTodo,
   updatePunchRecordNote,
   createTodo,
-  addTodoFromHistory,
-  deleteTodoById,
+  archiveTodoById,
+  giveUpGoalById,
   toggleTodoDone,
   applyTodoEdit,
-  removeHistoryItem,
   consecutivePunchDays,
   maxConsecutivePunchDays,
   templates,
@@ -108,6 +109,33 @@ const periodicCategories = computed(() => {
 
 const unfinishedGoalTodos = computed(() => todos.value.filter(t => t.period === 'once' && !t.done))
 const completedGoalTodos = computed(() => todos.value.filter(t => t.period === 'once' && t.done))
+
+const periodTextMap: Record<TodoPeriod, string> = {
+  daily: '每天',
+  weekly: '每周',
+  monthly: '每月',
+  yearly: '每年',
+  once: '一次性',
+}
+
+const getPeriodTheme = (p: TodoPeriod) => {
+  const map: Record<TodoPeriod, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
+    daily: 'primary',
+    weekly: 'success',
+    monthly: 'warning',
+    yearly: 'danger',
+    once: 'default',
+  }
+  return map[p] || 'default'
+}
+
+const archivedHistorySorted = computed(() =>
+  [...archivedHistory.value].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0)),
+)
+
+const abandonedGoalsSorted = computed(() =>
+  [...abandonedGoals.value].sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0)),
+)
 
 // 打卡弹窗相关
 const punchDialogVisible = ref(false)
@@ -366,19 +394,15 @@ const allDisplayTodos = computed(() =>
   [...todos.value].sort((a, b) => (a.category || '').localeCompare(b.category || 'zh'))
 )
 
+const taskDisplayTodos = computed(() => allDisplayTodos.value.filter((t) => t.period !== 'once'))
+
 const unstartedTodos = computed(() =>
-  allDisplayTodos.value.filter((t) => t.punchIns === 0 && !t.done)
+  taskDisplayTodos.value.filter((t) => t.punchIns === 0 && !t.done)
 )
 
 const punchedTodos = computed(() =>
-  allDisplayTodos.value.filter((t) => t.punchIns > 0 || t.done)
+  taskDisplayTodos.value.filter((t) => t.punchIns > 0 || t.done)
 )
-
-const removeHistory = (item: HistoryItem) => {
-  const ok = removeHistoryItem(item)
-  if (!ok) return
-  MessagePlugin.success('已删除历史模板记录')
-}
 
 const handlePunchIn = (id: string) => {
   onPunchTrigger(id)
@@ -429,40 +453,43 @@ watch(categoryOptions, (cats) => {
   }
 }, { immediate: true })
 
-const addFromHistory = (historyItem: HistoryItem) => {
-  if (!categoryOptions.value.length) {
-    MessagePlugin.warning('请先在配置管理中添加分类后再添加')
-    return
-  }
-  const res = addTodoFromHistory(historyItem.title, {
-    category: historyItem.category,
-    period: historyItem.period,
-    minFrequency: historyItem.minFrequency,
-    unit: historyItem.unit,
-    minutesPerTime: historyItem.minutesPerTime,
-    description: historyItem.description,
-  })
-  if (res.kind === 'exists') {
-    MessagePlugin.info('已存在相同名称任务')
-    return
-  }
-  if (res.kind === 'exists_unfinished') {
-    MessagePlugin.warning('上个目标还没达成')
-    return
-  }
-  MessagePlugin.success('已从历史模板记录添加')
-}
+const archiveTodo = (id: string) => {
+  const todo = getTodoById(id)
+  if (!todo) return
 
-const deleteTodo = (id: string) => {
+  if (todo.period === 'once') {
+    const confirmDialog = DialogPlugin.confirm({
+      header: '确认放弃目标',
+      body: '确定要放弃这个目标吗？放弃后将移动到“已放弃”列表。',
+      confirmBtn: {
+        content: '放弃',
+        theme: 'danger',
+      },
+      onConfirm: () => {
+        const res = giveUpGoalById(id)
+        if (res.kind === 'not_found') {
+          confirmDialog.hide()
+          return
+        }
+
+        for (const rid of res.removedIds) selectedIds.value.delete(rid)
+
+        MessagePlugin.success('目标已放弃')
+        confirmDialog.hide()
+      },
+    })
+    return
+  }
+
   const confirmDialog = DialogPlugin.confirm({
-    header: '确认删除',
-    body: '确定要删除这个任务吗？',
+    header: '确认归档',
+    body: '确定要归档这个任务吗？归档后将不再生成新任务。',
     confirmBtn: {
-      content: '删除',
-      theme: 'danger',
+      content: '归档',
+      theme: 'warning',
     },
     onConfirm: () => {
-      const res = deleteTodoById(id)
+      const res = archiveTodoById(id)
       if (res.kind === 'not_found') {
         confirmDialog.hide()
         return
@@ -470,7 +497,7 @@ const deleteTodo = (id: string) => {
 
       for (const rid of res.removedIds) selectedIds.value.delete(rid)
 
-      MessagePlugin.success('任务已删除')
+      MessagePlugin.success('任务已归档')
       confirmDialog.hide()
     },
   })
@@ -669,7 +696,7 @@ const punchDialogWidth = computed(() => {
 <template>
   <div class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4">
     <div class="max-w-[1200px] mx-auto px-4 pt-4">
-      <div class="text-lg md:text-2xl text-neutral-500 mb-4">今天是: {{ todayDisplay }}</div>
+      <div class="text-lg md:text-2xl mb-4">今天是: {{ todayDisplay }}</div>
       <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
         <t-input autofocus v-model="title" :onEnter="addTodo"
           :placeholder="!categoryOptions.length ? '请先在配置管理中添加分类' : (period === 'once' ? '添加目标' : '添加任务模板')"
@@ -685,7 +712,7 @@ const punchDialogWidth = computed(() => {
 
     <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3">
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务分类</div>
+        <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
         <div class="flex items-center gap-2 flex-1">
           <t-radio-group v-if="categoryOptions.length" v-model="category" variant="default-filled" size="small"
             class="flex flex-wrap">
@@ -699,7 +726,7 @@ const punchDialogWidth = computed(() => {
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务周期</div>
+        <div class="text-sm sm:w-[72px] shrink-0">任务周期</div>
         <t-radio-group v-model="period" variant="default-filled" size="small" class="flex flex-wrap">
           <t-radio-button value="daily" :disabled="!categoryOptions.length">每天</t-radio-button>
           <t-radio-button value="weekly" :disabled="!categoryOptions.length">每周</t-radio-button>
@@ -710,7 +737,7 @@ const punchDialogWidth = computed(() => {
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务单位</div>
+        <div class="text-sm sm:w-[72px] shrink-0">任务单位</div>
         <t-radio-group v-model="unit" variant="default-filled" size="small" :disabled="period === 'once'"
           class="flex flex-wrap">
           <t-radio-button value="times">次数</t-radio-button>
@@ -719,7 +746,7 @@ const punchDialogWidth = computed(() => {
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">最小频率</div>
+        <div class="text-sm sm:w-[72px] shrink-0">最小频率</div>
         <div class="flex items-center gap-2">
           <t-radio-group v-model="minFrequency" variant="default-filled" size="small" :disabled="period === 'once'"
             class="flex flex-wrap">
@@ -733,7 +760,7 @@ const punchDialogWidth = computed(() => {
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">每次分钟</div>
+        <div class="text-sm sm:w-[72px] shrink-0">每次分钟</div>
         <div class="flex items-center gap-2 flex-1">
           <t-radio-group v-model="minutesPerTime" variant="default-filled" size="small"
             :disabled="period === 'once' || unit !== 'minutes'" class="flex flex-wrap">
@@ -747,26 +774,26 @@ const punchDialogWidth = computed(() => {
       </div>
 
       <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务描述</div>
+        <div class="text-sm sm:w-[72px] shrink-0">任务描述</div>
         <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
       </div>
 
       <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">截止日期</div>
+        <div class="text-sm sm:w-[72px] shrink-0">截止日期</div>
         <t-date-picker :disabled="period !== 'once'" v-model="deadline" placeholder="可选：选择截止日期" class="flex-1 w-full" />
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-6 px-4 flex flex-wrap gap-2">
-      <div class="text-sm text-neutral-500 flex items-center">历史添加模板记录:</div>
+    <div class="max-w-[1200px] mx-auto mt-2 px-4 flex flex-wrap gap-2">
+      <div class="text-sm flex items-center">历史记录:</div>
       <div v-if="!history.length" class="text-sm text-neutral-400 flex items-center">暂无历史数据</div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
       <!-- Periodic Categories -->
       <div v-for="cat in periodicCategories" :key="cat" :style="getCategoryCssVars(cat)"
         class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-        <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
+        <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>{{ cat }} (模板)</span>
           <span class="px-2 py-0.5 rounded text-[11px] font-semibold border" :class="getCategoryTagClass(cat)">{{
             periodicHistory.filter(h => h.category === cat).length}}</span>
@@ -776,29 +803,31 @@ const punchDialogWidth = computed(() => {
             :key="`${item.title}-${item.category}-${item.period}`"
             class="inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold transition-colors"
             :class="getCategoryTagClass(cat)">
-            <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{ item.title }}</span>
-            <span class="cursor-pointer hover:text-red-500" @click.stop="removeHistory(item)">×</span>
+            <span class="cursor-pointer hover:opacity-70">{{ item.title }}</span>
           </span>
         </div>
       </div>
 
       <!-- Unfinished Goals -->
       <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-        <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
+        <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>未完成目标</span>
-          <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length }}</t-tag>
+          <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length
+            }}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
-          <t-tag v-for="todo in unfinishedGoalTodos" :key="todo.id" variant="outline" theme="warning">
-            <span>{{ todo.title }}</span>
-          </t-tag>
+          <span v-for="todo in unfinishedGoalTodos" :key="todo.id"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold transition-colors"
+            :class="getCategoryTagClass(todo.category)">
+            <span class="cursor-pointer hover:opacity-70">{{ todo.title }}</span>
+          </span>
           <div v-if="!unfinishedGoalTodos.length" class="text-xs text-neutral-400">暂无未完成目标</div>
         </div>
       </div>
 
       <!-- Completed Goals -->
       <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-        <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
+        <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>已完成目标</span>
           <t-tag size="small" variant="light" theme="success">{{ completedGoalTodos.length }}</t-tag>
         </div>
@@ -814,9 +843,9 @@ const punchDialogWidth = computed(() => {
 
     <div class="max-w-[1200px] mx-auto mt-2 px-4">
       <t-tabs :default-value="1" class="rounded-md overflow-hidden">
-        <t-tab-panel :value="1" :label="`任务列表 (${allDisplayTodos.length})`">
-          <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': allDisplayTodos.length }">
-            <template v-if="allDisplayTodos.length">
+        <t-tab-panel :value="1" :label="`任务列表 (${taskDisplayTodos.length})`">
+          <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': taskDisplayTodos.length }">
+            <template v-if="taskDisplayTodos.length">
               <!-- 未开始任务 -->
               <div v-if="unstartedTodos.length" class="mb-2">
                 <div class="flex items-center gap-2 mb-3 px-1">
@@ -825,7 +854,7 @@ const punchDialogWidth = computed(() => {
                     }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
-                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
+                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
               </div>
 
               <!-- 已打卡任务 -->
@@ -836,12 +865,72 @@ const punchDialogWidth = computed(() => {
                     }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
-                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @delete="deleteTodo" />
+                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
               </div>
             </template>
             <template v-else>
               <div class="w-full h-[300px] flex flex-col items-center justify-center">
                 <t-empty />
+              </div>
+            </template>
+          </div>
+        </t-tab-panel>
+        <t-tab-panel :value="2"
+          :label="`目标 (${unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length})`">
+          <div class="min-h-[300px]"
+            :class="{ 'p-1 sm:p-2': unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length }">
+            <template v-if="unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length">
+              <div v-if="unfinishedGoalTodos.length" class="mb-2">
+                <div class="flex items-center gap-2 mb-3 px-1">
+                  <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
+                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未完成 ({{
+                    unfinishedGoalTodos.length }})</span>
+                </div>
+                <TodoItem v-for="todo in unfinishedGoalTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
+              </div>
+
+              <div v-if="completedGoalTodos.length">
+                <div class="flex items-center gap-2 mb-3 px-1">
+                  <div class="w-1 h-4 bg-green-500 rounded-full"></div>
+                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已完成 ({{
+                    completedGoalTodos.length }})</span>
+                </div>
+                <TodoItem v-for="todo in completedGoalTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
+                  @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
+              </div>
+
+              <div v-if="abandonedGoalsSorted.length">
+                <div class="flex items-center gap-2 mb-3 px-1">
+                  <div class="w-1 h-4 bg-red-500 rounded-full"></div>
+                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已放弃 ({{
+                    abandonedGoalsSorted.length }})</span>
+                </div>
+                <div class="flex flex-col gap-2">
+                  <div v-for="g in abandonedGoalsSorted" :key="g.id"
+                    class="p-3 rounded bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium">{{ g.title }}</span>
+                      <span v-if="g.category" class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+                        :style="getCategoryCssVars(g.category)" :class="getCategoryTagClass(g.category)">
+                        {{ g.category }}
+                      </span>
+                      <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
+                      <span class="text-xs text-neutral-400">放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm')
+                        }}</span>
+                      <span v-if="g.deadline" class="text-xs text-neutral-400">截止 {{
+                        dayjs(g.deadline).format('YYYY-MM-DD') }}</span>
+                    </div>
+                    <div v-if="g.description" class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                      {{ g.description }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="w-full h-[300px] flex flex-col items-center justify-center">
+                <t-empty description="暂无目标" />
               </div>
             </template>
           </div>
@@ -855,12 +944,12 @@ const punchDialogWidth = computed(() => {
                   <template #icon><chevron-left-icon /></template>
                 </t-button>
                 <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
-                <div class="text-sm text-neutral-500 shrink-0" v-if="isToday">(今天)</div>
+                <div class="text-sm shrink-0" v-if="isToday">(今天)</div>
                 <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
                   <template #icon><chevron-right-icon /></template>
                 </t-button>
               </div>
-              <div class="text-sm text-neutral-500">
+              <div class="text-sm">
                 当日打卡: {{ currentHistoryRecords.length }} 次
               </div>
             </div>
@@ -903,12 +992,51 @@ const punchDialogWidth = computed(() => {
             </template>
           </div>
         </t-tab-panel>
+        <t-tab-panel :value="4" :label="`已归档 (${archivedHistorySorted.length})`">
+          <div class="min-h-[300px] p-2">
+            <template v-if="archivedHistorySorted.length">
+              <div class="flex flex-col gap-2">
+                <div v-for="item in archivedHistorySorted"
+                  :key="`${item.title}@@${item.category}@@${item.period}@@${item.archivedAt}`"
+                  class="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
+                  <div class="flex flex-col gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium">{{ item.title }}</span>
+                      <span v-if="item.category" class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+                        :style="getCategoryCssVars(item.category)" :class="getCategoryTagClass(item.category)">
+                        {{ item.category }}
+                      </span>
+                      <t-tag size="small" variant="dark" :theme="getPeriodTheme(item.period)">{{
+                        periodTextMap[item.period] }}</t-tag>
+                      <t-tag size="small" variant="light" theme="default">
+                        <template v-if="item.unit === 'minutes'">
+                          目标 {{ item.minFrequency }} 次 × {{ item.minutesPerTime || 0 }} 分钟
+                        </template>
+                        <template v-else>目标 {{ item.minFrequency }} 次</template>
+                      </t-tag>
+                      <span class="text-xs text-neutral-400">归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm')
+                      }}</span>
+                    </div>
+                    <div v-if="item.description" class="text-sm text-neutral-600 dark:text-neutral-400">
+                      {{ item.description }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400">
+                <t-empty description="暂无已归档记录" />
+              </div>
+            </template>
+          </div>
+        </t-tab-panel>
       </t-tabs>
 
       <div
         class="p-2 sm:p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 rounded-md mt-2">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
-          <div class="text-sm text-neutral-500">数据统计</div>
+          <div class="text-sm">数据统计</div>
           <t-radio-group v-model="statsRange" variant="default-filled" size="small">
             <t-radio-button value="7d">7天</t-radio-button>
             <t-radio-button value="30d">30天</t-radio-button>
@@ -918,7 +1046,7 @@ const punchDialogWidth = computed(() => {
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
           <div
             class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-neutral-500 text-center mb-1">今日可打卡任务</div>
+            <div class="text-xs text-center mb-1">今日可打卡任务</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-green-600 dark:text-green-400">{{
                 animatedScheduled }}
@@ -928,7 +1056,7 @@ const punchDialogWidth = computed(() => {
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-neutral-500 text-center mb-1">未开始</div>
+            <div class="text-xs text-center mb-1">未开始</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{
                 animatedUnstarted }}
@@ -938,7 +1066,7 @@ const punchDialogWidth = computed(() => {
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-neutral-500 text-center mb-1">未完成目标</div>
+            <div class="text-xs text-center mb-1">未完成目标</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-red-600 dark:text-red-400">{{
                 animatedUnfinishedGoals }}
@@ -948,11 +1076,11 @@ const punchDialogWidth = computed(() => {
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-neutral-500 text-center mb-1">今日打卡次数</div>
+            <div class="text-xs text-center mb-1">今日打卡次数</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-                }}</div>
+              }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -960,7 +1088,7 @@ const punchDialogWidth = computed(() => {
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-neutral-500 text-center mb-1">今日累计分钟</div>
+            <div class="text-xs text-center mb-1">今日累计分钟</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-purple-600 dark:text-purple-400">{{
                 animatedMinutes }}
@@ -972,7 +1100,7 @@ const punchDialogWidth = computed(() => {
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-neutral-500 text-center mb-1">连续打卡天数</div>
+            <div class="text-xs text-center mb-1">连续打卡天数</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-orange-600 dark:text-orange-400">{{
                 animatedConsecutive }}
@@ -1059,12 +1187,12 @@ const punchDialogWidth = computed(() => {
     <t-dialog v-model:visible="editVisible" header="编辑任务" :width="editDialogWidth" :footer="false">
       <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">任务名称</div>
+          <div class="text-sm mb-1">任务名称</div>
           <t-input v-model="editTitle" placeholder="请输入任务名称" />
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">任务分类</div>
+          <div class="text-sm mb-1">任务分类</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-if="editCategoryOptions.length" v-model="editCategory" variant="default-filled"
               size="small" class="flex flex-wrap">
@@ -1078,7 +1206,7 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">任务周期</div>
+          <div class="text-sm mb-1">任务周期</div>
           <t-radio-group v-model="editPeriod" variant="default-filled" size="small" class="flex flex-wrap">
             <t-radio-button value="daily">每天</t-radio-button>
             <t-radio-button value="weekly">每周</t-radio-button>
@@ -1089,7 +1217,7 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">任务单位</div>
+          <div class="text-sm mb-1">任务单位</div>
           <t-radio-group v-model="editUnit" variant="default-filled" size="small" :disabled="editPeriod === 'once'"
             class="flex flex-wrap">
             <t-radio-button value="times">次数</t-radio-button>
@@ -1098,12 +1226,12 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">最小频率</div>
+          <div class="text-sm mb-1">最小频率</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
               :disabled="editPeriod === 'once'" class="flex flex-wrap">
               <t-radio-button v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{ freq
-              }}</t-radio-button>
+                }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
             <t-button variant="text" size="small" disabled>
@@ -1113,12 +1241,12 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">每次分钟</div>
+          <div class="text-sm mb-1">每次分钟</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
               :disabled="editPeriod === 'once' || editUnit !== 'minutes'" class="flex flex-wrap">
               <t-radio-button v-for="mins in editMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-              }}</t-radio-button>
+                }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
             <t-button variant="text" size="small" disabled>
@@ -1128,12 +1256,12 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm text-neutral-500 mb-1">任务描述</div>
+          <div class="text-sm mb-1">任务描述</div>
           <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
         </div>
 
         <div class="col-span-12" v-if="editPeriod === 'once'">
-          <div class="text-sm text-neutral-500 mb-1">截止日期</div>
+          <div class="text-sm mb-1">截止日期</div>
           <t-date-picker v-model="editDeadline" placeholder="可选：选择截止日期" class="w-full" />
         </div>
       </div>
@@ -1146,7 +1274,7 @@ const punchDialogWidth = computed(() => {
     <t-dialog v-model:visible="punchDialogVisible" header="打卡备注" :width="punchDialogWidth" :footer="false"
       @close="confirmPunch">
       <div class="flex flex-col gap-3">
-        <div class="text-sm text-neutral-500">请输入本次打卡备注（可选）：</div>
+        <div class="text-sm">请输入本次打卡备注（可选）：</div>
         <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
         <div class="flex justify-end gap-2 mt-2">
           <t-button variant="outline" @click="punchDialogVisible = false">取消</t-button>
@@ -1157,7 +1285,7 @@ const punchDialogWidth = computed(() => {
     <t-drawer v-model:visible="configDrawerVisible" placement="right" size="420px" header="配置管理" :footer="false">
       <div class="p-4 space-y-6">
         <div>
-          <div class="text-sm text-neutral-500 mb-2 font-medium">任务分类</div>
+          <div class="text-sm mb-2 font-medium">任务分类</div>
           <div class="space-y-2 mb-2">
             <div v-for="(cat, idx) in draftCategoriesList" :key="idx" class="flex items-center gap-2">
               <t-input v-model="draftCategoriesList[idx]" placeholder="请输入分类名称" />
@@ -1173,7 +1301,7 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div>
-          <div class="text-sm text-neutral-500 mb-2 font-medium">最小频率</div>
+          <div class="text-sm mb-2 font-medium">最小频率</div>
           <div class="space-y-2 mb-2">
             <div v-for="(freq, idx) in draftMinFrequenciesList" :key="idx" class="flex items-center gap-2">
               <t-input-number v-model="draftMinFrequenciesList[idx]" :min="1" theme="column" class="flex-1" />
@@ -1189,7 +1317,7 @@ const punchDialogWidth = computed(() => {
         </div>
 
         <div>
-          <div class="text-sm text-neutral-500 mb-2 font-medium">每次分钟</div>
+          <div class="text-sm mb-2 font-medium">每次分钟</div>
           <div class="space-y-2 mb-2">
             <div v-for="(min, idx) in draftMinutesPerTimesList" :key="idx" class="flex items-center gap-2">
               <t-input-number v-model="draftMinutesPerTimesList[idx]" :min="1" :step="5" theme="column"
