@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -19,6 +19,7 @@ import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon } f
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
 import confetti from 'canvas-confetti'
+import { snapdom } from '@zumer/snapdom'
 
 use([
   CanvasRenderer,
@@ -100,6 +101,118 @@ const getCategoryTagClass = (category: string) => {
   if (!category) return 'bg-neutral-100 text-neutral-700 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-200 dark:border-neutral-700'
   return '[background-color:var(--cat-tag-bg)] [border-color:var(--cat-tag-border)] [color:var(--cat-tag-text)] dark:[background-color:var(--cat-tag-bg-dark)] dark:[border-color:var(--cat-tag-border-dark)] dark:[color:var(--cat-tag-text-dark)]'
 }
+
+const hslToHex = (h: number, s: number, l: number) => {
+  const sn = s / 100
+  const ln = l / 100
+  const c = (1 - Math.abs(2 * ln - 1)) * sn
+  const hh = ((h % 360) + 360) % 360
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1))
+  const m = ln - c / 2
+
+  let r = 0
+  let g = 0
+  let b = 0
+  if (hh < 60) {
+    r = c
+    g = x
+  } else if (hh < 120) {
+    r = x
+    g = c
+  } else if (hh < 180) {
+    g = c
+    b = x
+  } else if (hh < 240) {
+    g = x
+    b = c
+  } else if (hh < 300) {
+    r = x
+    b = c
+  } else {
+    r = c
+    b = x
+  }
+
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+const exportBadgeBaseStyle = {
+  display: 'inline-block',
+  boxSizing: 'border-box',
+  height: '20px',
+  padding: '0 8px',
+  borderWidth: '1px',
+  borderStyle: 'solid',
+  borderRadius: '6px',
+  fontSize: '11px',
+  fontWeight: '600',
+  lineHeight: '20px',
+  verticalAlign: 'middle',
+  whiteSpace: 'nowrap',
+} as const
+
+const getCategoryExportTagStyle = (category: string) => {
+  if (!category) {
+    const p = exportPalette.value
+    return {
+      ...exportBadgeBaseStyle,
+      backgroundColor: isDark.value ? '#111827' : '#f3f4f6',
+      borderColor: p.itemBorder,
+      color: p.rootText,
+    } as Record<string, string>
+  }
+  const seed = hashString(category)
+  const h = (seed * 137.508) % 360
+  if (isDark.value) {
+    return {
+      ...exportBadgeBaseStyle,
+      backgroundColor: hslToHex(h, 55, 22),
+      borderColor: hslToHex(h, 55, 34),
+      color: hslToHex(h, 80, 85),
+    } as Record<string, string>
+  }
+  return {
+    ...exportBadgeBaseStyle,
+    backgroundColor: hslToHex(h, 85, 92),
+    borderColor: hslToHex(h, 70, 82),
+    color: hslToHex(h, 45, 26),
+  } as Record<string, string>
+}
+
+const exportMinutesBadgeStyle = computed(() => {
+  if (isDark.value) {
+    return {
+      ...exportBadgeBaseStyle,
+      backgroundColor: '#0b2a4b',
+      borderColor: '#1e3a5f',
+      color: '#93c5fd',
+    } as Record<string, string>
+  }
+  return {
+    ...exportBadgeBaseStyle,
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+    color: '#1d4ed8',
+  } as Record<string, string>
+})
+
+const exportSuccessBadgeStyle = computed(() => {
+  if (isDark.value) {
+    return {
+      ...exportBadgeBaseStyle,
+      backgroundColor: '#06281b',
+      borderColor: '#0d3b2b',
+      color: '#86efac',
+    } as Record<string, string>
+  }
+  return {
+    ...exportBadgeBaseStyle,
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+    color: '#047857',
+  } as Record<string, string>
+})
 
 const periodicHistory = computed(() => history.value.filter(h => h.period !== 'once'))
 const periodicCategories = computed(() => {
@@ -304,6 +417,18 @@ const editMinutesPerTime = ref<number>(15)
 const editDescription = ref('')
 const editDeadline = ref<string>('')
 
+const editingTodo = computed(() => {
+  const id = editingTodoId.value
+  if (!id) return null
+  return getTodoById(id) || null
+})
+
+const editOnlyDescription = computed(() => {
+  const t = editingTodo.value
+  if (!t) return false
+  return t.period === 'once' && t.done
+})
+
 const editCategoryOptions = computed(() => {
   const cats = [...categoryOptions.value]
   const cur = editCategory.value
@@ -348,6 +473,9 @@ const todayDisplay = computed(() => {
 const openEdit = (id: string) => {
   const todo = getTodoById(id)
   if (!todo) return
+
+  const isCompletedGoal = todo.period === 'once' && todo.done
+
   editingTodoId.value = id
   editTitle.value = todo.title
   editCategory.value = todo.category
@@ -358,30 +486,63 @@ const openEdit = (id: string) => {
     todo.unit === 'minutes' ? (typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15) : 15
   editDescription.value = todo.description || ''
   editDeadline.value = todo.deadline ? dayjs(todo.deadline).format('YYYY-MM-DD') : ''
+
+  if (isCompletedGoal) {
+    editPeriod.value = 'once'
+  }
+
   editVisible.value = true
 }
 
 const saveEdit = () => {
   const id = editingTodoId.value
   if (!id) return
-  const nextTitle = editTitle.value.trim()
+
+  const todo = getTodoById(id)
+  if (!todo) return
+
+  const isCompletedGoal = todo.period === 'once' && todo.done
+
+  const nextTitle = isCompletedGoal ? todo.title : editTitle.value.trim()
+  const nextCategory = isCompletedGoal ? todo.category : editCategory.value
+  const nextPeriod = isCompletedGoal ? todo.period : editPeriod.value
+  const nextMinFrequency = isCompletedGoal
+    ? todo.minFrequency
+    : typeof editMinFrequency.value === 'number'
+      ? editMinFrequency.value
+      : 1
+  const nextUnit = isCompletedGoal ? todo.unit : editUnit.value
+  const nextMinutesPerTime = isCompletedGoal
+    ? todo.minutesPerTime || 15
+    : editUnit.value === 'minutes'
+      ? editMinutesPerTime.value
+      : 15
+
   if (!nextTitle) {
     MessagePlugin.warning('任务标题不能为空')
     return
   }
-  if (editCategoryOptions.value.length && !editCategory.value) {
+
+  if (!isCompletedGoal && editCategoryOptions.value.length && !nextCategory) {
     MessagePlugin.warning('请选择任务分类')
     return
   }
+
+  const nextDeadline = isCompletedGoal
+    ? todo.deadline
+    : nextPeriod === 'once' && editDeadline.value
+      ? dayjs(editDeadline.value).valueOf()
+      : undefined
+
   const ok = applyTodoEdit(id, {
     title: nextTitle,
-    category: editCategory.value,
-    period: editPeriod.value,
-    minFrequency: editMinFrequency.value,
-    unit: editUnit.value,
-    minutesPerTime: editUnit.value === 'minutes' ? editMinutesPerTime.value : 15,
+    category: nextCategory,
+    period: nextPeriod,
+    minFrequency: nextMinFrequency,
+    unit: nextUnit,
+    minutesPerTime: nextMinutesPerTime,
     description: editDescription.value.trim() || undefined,
-    deadline: editPeriod.value === 'once' && editDeadline.value ? dayjs(editDeadline.value).valueOf() : undefined,
+    deadline: nextDeadline,
   })
   if (!ok) return
 
@@ -594,6 +755,268 @@ const { heatmapLoading } = useTodoHeatmap({
 })
 
 const statsRange = ref<'7d' | '30d'>('7d')
+const exportDialogVisible = ref(false)
+const exporting = ref(false)
+const exportingImage = ref(false)
+const exportCaptureRef = ref<HTMLElement | null>(null)
+const isDark = ref(false)
+let themeObserver: MutationObserver | null = null
+
+type ExportPunchRecord = {
+  id: string
+  timestamp: number
+  todoTitle: string
+  category: string
+  minutes: number
+  note?: string
+}
+
+type ExportDaySummary = {
+  dayKey: string
+  punchIns: number
+  minutes: number
+  records: ExportPunchRecord[]
+}
+
+type ExportGoal = {
+  id: string
+  title: string
+  category: string
+  completedAt: number
+}
+
+const exportSummaries = ref<ExportDaySummary[]>([])
+const exportGoals = ref<ExportGoal[]>([])
+
+const readIsDark = () => {
+  const mode = document.documentElement.getAttribute('theme-mode')
+  if (mode === 'dark') return true
+  if (mode === 'light') return false
+  return document.documentElement.classList.contains('dark')
+}
+
+const exportWeekOffset = ref(0)
+
+const getWeekStartDate = (d: Date) => {
+  const base = new Date(d)
+  base.setHours(0, 0, 0, 0)
+  const dayOfWeek = base.getDay()
+  const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  base.setDate(base.getDate() - diff)
+  return base
+}
+
+const exportWeekStartDate = computed(() => {
+  const base = new Date()
+  base.setHours(0, 0, 0, 0)
+  base.setDate(base.getDate() + exportWeekOffset.value * 7)
+  return getWeekStartDate(base)
+})
+
+const exportWeekDayKeys = computed(() => {
+  const start = exportWeekStartDate.value
+  const keys: string[] = []
+  for (let i = 0; i < 7; i += 1) {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    keys.push(formatDayKey(d.getTime()))
+  }
+  return keys
+})
+
+const exportWeekRangeText = computed(() => {
+  const keys = exportWeekDayKeys.value
+  if (keys.length !== 7) return ''
+  return `${keys[0]} ~ ${keys[6]}`
+})
+
+const exportDialogTitle = computed(() => {
+  const keys = exportWeekDayKeys.value
+  if (!keys.length) return '打卡历史'
+  const start = keys[0]
+  const end = keys[keys.length - 1]
+  return `${start}到${end}打卡历史`
+})
+
+const exportImageFileName = computed(() => {
+  const keys = exportWeekDayKeys.value
+  const start = keys[0] || 'start'
+  const end = keys[keys.length - 1] || 'end'
+  return `${start}_to_${end}_打卡历史.png`
+})
+
+const exportPalette = computed(() => {
+  if (isDark.value) {
+    return {
+      rootBg: '#0b1220',
+      rootText: '#e5e7eb',
+      rootBorder: '#1f2937',
+      cardBg: '#0f172a',
+      cardBorder: '#243041',
+      itemBg: '#111827',
+      itemBorder: '#243041',
+      mutedText: '#9ca3af',
+      noteText: '#cbd5e1',
+      divider: '#243041',
+    }
+  }
+  return {
+    rootBg: '#ffffff',
+    rootText: '#111827',
+    rootBorder: '#e5e7eb',
+    cardBg: '#ffffff',
+    cardBorder: '#e5e7eb',
+    itemBg: '#f9fafb',
+    itemBorder: '#e5e7eb',
+    mutedText: '#6b7280',
+    noteText: '#4b5563',
+    divider: '#e5e7eb',
+  }
+})
+
+const exportRootStyle = computed(() => {
+  const p = exportPalette.value
+  return {
+    backgroundColor: p.rootBg,
+    color: p.rootText,
+    borderColor: p.rootBorder,
+  } as Record<string, string>
+})
+
+const exportDayCardStyle = computed(() => {
+  const p = exportPalette.value
+  return { backgroundColor: p.cardBg, borderColor: p.cardBorder } as Record<string, string>
+})
+
+const exportItemStyle = computed(() => {
+  const p = exportPalette.value
+  return { backgroundColor: p.itemBg, borderColor: p.itemBorder, color: p.rootText } as Record<string, string>
+})
+
+const exportDividerStyle = computed(() => {
+  const p = exportPalette.value
+  return { borderColor: p.divider } as Record<string, string>
+})
+
+const exportMutedTextStyle = computed(() => {
+  const p = exportPalette.value
+  return { color: p.mutedText } as Record<string, string>
+})
+
+const exportNoteTextStyle = computed(() => {
+  const p = exportPalette.value
+  return { color: p.noteText } as Record<string, string>
+})
+
+const buildExportData = () => {
+  const summaries: ExportDaySummary[] = []
+  const goals: ExportGoal[] = []
+
+  const keys = exportWeekDayKeys.value
+
+  for (const dk of keys) {
+    const recordsOfDay = punchRecords.value.filter((r) => r.dayKey === dk)
+    const punchCount = recordsOfDay.length
+    let minutesTotal = 0
+    const exportRecords: ExportPunchRecord[] = []
+
+    for (const r of recordsOfDay) {
+      let recordMinutes = 0
+      if (r.unit === 'minutes') {
+        const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
+        recordMinutes = mins
+        minutesTotal += mins
+      } else {
+        const tpl = templates.value.find(
+          (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
+        )
+        if (tpl && tpl.unit === 'minutes') {
+          const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+          recordMinutes = mins
+          minutesTotal += mins
+        }
+      }
+
+      exportRecords.push({
+        id: r.id,
+        timestamp: r.timestamp,
+        todoTitle: r.todoTitle,
+        category: r.category || '未分类',
+        minutes: recordMinutes,
+        note: r.note,
+      })
+    }
+
+    summaries.push({
+      dayKey: dk,
+      punchIns: punchCount,
+      minutes: minutesTotal,
+      records: exportRecords.sort((a, b) => b.timestamp - a.timestamp),
+    })
+  }
+
+  const weekStart = exportWeekStartDate.value.getTime()
+  const weekEndExclusive = weekStart + 7 * 24 * 60 * 60 * 1000
+  for (const t of todos.value) {
+    if (t.period !== 'once') continue
+    if (!t.done) continue
+    if (!t.completedAt) continue
+    if (t.completedAt < weekStart || t.completedAt >= weekEndExclusive) continue
+
+    goals.push({
+      id: t.id,
+      title: t.title,
+      category: t.category,
+      completedAt: t.completedAt,
+    })
+  }
+
+  exportSummaries.value = summaries
+  exportGoals.value = goals.sort((a, b) => b.completedAt - a.completedAt)
+}
+
+const openExportDialog = () => {
+  exporting.value = true
+  try {
+    exportWeekOffset.value = 0
+    buildExportData()
+    exportDialogVisible.value = true
+  } finally {
+    exporting.value = false
+  }
+}
+
+const canNextExportWeek = computed(() => exportWeekOffset.value < 0)
+const prevExportWeek = () => {
+  exportWeekOffset.value -= 1
+  buildExportData()
+}
+const nextExportWeek = () => {
+  if (!canNextExportWeek.value) return
+  exportWeekOffset.value += 1
+  buildExportData()
+}
+
+const exportDialogToImage = async () => {
+  if (!exportCaptureRef.value) return
+  exportingImage.value = true
+  try {
+    await nextTick()
+    const scale = Math.max(2, window.devicePixelRatio || 1)
+    const result = await snapdom(exportCaptureRef.value, { scale, backgroundColor: exportPalette.value.rootBg })
+    await result.download({
+      type: 'png',
+      filename: exportImageFileName.value,
+      backgroundColor: exportPalette.value.rootBg,
+    })
+    MessagePlugin.success('已导出图片')
+    exportDialogVisible.value = false
+  } catch {
+    MessagePlugin.error('导出失败，请重试')
+  } finally {
+    exportingImage.value = false
+  }
+}
 
 const getDayKeyOffsetFromToday = (offsetDays: number) => {
   const base = new Date()
@@ -678,10 +1101,22 @@ const updateWidth = () => {
 
 onMounted(() => {
   window.addEventListener('resize', updateWidth)
+  isDark.value = readIsDark()
+  themeObserver = new MutationObserver(() => {
+    isDark.value = readIsDark()
+  })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'theme-mode'],
+  })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateWidth)
+  if (themeObserver) {
+    themeObserver.disconnect()
+    themeObserver = null
+  }
 })
 
 const editDialogWidth = computed(() => {
@@ -690,6 +1125,10 @@ const editDialogWidth = computed(() => {
 
 const punchDialogWidth = computed(() => {
   return windowWidth.value < 640 ? '95%' : '400px'
+})
+
+const exportDialogWidth = computed(() => {
+  return windowWidth.value < 640 ? '95%' : '860px'
 })
 </script>
 
@@ -813,7 +1252,7 @@ const punchDialogWidth = computed(() => {
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>未完成目标</span>
           <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length
-            }}</t-tag>
+          }}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
           <span v-for="todo in unfinishedGoalTodos" :key="todo.id"
@@ -834,6 +1273,9 @@ const punchDialogWidth = computed(() => {
         <div class="flex flex-wrap gap-2">
           <t-tag v-for="todo in completedGoalTodos" :key="todo.id" variant="outline" theme="success">
             <span>{{ todo.title }}</span>
+            <span v-if="todo.completedAt" class="ml-1 text-[10px] opacity-70">
+              {{ dayjs(todo.completedAt).format('MM-DD HH:mm') }}
+            </span>
             <check-icon class="ml-1" />
           </t-tag>
           <div v-if="!completedGoalTodos.length" class="text-xs text-neutral-400">暂无已完成目标</div>
@@ -848,10 +1290,10 @@ const punchDialogWidth = computed(() => {
             <template v-if="taskDisplayTodos.length">
               <!-- 未开始任务 -->
               <div v-if="unstartedTodos.length" class="mb-2">
-                <div class="flex items-center gap-2 mb-3 px-1">
+                <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -859,10 +1301,10 @@ const punchDialogWidth = computed(() => {
 
               <!-- 已打卡任务 -->
               <div v-if="punchedTodos.length">
-                <div class="flex items-center gap-2 mb-3 px-1">
+                <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -881,7 +1323,7 @@ const punchDialogWidth = computed(() => {
             :class="{ 'p-1 sm:p-2': unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length }">
             <template v-if="unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length">
               <div v-if="unfinishedGoalTodos.length" class="mb-2">
-                <div class="flex items-center gap-2 mb-3 px-1">
+                <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未完成 ({{
                     unfinishedGoalTodos.length }})</span>
@@ -891,7 +1333,7 @@ const punchDialogWidth = computed(() => {
               </div>
 
               <div v-if="completedGoalTodos.length">
-                <div class="flex items-center gap-2 mb-3 px-1">
+                <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已完成 ({{
                     completedGoalTodos.length }})</span>
@@ -901,7 +1343,7 @@ const punchDialogWidth = computed(() => {
               </div>
 
               <div v-if="abandonedGoalsSorted.length">
-                <div class="flex items-center gap-2 mb-3 px-1">
+                <div class="flex items-center gap-2 my-2 px-1">
                   <div class="w-1 h-4 bg-red-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已放弃 ({{
                     abandonedGoalsSorted.length }})</span>
@@ -917,7 +1359,7 @@ const punchDialogWidth = computed(() => {
                       </span>
                       <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
                       <span class="text-xs text-neutral-400">放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm')
-                        }}</span>
+                      }}</span>
                       <span v-if="g.deadline" class="text-xs text-neutral-400">截止 {{
                         dayjs(g.deadline).format('YYYY-MM-DD') }}</span>
                     </div>
@@ -938,7 +1380,7 @@ const punchDialogWidth = computed(() => {
         <t-tab-panel :value="3" label="打卡记录">
           <div class="min-h-[300px] p-2">
             <div
-              class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-neutral-200 dark:border-neutral-800 pb-2 gap-2">
+              class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 border-b border-neutral-200 dark:border-neutral-800 pb-2 gap-2">
               <div class="flex items-center gap-2">
                 <t-button variant="text" shape="square" @click="prevDay">
                   <template #icon><chevron-left-icon /></template>
@@ -1015,7 +1457,7 @@ const punchDialogWidth = computed(() => {
                         <template v-else>目标 {{ item.minFrequency }} 次</template>
                       </t-tag>
                       <span class="text-xs text-neutral-400">归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                        }}</span>
                     </div>
                     <div v-if="item.description" class="text-sm text-neutral-600 dark:text-neutral-400">
                       {{ item.description }}
@@ -1035,18 +1477,23 @@ const punchDialogWidth = computed(() => {
 
       <div
         class="p-2 sm:p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 rounded-md mt-2">
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
           <div class="text-sm">数据统计</div>
-          <t-radio-group v-model="statsRange" variant="default-filled" size="small">
-            <t-radio-button value="7d">7天</t-radio-button>
-            <t-radio-button value="30d">30天</t-radio-button>
-          </t-radio-group>
+          <div class="flex items-center gap-2">
+            <t-radio-group v-model="statsRange" variant="default-filled" size="small">
+              <t-radio-button value="7d">7天</t-radio-button>
+              <t-radio-button value="30d">30天</t-radio-button>
+            </t-radio-group>
+            <t-button size="small" theme="primary" variant="outline" :disabled="exporting" @click="openExportDialog">
+              导出
+            </t-button>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
           <div
             class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-center mb-1">今日可打卡任务</div>
+            <div class="text-xs text-center mb-1">可打卡任务</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-green-600 dark:text-green-400">{{
                 animatedScheduled }}
@@ -1056,7 +1503,7 @@ const punchDialogWidth = computed(() => {
           </div>
           <div
             class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]">
-            <div class="text-xs text-center mb-1">未开始</div>
+            <div class="text-xs text-center mb-1">未开始任务</div>
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400">{{
                 animatedUnstarted }}
@@ -1080,7 +1527,7 @@ const punchDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-              }}</div>
+                }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -1112,7 +1559,7 @@ const punchDialogWidth = computed(() => {
           </div>
         </div>
 
-        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden mb-3 relative">
+        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden mb-2 relative">
           <div class="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
             <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">最近一年活跃热力图（打卡次数/分钟数）</div>
           </div>
@@ -1184,18 +1631,95 @@ const punchDialogWidth = computed(() => {
       </div>
     </div>
 
+    <t-dialog v-model:visible="exportDialogVisible" :header="exportDialogTitle" :width="exportDialogWidth"
+      :footer="false">
+      <div class="p-2 rounded" :style="{ backgroundColor: exportPalette.rootBg, color: exportPalette.rootText }">
+        <div class="flex items-center justify-between gap-2 mb-2 px-1">
+          <t-button size="small" variant="outline" @click="prevExportWeek" :disabled="exportingImage">上一周</t-button>
+          <div class="text-xs" :style="exportMutedTextStyle">{{ exportWeekRangeText }}</div>
+          <t-button size="small" variant="outline" @click="nextExportWeek"
+            :disabled="!canNextExportWeek || exportingImage">下一周</t-button>
+        </div>
+        <div class="max-h-[70vh] overflow-y-auto px-1">
+          <div ref="exportCaptureRef" class="p-3 rounded border" :style="exportRootStyle">
+            <div class="text-base font-bold mb-3">{{ exportDialogTitle }}</div>
+
+            <div class="flex flex-col gap-3">
+              <div v-for="d in exportSummaries" :key="d.dayKey" class="p-3 rounded border" :style="exportDayCardStyle">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="font-bold">{{ d.dayKey }}</div>
+                  <div class="text-xs" :style="exportMutedTextStyle">
+                    打卡 {{ d.punchIns }} 次 · {{ d.minutes }} 分钟
+                  </div>
+                </div>
+
+                <div v-if="d.records.length" class="flex flex-col gap-2 mt-2">
+                  <div v-for="r in d.records" :key="r.id" class="p-2 rounded border" :style="exportItemStyle">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-xs" :style="exportMutedTextStyle">{{ dayjs(r.timestamp).format('HH:mm')
+                      }}</span>
+                      <span class="font-medium">{{ r.todoTitle }}</span>
+                      <span v-if="r.category" :style="getCategoryExportTagStyle(r.category)">
+                        {{ r.category }}
+                      </span>
+                      <span v-if="r.minutes > 0" :style="exportMinutesBadgeStyle">
+                        {{ r.minutes }} 分钟
+                      </span>
+                    </div>
+                    <div v-if="r.note" class="text-sm mt-1 whitespace-pre-wrap" :style="exportNoteTextStyle">
+                      {{ r.note }}
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="text-sm mt-2" :style="exportMutedTextStyle">无打卡记录</div>
+              </div>
+            </div>
+
+            <div v-if="exportGoals.length" class="mt-4 pt-4 border-t" :style="exportDividerStyle">
+              <div class="text-sm font-bold mb-2 flex items-center gap-2">
+                <span>本周完成的目标</span>
+                <span :style="exportSuccessBadgeStyle">{{ exportGoals.length }}</span>
+              </div>
+              <div class="flex flex-col gap-2">
+                <div v-for="g in exportGoals" :key="g.id" class="p-2 rounded border" :style="exportItemStyle">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium">{{ g.title }}</span>
+                    <span v-if="g.category" :style="getCategoryExportTagStyle(g.category)">
+                      {{ g.category }}
+                    </span>
+                    <span :style="exportSuccessBadgeStyle">
+                      已完成
+                    </span>
+                    <span class="text-xs" :style="exportMutedTextStyle">完成于 {{
+                      dayjs(g.completedAt).format('YYYY-MM-DD HH:mm')
+                    }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <t-button variant="outline" @click="exportDialogVisible = false" :disabled="exportingImage">取消</t-button>
+          <t-button theme="primary" @click="exportDialogToImage" :loading="exportingImage" :disabled="exportingImage">
+            确定导出
+          </t-button>
+        </div>
+      </div>
+    </t-dialog>
+
     <t-dialog v-model:visible="editVisible" header="编辑任务" :width="editDialogWidth" :footer="false">
       <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
           <div class="text-sm mb-1">任务名称</div>
-          <t-input v-model="editTitle" placeholder="请输入任务名称" />
+          <t-input v-model="editTitle" placeholder="请输入任务名称" :disabled="editOnlyDescription" />
         </div>
 
         <div class="col-span-12">
           <div class="text-sm mb-1">任务分类</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-if="editCategoryOptions.length" v-model="editCategory" variant="default-filled"
-              size="small" class="flex flex-wrap">
+              size="small" class="flex flex-wrap" :disabled="editOnlyDescription">
               <t-radio-button v-for="c in editCategoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
             </t-radio-group>
             <t-input v-else v-model="editCategory" placeholder="暂无分类，请先在配置管理中添加" disabled class="flex-1" />
@@ -1207,7 +1731,8 @@ const punchDialogWidth = computed(() => {
 
         <div class="col-span-12">
           <div class="text-sm mb-1">任务周期</div>
-          <t-radio-group v-model="editPeriod" variant="default-filled" size="small" class="flex flex-wrap">
+          <t-radio-group v-model="editPeriod" variant="default-filled" size="small" class="flex flex-wrap"
+            :disabled="editOnlyDescription">
             <t-radio-button value="daily">每天</t-radio-button>
             <t-radio-button value="weekly">每周</t-radio-button>
             <t-radio-button value="monthly">每月</t-radio-button>
@@ -1218,8 +1743,8 @@ const punchDialogWidth = computed(() => {
 
         <div class="col-span-12">
           <div class="text-sm mb-1">任务单位</div>
-          <t-radio-group v-model="editUnit" variant="default-filled" size="small" :disabled="editPeriod === 'once'"
-            class="flex flex-wrap">
+          <t-radio-group v-model="editUnit" variant="default-filled" size="small"
+            :disabled="editOnlyDescription || editPeriod === 'once'" class="flex flex-wrap">
             <t-radio-button value="times">次数</t-radio-button>
             <t-radio-button value="minutes">分钟</t-radio-button>
           </t-radio-group>
@@ -1229,9 +1754,9 @@ const punchDialogWidth = computed(() => {
           <div class="text-sm mb-1">最小频率</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
-              :disabled="editPeriod === 'once'" class="flex flex-wrap">
+              :disabled="editOnlyDescription || editPeriod === 'once'" class="flex flex-wrap">
               <t-radio-button v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{ freq
-                }}</t-radio-button>
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
             <t-button variant="text" size="small" disabled>
@@ -1244,9 +1769,9 @@ const punchDialogWidth = computed(() => {
           <div class="text-sm mb-1">每次分钟</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
-              :disabled="editPeriod === 'once' || editUnit !== 'minutes'" class="flex flex-wrap">
+              :disabled="editOnlyDescription || editPeriod === 'once' || editUnit !== 'minutes'" class="flex flex-wrap">
               <t-radio-button v-for="mins in editMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-                }}</t-radio-button>
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
             <t-button variant="text" size="small" disabled>
@@ -1262,7 +1787,8 @@ const punchDialogWidth = computed(() => {
 
         <div class="col-span-12" v-if="editPeriod === 'once'">
           <div class="text-sm mb-1">截止日期</div>
-          <t-date-picker v-model="editDeadline" placeholder="可选：选择截止日期" class="w-full" />
+          <t-date-picker v-model="editDeadline" placeholder="可选：选择截止日期" class="w-full"
+            :disabled="editOnlyDescription" />
         </div>
       </div>
       <div class="mt-4 flex justify-end gap-2">

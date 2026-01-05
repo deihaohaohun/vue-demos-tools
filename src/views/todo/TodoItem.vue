@@ -7,6 +7,7 @@ interface Todo {
   title: string
   id: string
   done: boolean
+  completedAt?: number
   punchIns: number
   category: string
   period: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'once'
@@ -164,6 +165,10 @@ const getPeriodTheme = (period: string) => {
         <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
           {{ remainingTime }}
         </t-tag>
+        <t-tag v-if="todo.period === 'once' && todo.done && todo.completedAt" size="small" variant="light"
+          theme="success">
+          完成于 {{ dayjs(todo.completedAt).format('YYYY-MM-DD HH:mm') }}
+        </t-tag>
       </div>
     </div>
 
@@ -191,8 +196,9 @@ const getPeriodTheme = (period: string) => {
         编辑
       </t-button>
 
-      <t-button :title="todo.period === 'once' ? '放弃目标' : '归档'" :theme="todo.period === 'once' ? 'danger' : 'warning'"
-        variant="text" size="small" shape="square" @click.stop="emit('archive', todo.id)">
+      <t-button v-if="!(todo.period === 'once' && todo.done)" :title="todo.period === 'once' ? '放弃目标' : '归档'"
+        :theme="todo.period === 'once' ? 'danger' : 'warning'" variant="text" size="small" shape="square"
+        @click.stop="emit('archive', todo.id)">
         <template #icon>
           <close-icon />
         </template>

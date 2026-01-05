@@ -557,11 +557,13 @@ export const useTodoStore = () => {
             if (!createdAt) createdAt = Date.now()
 
             const dayKey = typeof t.dayKey === 'string' ? t.dayKey : formatDayKey(createdAt)
+            const completedAt =
+              typeof t.completedAt === 'number' ? t.completedAt : t.done ? createdAt : undefined
             const normalized: Todo = {
               title: t.title,
               id: t.id,
               done: !!t.done,
-              completedAt: typeof t.completedAt === 'number' ? t.completedAt : undefined,
+              completedAt,
               punchIns: typeof t.punchIns === 'number' ? t.punchIns : 0,
               category: typeof t.category === 'string' ? t.category : '',
               period: (t.period as TodoPeriod) || 'daily',
