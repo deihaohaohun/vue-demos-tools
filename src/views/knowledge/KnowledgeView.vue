@@ -401,7 +401,7 @@ watch(
               class="flex flex-wrap gap-2">
               <t-radio-button value="bilibili">B站</t-radio-button>
               <t-radio-button value="youtube">油管</t-radio-button>
-              <t-radio-button value="douyin">抖音</t-radio-button>
+              <t-radio-button value="youtube">抖音</t-radio-button>
             </t-radio-group>
           </div>
           <div />

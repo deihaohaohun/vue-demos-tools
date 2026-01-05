@@ -40,17 +40,12 @@ const typeColor = computed(() =>
 
 const videoPlatformLabel = computed(() => {
   if (props.resource.type !== 'video') return ''
-  if (props.resource.videoPlatform === 'youtube') return '油管'
-  if (props.resource.videoPlatform === 'douyin') return '抖音'
-  return 'B站'
+  return props.resource.videoPlatform === 'youtube' ? '油管' : 'B站'
 })
 
 const videoPlatformColor = computed(() => {
   if (props.resource.videoPlatform === 'youtube') {
     return 'text-red-600 bg-red-50 dark:bg-red-900/20'
-  }
-  if (props.resource.videoPlatform === 'douyin') {
-    return 'text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-900/20'
   }
   return 'text-sky-600 bg-sky-50 dark:bg-sky-900/20'
 })

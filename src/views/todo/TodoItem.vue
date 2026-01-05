@@ -84,15 +84,32 @@ const remainingTime = computed(() => {
   return `${m}分`
 })
 
-const getCategoryTheme = (category: string) => {
-  const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
-    '学习': 'primary',
-    '娱乐': 'success',
-    '运动': 'warning',
-    '工作': 'danger',
-    '生活': 'default',
+const hashString = (s: string) => {
+  let h = 0
+  for (let i = 0; i < s.length; i += 1) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
   }
-  return map[category] || 'primary'
+  return Math.abs(h)
+}
+
+const getCategoryCssVars = (category: string) => {
+  if (!category) return {}
+  const seed = hashString(category)
+  const h = (seed * 137.508) % 360
+  return {
+    '--cat-bg': `hsl(${h} 90% 96%)`,
+    '--cat-bg-hover': `hsl(${h} 90% 93%)`,
+    '--cat-border': `hsl(${h} 70% 85%)`,
+    '--cat-bg-dark': `hsla(${h}, 60%, 18%, 0.35)`,
+    '--cat-bg-hover-dark': `hsla(${h}, 60%, 18%, 0.5)`,
+    '--cat-border-dark': `hsla(${h}, 50%, 45%, 0.45)`,
+    '--cat-tag-bg': `hsl(${h} 85% 90%)`,
+    '--cat-tag-border': `hsl(${h} 70% 82%)`,
+    '--cat-tag-text': `hsl(${h} 40% 28%)`,
+    '--cat-tag-bg-dark': `hsla(${h}, 60%, 25%, 0.55)`,
+    '--cat-tag-border-dark': `hsla(${h}, 55%, 45%, 0.55)`,
+    '--cat-tag-text-dark': `hsl(${h} 80% 80%)`,
+  } as Record<string, string>
 }
 
 const getPeriodTheme = (period: string) => {
@@ -105,23 +122,15 @@ const getPeriodTheme = (period: string) => {
   }
   return map[period] || 'default'
 }
-
-const getCategoryBackground = (category: string) => {
-  const map: Record<string, string> = {
-    '学习': 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30',
-    '娱乐': 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30',
-    '运动': 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-900/30',
-    '工作': 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30',
-    '生活': 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700',
-  }
-  return map[category] || 'bg-white dark:bg-neutral-900 border-transparent'
-}
 </script>
 
 <template>
   <div
     class="p-3 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0"
-    :class="[getCategoryBackground(todo.category)]" @click.stop="emit('toggle-select', todo.id)">
+    :class="todo.category
+      ? 'bg-(--cat-bg) hover:bg-(--cat-bg-hover) border-(--cat-border) dark:bg-(--cat-bg-dark) dark:hover:bg-(--cat-bg-hover-dark) dark:[border-color:var(--cat-border-dark)]'
+      : 'bg-white dark:bg-neutral-900 border-transparent'" :style="getCategoryCssVars(todo.category)"
+    @click.stop="emit('toggle-select', todo.id)">
     <div class="pointer-events-none flex flex-col sm:flex-row sm:items-center gap-y-2 gap-x-3 flex-1">
       <!-- 任务名称行 -->
       <div class="text-base font-medium text-neutral-800 dark:text-neutral-200 shrink-0">
@@ -130,9 +139,10 @@ const getCategoryBackground = (category: string) => {
 
       <!-- 任务分类, 周期, 频率行 -->
       <div class="flex flex-wrap items-center gap-2">
-        <t-tag v-if="todo.category" size="small" variant="dark" :theme="getCategoryTheme(todo.category)">{{
-          todo.category
-        }}</t-tag>
+        <span v-if="todo.category"
+          class="px-2 rounded text-[11px] font-semibold border bg-(--cat-tag-bg) border-(--cat-tag-border) text-(--cat-tag-text) dark:bg-(--cat-tag-bg-dark) dark:border-(--cat-tag-border-dark) dark:text-(--cat-tag-text-dark)">
+          {{ todo.category }}
+        </span>
         <t-tag size="small" variant="dark" :theme="getPeriodTheme(todo.period)">{{ periodTextMap[todo.period] }}</t-tag>
         <t-tag size="small" variant="light" theme="default">
           <template v-if="todo.unit === 'minutes'">

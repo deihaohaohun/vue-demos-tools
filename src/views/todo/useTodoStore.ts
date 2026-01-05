@@ -815,7 +815,30 @@ export const useTodoStore = () => {
     }
 
     const now = Date.now()
-    const dk = formatDayKey(now)
+    let dk = formatDayKey(now)
+
+    // 对于周期性任务，根据周期类型计算正确的dayKey
+    if (params.period !== 'once') {
+      const today = new Date(now)
+      if (params.period === 'weekly') {
+        // 计算本周的开始日期（周一）
+        const dayOfWeek = today.getDay()
+        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // 周日是0，调整为周一为开始
+        const weekStart = new Date(today)
+        weekStart.setDate(today.getDate() - diff)
+        dk = formatDayKey(weekStart.getTime())
+      } else if (params.period === 'monthly') {
+        // 计算本月的开始日期（1号）
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+        dk = formatDayKey(monthStart.getTime())
+      } else if (params.period === 'yearly') {
+        // 计算本年的开始日期（1月1日）
+        const yearStart = new Date(today.getFullYear(), 0, 1)
+        dk = formatDayKey(yearStart.getTime())
+      }
+      // daily任务使用今天的日期，once任务也使用今天的日期
+    }
+
     let templateId: string | undefined
 
     if (params.period !== 'once') {
@@ -960,17 +983,27 @@ export const useTodoStore = () => {
     const target = todos.value.find((t) => t.id === id)
     if (!target) return { kind: 'not_found' as const, removedIds: [] as string[] }
 
-    // 仅从当前任务列表中移除，不修改历史统计数据和打卡记录
     todos.value = todos.value.filter((todo) => todo.id !== id)
 
-    // 如果删除的任务有模板，检查是否还有其他任务使用该模板
     if (target.templateId) {
       const hasOtherTodosWithTemplate = todos.value.some((t) => t.templateId === target.templateId)
-      // 如果没有其他任务使用该模板，删除模板
       if (!hasOtherTodosWithTemplate) {
         templates.value = templates.value.filter((t) => t.id !== target.templateId)
       }
     }
+
+    // 清理已不再使用的历史记录：如果某条历史记录对应的配置在 todos 和 templates 中都不存在，则移除
+    history.value = history.value.filter((h) => {
+      const hc = h.category || '未分类'
+      const stillUsedInTodos = todos.value.some(
+        (t) => t.title === h.title && (t.category || '未分类') === hc && t.period === h.period,
+      )
+      const stillUsedInTemplates = templates.value.some(
+        (tpl) =>
+          tpl.title === h.title && (tpl.category || '未分类') === hc && tpl.period === h.period,
+      )
+      return stillUsedInTodos || stillUsedInTemplates
+    })
 
     return { kind: 'deleted' as const, removedIds: [id] }
   }
@@ -1184,5 +1217,6 @@ export const useTodoStore = () => {
     applyTodoEdit,
     removeHistoryItem,
     clearHistoryAll,
+    materializeTodayTodosFromTemplates,
   }
 }

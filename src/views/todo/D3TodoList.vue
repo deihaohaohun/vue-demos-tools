@@ -49,10 +49,11 @@ const {
   consecutivePunchDays,
   maxConsecutivePunchDays,
   templates,
+  materializeTodayTodosFromTemplates,
 } = useTodoStore()
 
 const title = ref('')
-const category = ref<string>('学习')
+const category = ref<string>('')
 const period = ref<TodoPeriod>('daily')
 const minFrequency = ref<number>(1)
 const unit = ref<TodoUnit>('times')
@@ -68,19 +69,42 @@ watch(period, (p) => {
   }
 })
 
-const getCategoryTheme = (category: string) => {
-  const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
-    '学习': 'primary',
-    '娱乐': 'success',
-    '运动': 'warning',
-    '工作': 'danger',
-    '生活': 'default',
+watch(todayKey, () => {
+  materializeTodayTodosFromTemplates()
+})
+
+const hashString = (s: string) => {
+  let h = 0
+  for (let i = 0; i < s.length; i += 1) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
   }
-  return map[category] || 'primary'
+  return Math.abs(h)
+}
+
+const getCategoryCssVars = (category: string) => {
+  if (!category) return {}
+  const seed = hashString(category)
+  const h = (seed * 137.508) % 360
+  return {
+    '--cat-tag-bg': `hsl(${h} 85% 90%)`,
+    '--cat-tag-border': `hsl(${h} 70% 82%)`,
+    '--cat-tag-text': `hsl(${h} 40% 28%)`,
+    '--cat-tag-bg-dark': `hsla(${h}, 60%, 25%, 0.55)`,
+    '--cat-tag-border-dark': `hsla(${h}, 55%, 45%, 0.55)`,
+    '--cat-tag-text-dark': `hsl(${h} 80% 80%)`,
+  } as Record<string, string>
+}
+
+const getCategoryTagClass = (category: string) => {
+  if (!category) return 'bg-neutral-100 text-neutral-700 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-200 dark:border-neutral-700'
+  return '[background-color:var(--cat-tag-bg)] [border-color:var(--cat-tag-border)] [color:var(--cat-tag-text)] dark:[background-color:var(--cat-tag-bg-dark)] dark:[border-color:var(--cat-tag-border-dark)] dark:[color:var(--cat-tag-text-dark)]'
 }
 
 const periodicHistory = computed(() => history.value.filter(h => h.period !== 'once'))
-const periodicCategories = computed(() => [...new Set(periodicHistory.value.map(h => h.category))])
+const periodicCategories = computed(() => {
+  const categories = [...new Set(periodicHistory.value.map(h => h.category))]
+  return categories.filter((c): c is string => Boolean(c))
+})
 
 const unfinishedGoalTodos = computed(() => todos.value.filter(t => t.period === 'once' && !t.done))
 const completedGoalTodos = computed(() => todos.value.filter(t => t.period === 'once' && t.done))
@@ -163,7 +187,7 @@ type TodoUiConfig = {
 }
 
 const defaultUiConfig: TodoUiConfig = {
-  categories: ['学习', '娱乐', '运动', '工作', '生活'],
+  categories: [],
   minFrequencies: [1, 2, 3, 4],
   minutesPerTimes: [12, 15, 18, 20],
 }
@@ -232,6 +256,7 @@ const removeDraftMinute = (index: number) => draftMinutesPerTimesList.value.spli
 
 onMounted(() => {
   loadUiConfig()
+  materializeTodayTodosFromTemplates()
 })
 
 const categoryOptions = computed(() => uiConfig.value.categories)
@@ -243,13 +268,49 @@ const selectedIds = ref<Set<string>>(new Set())
 const editVisible = ref(false)
 const editingTodoId = ref<string | null>(null)
 const editTitle = ref('')
-const editCategory = ref<string>('学习')
+const editCategory = ref<string>('')
 const editPeriod = ref<TodoPeriod>('daily')
 const editMinFrequency = ref<number>(1)
 const editUnit = ref<TodoUnit>('times')
 const editMinutesPerTime = ref<number>(15)
 const editDescription = ref('')
 const editDeadline = ref<string>('')
+
+const editCategoryOptions = computed(() => {
+  const cats = [...categoryOptions.value]
+  const cur = editCategory.value
+  if (cur && !cats.includes(cur)) cats.unshift(cur)
+  return cats
+})
+
+const editMinFrequencyOptions = computed(() => {
+  const opts = [...minFrequencyOptions.value]
+  const cur = editMinFrequency.value
+  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
+  return opts.sort((a, b) => a - b)
+})
+
+const editMinutesPerTimeOptions = computed(() => {
+  const opts = [...minutesPerTimeOptions.value]
+  const cur = editMinutesPerTime.value
+  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
+  return opts.sort((a, b) => a - b)
+})
+
+watch(editPeriod, (p) => {
+  if (p === 'once') {
+    editUnit.value = 'times'
+    editMinFrequency.value = 1
+    if (!editMinutesPerTime.value) editMinutesPerTime.value = 15
+  }
+})
+
+watch(editUnit, (u) => {
+  if (u !== 'minutes') return
+  if (!editMinutesPerTime.value) {
+    editMinutesPerTime.value = editMinutesPerTimeOptions.value[0] || 15
+  }
+})
 
 const todayDisplay = computed(() => {
   const w = ['日', '一', '二', '三', '四', '五', '六']
@@ -261,11 +322,12 @@ const openEdit = (id: string) => {
   if (!todo) return
   editingTodoId.value = id
   editTitle.value = todo.title
-  editCategory.value = todo.category || '未分类'
+  editCategory.value = todo.category
   editPeriod.value = todo.period
-  editMinFrequency.value = todo.minFrequency
+  editMinFrequency.value = typeof todo.minFrequency === 'number' ? todo.minFrequency : 1
   editUnit.value = todo.unit
-  editMinutesPerTime.value = typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
+  editMinutesPerTime.value =
+    todo.unit === 'minutes' ? (typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15) : 15
   editDescription.value = todo.description || ''
   editDeadline.value = todo.deadline ? dayjs(todo.deadline).format('YYYY-MM-DD') : ''
   editVisible.value = true
@@ -274,13 +336,22 @@ const openEdit = (id: string) => {
 const saveEdit = () => {
   const id = editingTodoId.value
   if (!id) return
+  const nextTitle = editTitle.value.trim()
+  if (!nextTitle) {
+    MessagePlugin.warning('任务标题不能为空')
+    return
+  }
+  if (editCategoryOptions.value.length && !editCategory.value) {
+    MessagePlugin.warning('请选择任务分类')
+    return
+  }
   const ok = applyTodoEdit(id, {
-    title: editTitle.value,
+    title: nextTitle,
     category: editCategory.value,
     period: editPeriod.value,
     minFrequency: editMinFrequency.value,
     unit: editUnit.value,
-    minutesPerTime: editMinutesPerTime.value,
+    minutesPerTime: editUnit.value === 'minutes' ? editMinutesPerTime.value : 15,
     description: editDescription.value.trim() || undefined,
     deadline: editPeriod.value === 'once' && editDeadline.value ? dayjs(editDeadline.value).valueOf() : undefined,
   })
@@ -314,6 +385,14 @@ const handlePunchIn = (id: string) => {
 }
 
 const addTodo = () => {
+  if (!categoryOptions.value.length) {
+    MessagePlugin.warning('请先在配置管理中添加分类后再添加')
+    return
+  }
+  if (!category.value) {
+    MessagePlugin.warning('请选择任务分类')
+    return
+  }
   const res = createTodo({
     title: title.value,
     category: category.value,
@@ -339,7 +418,22 @@ const addTodo = () => {
   }
 }
 
+watch(categoryOptions, (cats) => {
+  if (!cats.length) {
+    category.value = ''
+    if (period.value !== 'once') period.value = 'once'
+    return
+  }
+  if (category.value && !cats.includes(category.value)) {
+    category.value = ''
+  }
+}, { immediate: true })
+
 const addFromHistory = (historyItem: HistoryItem) => {
+  if (!categoryOptions.value.length) {
+    MessagePlugin.warning('请先在配置管理中添加分类后再添加')
+    return
+  }
   const res = addTodoFromHistory(historyItem.title, {
     category: historyItem.category,
     period: historyItem.period,
@@ -577,9 +671,10 @@ const punchDialogWidth = computed(() => {
     <div class="max-w-[1200px] mx-auto px-4 pt-4">
       <div class="text-lg md:text-2xl text-neutral-500 mb-4">今天是: {{ todayDisplay }}</div>
       <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-        <t-input autofocus v-model="title" :onEnter="addTodo" :placeholder="period === 'once' ? '添加目标' : '添加任务模板'"
+        <t-input autofocus v-model="title" :onEnter="addTodo"
+          :placeholder="!categoryOptions.length ? '请先在配置管理中添加分类' : (period === 'once' ? '添加目标' : '添加任务模板')"
           class="flex-1"></t-input>
-        <t-button @click="addTodo" class="w-full sm:w-auto">
+        <t-button @click="addTodo" class="w-full sm:w-auto" :disabled="!categoryOptions.length || !category">
           <template #icon>
             <add-icon size="20" />
           </template>
@@ -592,9 +687,11 @@ const punchDialogWidth = computed(() => {
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务分类</div>
         <div class="flex items-center gap-2 flex-1">
-          <t-radio-group v-model="category" variant="default-filled" size="small" class="flex flex-wrap">
+          <t-radio-group v-if="categoryOptions.length" v-model="category" variant="default-filled" size="small"
+            class="flex flex-wrap">
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
           </t-radio-group>
+          <div v-else class="text-sm text-neutral-400">暂无分类，请先添加</div>
           <t-button variant="text" size="small" @click="openConfigDrawer">
             <template #icon><setting-icon /></template>
           </t-button>
@@ -604,11 +701,11 @@ const punchDialogWidth = computed(() => {
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm text-neutral-500 sm:w-[72px] shrink-0">任务周期</div>
         <t-radio-group v-model="period" variant="default-filled" size="small" class="flex flex-wrap">
-          <t-radio-button value="daily">每天</t-radio-button>
-          <t-radio-button value="weekly">每周</t-radio-button>
-          <t-radio-button value="monthly">每月</t-radio-button>
-          <t-radio-button value="yearly">每年</t-radio-button>
-          <t-radio-button value="once">一次性</t-radio-button>
+          <t-radio-button value="daily" :disabled="!categoryOptions.length">每天</t-radio-button>
+          <t-radio-button value="weekly" :disabled="!categoryOptions.length">每周</t-radio-button>
+          <t-radio-button value="monthly" :disabled="!categoryOptions.length">每月</t-radio-button>
+          <t-radio-button value="yearly" :disabled="!categoryOptions.length">每年</t-radio-button>
+          <t-radio-button value="once" :disabled="!categoryOptions.length">一次性</t-radio-button>
         </t-radio-group>
       </div>
 
@@ -667,24 +764,21 @@ const punchDialogWidth = computed(() => {
 
     <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <!-- Periodic Categories -->
-      <div v-for="cat in periodicCategories" :key="cat"
+      <div v-for="cat in periodicCategories" :key="cat" :style="getCategoryCssVars(cat)"
         class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
         <div class="text-sm text-neutral-500 mb-2 font-bold flex items-center gap-2">
           <span>{{ cat }} (模板)</span>
-          <t-tag size="small" variant="dark" :theme="getCategoryTheme(cat)">{{periodicHistory.filter(h => h.category
-            === cat).length}}</t-tag>
+          <span class="px-2 py-0.5 rounded text-[11px] font-semibold border" :class="getCategoryTagClass(cat)">{{
+            periodicHistory.filter(h => h.category === cat).length}}</span>
         </div>
         <div class="flex flex-wrap gap-2">
-          <t-tag v-for="item in periodicHistory.filter(h => h.category === cat)"
-            :key="`${item.title}-${item.category}-${item.period}`" variant="dark" class="transition-colors"
-            :theme="getCategoryTheme(cat)">
-            <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{
-              item.title
-            }}</span>
-            <span class="cursor-pointer hover:text-red-500" @click.stop="removeHistory(item)">
-              ×
-            </span>
-          </t-tag>
+          <span v-for="item in periodicHistory.filter(h => h.category === cat)"
+            :key="`${item.title}-${item.category}-${item.period}`"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold transition-colors"
+            :class="getCategoryTagClass(cat)">
+            <span class="cursor-pointer hover:opacity-70" @click="addFromHistory(item)">{{ item.title }}</span>
+            <span class="cursor-pointer hover:text-red-500" @click.stop="removeHistory(item)">×</span>
+          </span>
         </div>
       </div>
 
@@ -778,8 +872,9 @@ const punchDialogWidth = computed(() => {
                   <div class="flex flex-col gap-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="font-medium">{{ record.todoTitle }}</span>
-                      <t-tag size="small" variant="dark" :theme="getCategoryTheme(record.category)">{{
-                        record.category }}</t-tag>
+                      <span v-if="record.category" class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+                        :style="getCategoryCssVars(record.category)" :class="getCategoryTagClass(record.category)">{{
+                          record.category }}</span>
                       <span class="text-xs text-neutral-400">{{ dayjs(record.timestamp).format('HH:mm:ss') }}</span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -971,12 +1066,12 @@ const punchDialogWidth = computed(() => {
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务分类</div>
           <div class="flex items-center gap-2">
-            <t-radio-group v-model="editCategory" variant="default-filled" size="small">
-              <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
-                c
-              }}</t-radio-button>
+            <t-radio-group v-if="editCategoryOptions.length" v-model="editCategory" variant="default-filled"
+              size="small" class="flex flex-wrap">
+              <t-radio-button v-for="c in editCategoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
             </t-radio-group>
-            <t-button variant="text" shape="circle" size="small" @click="openConfigDrawer">
+            <t-input v-else v-model="editCategory" placeholder="暂无分类，请先在配置管理中添加" disabled class="flex-1" />
+            <t-button variant="text" size="small" disabled>
               <template #icon><setting-icon /></template>
             </t-button>
           </div>
@@ -984,7 +1079,7 @@ const punchDialogWidth = computed(() => {
 
         <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务周期</div>
-          <t-radio-group v-model="editPeriod" variant="default-filled" size="small">
+          <t-radio-group v-model="editPeriod" variant="default-filled" size="small" class="flex flex-wrap">
             <t-radio-button value="daily">每天</t-radio-button>
             <t-radio-button value="weekly">每周</t-radio-button>
             <t-radio-button value="monthly">每月</t-radio-button>
@@ -993,38 +1088,40 @@ const punchDialogWidth = computed(() => {
           </t-radio-group>
         </div>
 
-        <div class="col-span-12 md:col-span-6">
+        <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">任务单位</div>
-          <t-radio-group v-model="editUnit" variant="default-filled" size="small" :disabled="editPeriod === 'once'">
+          <t-radio-group v-model="editUnit" variant="default-filled" size="small" :disabled="editPeriod === 'once'"
+            class="flex flex-wrap">
             <t-radio-button value="times">次数</t-radio-button>
             <t-radio-button value="minutes">分钟</t-radio-button>
           </t-radio-group>
         </div>
 
-        <div class="col-span-12 md:col-span-6">
+        <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">最小频率</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
-              :disabled="editPeriod === 'once'">
-              <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{ freq }}</t-radio-button>
+              :disabled="editPeriod === 'once'" class="flex flex-wrap">
+              <t-radio-button v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{ freq
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
-            <t-button variant="text" shape="circle" size="small" @click="openConfigDrawer">
+            <t-button variant="text" size="small" disabled>
               <template #icon><setting-icon /></template>
             </t-button>
           </div>
         </div>
 
-        <div class="col-span-12 md:col-span-6">
+        <div class="col-span-12">
           <div class="text-sm text-neutral-500 mb-1">每次分钟</div>
           <div class="flex items-center gap-2">
             <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
-              :disabled="editPeriod === 'once' || editUnit !== 'minutes'">
-              <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-                }}</t-radio-button>
+              :disabled="editPeriod === 'once' || editUnit !== 'minutes'" class="flex flex-wrap">
+              <t-radio-button v-for="mins in editMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
-            <t-button variant="text" shape="circle" size="small" @click="openConfigDrawer">
+            <t-button variant="text" size="small" disabled>
               <template #icon><setting-icon /></template>
             </t-button>
           </div>
