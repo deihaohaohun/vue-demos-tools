@@ -15,7 +15,7 @@ import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
 import { useTodoStore, type TodoPeriod, type TodoUnit, type PunchRecord, type HistoryItem } from './useTodoStore'
-import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon, EditIcon, FileExportIcon } from 'tdesign-icons-vue-next'
+import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon, EditIcon, FileExportIcon, MinusIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
 import confetti from 'canvas-confetti'
@@ -280,6 +280,12 @@ const punchMinutesEnabled = computed(() => {
   const tplMinutes = getTodoTemplateMinutes(todo.id)
   return typeof tplMinutes === 'number'
 })
+
+const adjustPunchMinutes = (delta: number, e?: MouseEvent) => {
+  const step = e?.shiftKey ? 5 : 1
+  const cur = typeof punchMinutes.value === 'number' ? punchMinutes.value : 0
+  punchMinutes.value = Math.max(0, Math.round(cur + delta * step))
+}
 
 const onPunchTrigger = (id: string) => {
   currentPunchId.value = id
@@ -1249,7 +1255,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
           </t-radio-group>
           <div v-else class="text-sm text-neutral-400">暂无分类，请先添加</div>
-          <t-button variant="text" size="small" @click="openConfigDrawer">
+          <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
             <template #icon><setting-icon /></template>
           </t-button>
         </div>
@@ -1283,7 +1289,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{ freq }}</t-radio-button>
           </t-radio-group>
           <div class="text-sm text-neutral-400">次</div>
-          <t-button variant="text" size="small" @click="openConfigDrawer">
+          <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
             <template #icon><setting-icon /></template>
           </t-button>
         </div>
@@ -1297,7 +1303,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{ mins }}</t-radio-button>
           </t-radio-group>
           <div class="text-sm text-neutral-400">分钟</div>
-          <t-button variant="text" size="small" @click="openConfigDrawer">
+          <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
             <template #icon><setting-icon /></template>
           </t-button>
         </div>
@@ -1346,7 +1352,7 @@ const exportDialogWidth = computed(() => {
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>未完成目标</span>
           <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length
-          }}</t-tag>
+            }}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
           <span v-for="todo in unfinishedGoalTodos" :key="todo.id"
@@ -1387,7 +1393,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1398,7 +1404,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                  }})</span>
+                    }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1453,7 +1459,7 @@ const exportDialogWidth = computed(() => {
                       </span>
                       <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
                       <span class="text-xs text-neutral-400">放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                        }}</span>
                       <span v-if="g.deadline" class="text-xs text-neutral-400">截止 {{
                         dayjs(g.deadline).format('YYYY-MM-DD') }}</span>
                     </div>
@@ -1574,7 +1580,7 @@ const exportDialogWidth = computed(() => {
                         <template v-else>目标 {{ item.minFrequency }} 次</template>
                       </t-tag>
                       <span class="text-xs text-neutral-400">归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm')
-                        }}</span>
+                      }}</span>
                     </div>
                     <div v-if="item.description" class="text-sm text-neutral-600 dark:text-neutral-400">
                       {{ item.description }}
@@ -1647,7 +1653,7 @@ const exportDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-                }}</div>
+              }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -1777,7 +1783,7 @@ const exportDialogWidth = computed(() => {
                   <div v-for="r in d.records" :key="r.id" class="p-2 rounded border" :style="exportItemStyle">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-xs" :style="exportMutedTextStyle">{{ dayjs(r.timestamp).format('HH:mm')
-                      }}</span>
+                        }}</span>
                       <span class="font-medium">{{ r.todoTitle }}</span>
                       <span v-if="r.category" :style="getCategoryExportTagStyle(r.category)">
                         {{ r.category }}
@@ -1812,7 +1818,7 @@ const exportDialogWidth = computed(() => {
                     </span>
                     <span class="text-xs" :style="exportMutedTextStyle">完成于 {{
                       dayjs(g.completedAt).format('YYYY-MM-DD HH:mm')
-                    }}</span>
+                      }}</span>
                   </div>
                 </div>
               </div>
@@ -1890,7 +1896,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-group v-model="templateMinFrequency" variant="default-filled" size="small"
               :disabled="templatePeriod === 'once'" class="flex flex-wrap">
               <t-radio-button v-for="freq in templateMinFrequencyOptions" :key="freq" :value="freq">{{ freq
-              }}</t-radio-button>
+                }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
           </div>
@@ -1902,7 +1908,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-group v-model="templateMinutesPerTime" variant="default-filled" size="small"
               class="flex flex-wrap">
               <t-radio-button v-for="mins in templateMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-              }}</t-radio-button>
+                }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
           </div>
@@ -1925,7 +1931,16 @@ const exportDialogWidth = computed(() => {
         <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
         <div v-if="punchMinutesEnabled" class="flex items-center gap-3">
           <div class="text-sm shrink-0">本次分钟</div>
-          <t-input-number v-model="punchMinutes" :min="0" :step="5" theme="column" class="flex-1" />
+          <div class="flex items-center gap-2">
+            <t-button variant="outline" size="small" shape="square" :disabled="punchMinutes <= 0"
+              @click="adjustPunchMinutes(-1, $event)">
+              <template #icon><minus-icon /></template>
+            </t-button>
+            <div class="min-w-14 text-center tabular-nums font-medium">{{ punchMinutes }}</div>
+            <t-button variant="outline" size="small" shape="square" @click="adjustPunchMinutes(1, $event)">
+              <template #icon><add-icon /></template>
+            </t-button>
+          </div>
         </div>
         <div class="flex justify-end gap-2 mt-2">
           <t-button variant="outline" @click="punchDialogVisible = false">取消</t-button>
