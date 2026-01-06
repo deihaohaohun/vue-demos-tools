@@ -55,7 +55,7 @@ export const n3Data: GrammarItem[] = [
       {
         meaning: '每次~, 每当~',
         tips: [],
-        usage: ['动词る + たびに', '名词 + たびに'],
+        usage: ['动词る + たびに', '名词の + たびに'],
         examples: [
           'おばあちゃんは会うたびに、お菓子をくれます。',
           '彼はiPhoneの新機種が出るたびに、買い替えている。',
@@ -188,6 +188,60 @@ export const n3Data: GrammarItem[] = [
           {
             name: '出口仁 N3',
             url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=34',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 18,
+    title: '〜てからでないと・〜てからでなければ',
+    level: 'N3',
+    commonality: 4,
+    mastery: 3,
+    meanings: [
+      {
+        meaning: '如果不先做 A 的话, B 就~(负面)',
+        usage: ['动词て型 + てからでないと', '动词て型 + てからでなければ'],
+        examples: [
+          '直接部屋を見てからでないと、、借りるかどうか決められない。',
+          'パソコンはOSをインストールしてからでなけsれば、、使えません。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=35',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 19,
+    title: '～てしょうがない',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '~~的不得了(感情/感觉/现象)',
+        usage: [
+          '动词て型 + てしょうがない',
+          '形容词く + てしょうがない',
+          '形容动词で + てしょうがない',
+        ],
+        examples: [
+          '好きな人と付き合えることになって、嬉しくてしょうがない。（感情）',
+          'エアコンが壊れて、暑くてしょうがない。（感觉）',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=36',
             logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
           },
         ],

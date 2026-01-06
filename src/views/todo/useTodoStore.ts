@@ -832,6 +832,7 @@ export const useTodoStore = () => {
     if (todo.period === 'once') return { kind: 'once' as const }
 
     const punchDayKey = formatDayKey(Date.now())
+    const recordId = nanoid()
 
     todo.punchIns = (todo.punchIns || 0) + 1
     const stat = ensureDayStat(punchDayKey)
@@ -847,7 +848,7 @@ export const useTodoStore = () => {
 
     // 记录打卡流水
     punchRecords.value.unshift({
-      id: nanoid(),
+      id: recordId,
       todoId: todo.id,
       todoTitle: todo.title,
       category: todo.category || '未分类',
@@ -867,10 +868,10 @@ export const useTodoStore = () => {
       todo.completedAt = Date.now()
       ensureDayStat(todo.dayKey).completedCount += 1
       incCategory(ensureDayStat(todo.dayKey).categoryCompleted, todo.category || '未分类', 1)
-      return { kind: 'auto_done' as const, punchIns: todo.punchIns }
+      return { kind: 'auto_done' as const, punchIns: todo.punchIns, recordId }
     }
 
-    return { kind: 'ok' as const, punchIns: todo.punchIns }
+    return { kind: 'ok' as const, punchIns: todo.punchIns, recordId }
   }
 
   const updatePunchRecordNote = (id: string, note: string) => {
@@ -880,6 +881,29 @@ export const useTodoStore = () => {
       return true
     }
     return false
+  }
+
+  const updatePunchRecordMinutes = (id: string, minutes: number) => {
+    const record = punchRecords.value.find((r) => r.id === id)
+    if (!record) return false
+
+    const dk = record.dayKey
+    const stat = ensureDayStat(dk)
+    const categoryKey = record.category || '未分类'
+
+    const oldMinutes = typeof record.minutesPerTime === 'number' ? record.minutesPerTime : 0
+    const nextMinutes = Math.max(0, Math.round(minutes))
+
+    const delta = nextMinutes - oldMinutes
+    if (delta !== 0) {
+      stat.minutesTotal = Math.max(0, (stat.minutesTotal || 0) + delta)
+      incCategory(stat.categoryMinutes, categoryKey, delta)
+    }
+
+    record.minutesPerTime = nextMinutes
+    record.unit = 'minutes'
+
+    return true
   }
 
   const createTodo = (params: {
@@ -1345,6 +1369,150 @@ export const useTodoStore = () => {
     return true
   }
 
+  const ensureTemplateFromHistory = (item: HistoryItem) => {
+    const title = item.title.trim()
+    const category = (item.category || '未分类').trim() || '未分类'
+    const period = item.period
+
+    const existing = templates.value.find(
+      (tpl) =>
+        !tpl.archived && tpl.title === title && tpl.category === category && tpl.period === period,
+    )
+    if (existing) return existing
+
+    const now = Date.now()
+    const unitValue = item.unit || 'times'
+    const tpl = {
+      id: nanoid(),
+      title,
+      category,
+      period,
+      minFrequency: typeof item.minFrequency === 'number' ? item.minFrequency : 1,
+      unit: unitValue,
+      minutesPerTime:
+        unitValue === 'minutes'
+          ? typeof item.minutesPerTime === 'number'
+            ? item.minutesPerTime
+            : 15
+          : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      createdAt: now,
+      archived: false,
+    } satisfies TodoTemplate
+
+    templates.value.push(tpl)
+    updateHistory({
+      title: tpl.title,
+      category: tpl.category,
+      period: tpl.period,
+      minFrequency: tpl.minFrequency,
+      unit: tpl.unit,
+      minutesPerTime: tpl.minutesPerTime,
+      description: tpl.description,
+    })
+
+    return tpl
+  }
+
+  const applyTemplateEdit = (
+    id: string,
+    patch: {
+      title: string
+      category: string
+      period: TodoPeriod
+      minFrequency: number
+      unit: TodoUnit
+      minutesPerTime: number
+      description?: string
+    },
+  ) => {
+    const tpl = templates.value.find((t) => t.id === id)
+    if (!tpl) return false
+
+    const oldTitle = tpl.title
+    const oldCategory = tpl.category || '未分类'
+    const oldPeriod = tpl.period
+
+    const nextTitle = patch.title.trim()
+    const nextCategory = (patch.category || '未分类').trim() || '未分类'
+    const nextMinFrequency = patch.period === 'once' ? 1 : patch.minFrequency
+    const nextMinutesPerTime = patch.unit === 'minutes' ? patch.minutesPerTime : undefined
+
+    tpl.title = nextTitle
+    tpl.category = nextCategory
+    tpl.period = patch.period
+    tpl.minFrequency = nextMinFrequency
+    tpl.unit = patch.unit
+    tpl.minutesPerTime = nextMinutesPerTime
+    tpl.description = patch.description
+
+    for (const todo of todos.value) {
+      if (todo.templateId !== id) continue
+      if ((todo.punchIns || 0) > 0) continue
+      if (todo.done) continue
+
+      const oldTodoCategory = todo.category || '未分类'
+      if (oldTodoCategory !== nextCategory) {
+        const stat = ensureDayStat(todo.dayKey)
+        incCategory(stat.categoryCreated, oldTodoCategory, -1)
+        incCategory(stat.categoryCreated, nextCategory, 1)
+      }
+
+      todo.title = nextTitle
+      todo.category = nextCategory
+      todo.period = patch.period
+      todo.minFrequency = nextMinFrequency
+      todo.unit = patch.unit
+      todo.minutesPerTime = nextMinutesPerTime
+      todo.description = patch.description
+    }
+
+    const hasChanged =
+      oldTitle !== nextTitle || oldCategory !== nextCategory || oldPeriod !== patch.period
+    if (hasChanged) {
+      const isOldConfigStillUsed = templates.value.some(
+        (t) =>
+          t.id !== id &&
+          t.title === oldTitle &&
+          (t.category || '未分类') === oldCategory &&
+          t.period === oldPeriod &&
+          !t.archived,
+      )
+
+      if (!isOldConfigStillUsed) {
+        const oldHistoryIndex = history.value.findIndex(
+          (h) => h.title === oldTitle && h.category === oldCategory && h.period === oldPeriod,
+        )
+        if (oldHistoryIndex > -1) history.value.splice(oldHistoryIndex, 1)
+      }
+
+      updateHistory({
+        title: nextTitle,
+        category: nextCategory,
+        period: patch.period,
+        minFrequency: nextMinFrequency,
+        unit: patch.unit,
+        minutesPerTime: nextMinutesPerTime,
+        description: patch.description,
+      })
+    } else {
+      const idx = history.value.findIndex(
+        (h) => h.title === nextTitle && h.category === nextCategory && h.period === patch.period,
+      )
+      if (idx > -1) {
+        const current = history.value[idx]
+        if (current) {
+          current.minFrequency = nextMinFrequency
+          current.unit = patch.unit
+          current.minutesPerTime = nextMinutesPerTime
+          current.description = patch.description
+        }
+      }
+    }
+
+    return true
+  }
+
   const getTodoById = (id: string) => {
     return todos.value.find((t) => t.id === id)
   }
@@ -1366,12 +1534,15 @@ export const useTodoStore = () => {
     getTodoById,
     punchInTodo,
     updatePunchRecordNote,
+    updatePunchRecordMinutes,
     createTodo,
     addTodoFromHistory,
     archiveTodoById,
     giveUpGoalById,
     toggleTodoDone,
     applyTodoEdit,
+    ensureTemplateFromHistory,
+    applyTemplateEdit,
     removeHistoryItem,
     clearHistoryAll,
     materializeTodayTodosFromTemplates,

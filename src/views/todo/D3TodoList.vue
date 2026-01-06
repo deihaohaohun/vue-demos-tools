@@ -14,8 +14,8 @@ import {
 import TodoItem from './TodoItem.vue'
 import { useTodoCharts } from './useTodoCharts'
 import { useTodoHeatmap } from './useTodoHeatmap'
-import { useTodoStore, type TodoPeriod, type TodoUnit, type PunchRecord } from './useTodoStore'
-import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon } from 'tdesign-icons-vue-next'
+import { useTodoStore, type TodoPeriod, type TodoUnit, type PunchRecord, type HistoryItem } from './useTodoStore'
+import { AddIcon, ChevronLeftIcon, ChevronRightIcon, SettingIcon, DeleteIcon, EditIcon, FileExportIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
 import confetti from 'canvas-confetti'
@@ -43,11 +43,14 @@ const {
   getTodoById,
   punchInTodo,
   updatePunchRecordNote,
+  updatePunchRecordMinutes,
   createTodo,
   archiveTodoById,
   giveUpGoalById,
   toggleTodoDone,
   applyTodoEdit,
+  ensureTemplateFromHistory,
+  applyTemplateEdit,
   consecutivePunchDays,
   maxConsecutivePunchDays,
   templates,
@@ -254,10 +257,41 @@ const abandonedGoalsSorted = computed(() =>
 const punchDialogVisible = ref(false)
 const punchNote = ref('')
 const currentPunchId = ref('')
+const punchMinutes = ref<number>(15)
+
+const currentPunchTodo = computed(() => {
+  if (!currentPunchId.value) return null
+  return getTodoById(currentPunchId.value) || null
+})
+
+const getTodoTemplateMinutes = (todoId: string) => {
+  const todo = getTodoById(todoId)
+  if (!todo) return undefined
+  if (!todo.templateId) return undefined
+  const tpl = templates.value.find((t) => t.id === todo.templateId)
+  if (!tpl || tpl.unit !== 'minutes') return undefined
+  return typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+}
+
+const punchMinutesEnabled = computed(() => {
+  const todo = currentPunchTodo.value
+  if (!todo) return false
+  if (todo.unit === 'minutes') return true
+  const tplMinutes = getTodoTemplateMinutes(todo.id)
+  return typeof tplMinutes === 'number'
+})
 
 const onPunchTrigger = (id: string) => {
   currentPunchId.value = id
   punchNote.value = ''
+  const tplMinutes = getTodoTemplateMinutes(id)
+  if (typeof tplMinutes === 'number') {
+    punchMinutes.value = tplMinutes
+  } else {
+    const todo = getTodoById(id)
+    punchMinutes.value =
+      todo && todo.unit === 'minutes' ? (typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15) : 15
+  }
   punchDialogVisible.value = true
 }
 
@@ -283,8 +317,14 @@ const confirmPunch = () => {
 
   if (res.kind === 'once') return
   if (res.kind === 'auto_done') {
+    if (punchMinutesEnabled.value && typeof res.recordId === 'string') {
+      updatePunchRecordMinutes(res.recordId, punchMinutes.value)
+    }
     MessagePlugin.success('已达成目标，自动完成')
     return
+  }
+  if (punchMinutesEnabled.value && typeof res.recordId === 'string') {
+    updatePunchRecordMinutes(res.recordId, punchMinutes.value)
   }
   MessagePlugin.success(`打卡成功,当前已打卡 ${res.punchIns} 次`)
 }
@@ -304,10 +344,14 @@ const nextDay = () => {
 }
 const isToday = computed(() => historyDate.value === dayjs().format('YYYY-MM-DD'))
 
+const editingRecordMinutesId = ref<string | null>(null)
+const editingRecordMinutes = ref<number>(15)
+
 const editingRecordId = ref<string | null>(null)
 const editingRecordNote = ref('')
 
 const startEditRecord = (record: PunchRecord) => {
+  editingRecordMinutesId.value = null
   editingRecordId.value = record.id
   editingRecordNote.value = record.note || ''
 }
@@ -317,6 +361,37 @@ const saveRecordNote = () => {
     editingRecordId.value = null
     MessagePlugin.success('备注已更新')
   }
+}
+
+const getRecordMinutes = (record: PunchRecord) => {
+  if (record.unit === 'minutes') {
+    return typeof record.minutesPerTime === 'number' ? record.minutesPerTime : 15
+  }
+
+  const tpl = templates.value.find(
+    (t) =>
+      t.title === record.todoTitle && (t.category || '未分类') === (record.category || '未分类'),
+  )
+  if (tpl && tpl.unit === 'minutes') {
+    return typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+  }
+
+  return 0
+}
+
+const startEditRecordMinutes = (record: PunchRecord) => {
+  editingRecordId.value = null
+  editingRecordMinutesId.value = record.id
+  const mins = getRecordMinutes(record)
+  editingRecordMinutes.value = mins > 0 ? mins : 15
+}
+
+const saveRecordMinutes = () => {
+  const id = editingRecordMinutesId.value
+  if (!id) return
+  updatePunchRecordMinutes(id, editingRecordMinutes.value)
+  editingRecordMinutesId.value = null
+  MessagePlugin.success('分钟已更新')
 }
 
 
@@ -409,13 +484,7 @@ const selectedIds = ref<Set<string>>(new Set())
 const editVisible = ref(false)
 const editingTodoId = ref<string | null>(null)
 const editTitle = ref('')
-const editCategory = ref<string>('')
-const editPeriod = ref<TodoPeriod>('daily')
-const editMinFrequency = ref<number>(1)
-const editUnit = ref<TodoUnit>('times')
-const editMinutesPerTime = ref<number>(15)
 const editDescription = ref('')
-const editDeadline = ref<string>('')
 
 const editingTodo = computed(() => {
   const id = editingTodoId.value
@@ -429,42 +498,6 @@ const editOnlyDescription = computed(() => {
   return t.period === 'once' && t.done
 })
 
-const editCategoryOptions = computed(() => {
-  const cats = [...categoryOptions.value]
-  const cur = editCategory.value
-  if (cur && !cats.includes(cur)) cats.unshift(cur)
-  return cats
-})
-
-const editMinFrequencyOptions = computed(() => {
-  const opts = [...minFrequencyOptions.value]
-  const cur = editMinFrequency.value
-  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
-  return opts.sort((a, b) => a - b)
-})
-
-const editMinutesPerTimeOptions = computed(() => {
-  const opts = [...minutesPerTimeOptions.value]
-  const cur = editMinutesPerTime.value
-  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
-  return opts.sort((a, b) => a - b)
-})
-
-watch(editPeriod, (p) => {
-  if (p === 'once') {
-    editUnit.value = 'times'
-    editMinFrequency.value = 1
-    if (!editMinutesPerTime.value) editMinutesPerTime.value = 15
-  }
-})
-
-watch(editUnit, (u) => {
-  if (u !== 'minutes') return
-  if (!editMinutesPerTime.value) {
-    editMinutesPerTime.value = editMinutesPerTimeOptions.value[0] || 15
-  }
-})
-
 const todayDisplay = computed(() => {
   const w = ['日', '一', '二', '三', '四', '五', '六']
   return `${todayKey.value} 周${w[new Date().getDay()]}`
@@ -474,22 +507,9 @@ const openEdit = (id: string) => {
   const todo = getTodoById(id)
   if (!todo) return
 
-  const isCompletedGoal = todo.period === 'once' && todo.done
-
   editingTodoId.value = id
   editTitle.value = todo.title
-  editCategory.value = todo.category
-  editPeriod.value = todo.period
-  editMinFrequency.value = typeof todo.minFrequency === 'number' ? todo.minFrequency : 1
-  editUnit.value = todo.unit
-  editMinutesPerTime.value =
-    todo.unit === 'minutes' ? (typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15) : 15
   editDescription.value = todo.description || ''
-  editDeadline.value = todo.deadline ? dayjs(todo.deadline).format('YYYY-MM-DD') : ''
-
-  if (isCompletedGoal) {
-    editPeriod.value = 'once'
-  }
 
   editVisible.value = true
 }
@@ -504,18 +524,17 @@ const saveEdit = () => {
   const isCompletedGoal = todo.period === 'once' && todo.done
 
   const nextTitle = isCompletedGoal ? todo.title : editTitle.value.trim()
-  const nextCategory = isCompletedGoal ? todo.category : editCategory.value
-  const nextPeriod = isCompletedGoal ? todo.period : editPeriod.value
-  const nextMinFrequency = isCompletedGoal
-    ? todo.minFrequency
-    : typeof editMinFrequency.value === 'number'
-      ? editMinFrequency.value
-      : 1
-  const nextUnit = isCompletedGoal ? todo.unit : editUnit.value
-  const nextMinutesPerTime = isCompletedGoal
-    ? todo.minutesPerTime || 15
-    : editUnit.value === 'minutes'
-      ? editMinutesPerTime.value
+  const tplMinutes =
+    todo.templateId && templates.value.find((t) => t.id === todo.templateId)?.unit === 'minutes'
+      ? templates.value.find((t) => t.id === todo.templateId)?.minutesPerTime
+      : undefined
+  const nextMinutesPerTime =
+    todo.unit === 'minutes'
+      ? typeof todo.minutesPerTime === 'number'
+        ? todo.minutesPerTime
+        : typeof tplMinutes === 'number'
+          ? tplMinutes
+          : 15
       : 15
 
   if (!nextTitle) {
@@ -523,32 +542,104 @@ const saveEdit = () => {
     return
   }
 
-  if (!isCompletedGoal && editCategoryOptions.value.length && !nextCategory) {
-    MessagePlugin.warning('请选择任务分类')
-    return
-  }
-
-  const nextDeadline = isCompletedGoal
-    ? todo.deadline
-    : nextPeriod === 'once' && editDeadline.value
-      ? dayjs(editDeadline.value).valueOf()
-      : undefined
-
   const ok = applyTodoEdit(id, {
     title: nextTitle,
-    category: nextCategory,
-    period: nextPeriod,
-    minFrequency: nextMinFrequency,
-    unit: nextUnit,
+    category: todo.category,
+    period: todo.period,
+    minFrequency: todo.minFrequency,
+    unit: todo.unit,
     minutesPerTime: nextMinutesPerTime,
     description: editDescription.value.trim() || undefined,
-    deadline: nextDeadline,
+    deadline: todo.deadline,
   })
   if (!ok) return
 
   editVisible.value = false
   editingTodoId.value = null
   MessagePlugin.success('已保存修改')
+}
+
+const templateEditVisible = ref(false)
+const editingTemplateId = ref<string | null>(null)
+const templateTitle = ref('')
+const templateCategory = ref('')
+const templatePeriod = ref<TodoPeriod>('daily')
+const templateMinFrequency = ref<number>(1)
+const templateUnit = ref<TodoUnit>('times')
+const templateMinutesPerTime = ref<number>(15)
+const templateDescription = ref('')
+
+const templateCategoryOptions = computed(() => {
+  const cats = [...categoryOptions.value]
+  const cur = templateCategory.value
+  if (cur && !cats.includes(cur)) cats.unshift(cur)
+  return cats
+})
+
+const templateMinFrequencyOptions = computed(() => {
+  const opts = [...minFrequencyOptions.value]
+  const cur = templateMinFrequency.value
+  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
+  return opts.sort((a, b) => a - b)
+})
+
+const templateMinutesPerTimeOptions = computed(() => {
+  const opts = [...minutesPerTimeOptions.value]
+  const cur = templateMinutesPerTime.value
+  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
+  return opts.sort((a, b) => a - b)
+})
+
+watch(templateUnit, (u) => {
+  if (u !== 'minutes') return
+  if (!templateMinutesPerTime.value) {
+    templateMinutesPerTime.value = templateMinutesPerTimeOptions.value[0] || 15
+  }
+})
+
+const openTemplateEditFromHistory = (item: HistoryItem) => {
+  const tpl = ensureTemplateFromHistory(item)
+
+  editingTemplateId.value = tpl.id
+  templateTitle.value = tpl.title
+  templateCategory.value = tpl.category
+  templatePeriod.value = tpl.period
+  templateMinFrequency.value = tpl.minFrequency
+  templateUnit.value = tpl.unit
+  templateMinutesPerTime.value =
+    tpl.unit === 'minutes' ? (typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15) : 15
+  templateDescription.value = tpl.description || ''
+  templateEditVisible.value = true
+}
+
+const saveTemplateEdit = () => {
+  const id = editingTemplateId.value
+  if (!id) return
+
+  const nextTitle = templateTitle.value.trim()
+  if (!nextTitle) {
+    MessagePlugin.warning('模板名称不能为空')
+    return
+  }
+  if (templateCategoryOptions.value.length && !templateCategory.value) {
+    MessagePlugin.warning('请选择模板分类')
+    return
+  }
+
+  const ok = applyTemplateEdit(id, {
+    title: nextTitle,
+    category: templateCategory.value,
+    period: templatePeriod.value,
+    minFrequency: templateMinFrequency.value,
+    unit: templateUnit.value,
+    minutesPerTime: templateMinutesPerTime.value,
+    description: templateDescription.value.trim() || undefined,
+  })
+  if (!ok) return
+
+  templateEditVisible.value = false
+  editingTemplateId.value = null
+  MessagePlugin.success('模板已更新')
 }
 
 const allDisplayTodos = computed(() =>
@@ -1150,7 +1241,7 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3">
-      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+      <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
         <div class="flex items-center gap-2 flex-1">
           <t-radio-group v-if="categoryOptions.length" v-model="category" variant="default-filled" size="small"
@@ -1240,9 +1331,12 @@ const exportDialogWidth = computed(() => {
         <div class="flex flex-wrap gap-2">
           <span v-for="item in periodicHistory.filter(h => h.category === cat)"
             :key="`${item.title}-${item.category}-${item.period}`"
-            class="inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold transition-colors"
+            class="inline-flex items-center gap-1 px-1 rounded border text-[11px] font-semibold transition-colors"
             :class="getCategoryTagClass(cat)">
             <span class="cursor-pointer hover:opacity-70">{{ item.title }}</span>
+            <t-button variant="text" size="small" shape="square" @click.stop="openTemplateEditFromHistory(item)">
+              <template #icon><edit-icon /></template>
+            </t-button>
           </span>
         </div>
       </div>
@@ -1252,7 +1346,7 @@ const exportDialogWidth = computed(() => {
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>未完成目标</span>
           <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length
-            }}</t-tag>
+          }}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
           <span v-for="todo in unfinishedGoalTodos" :key="todo.id"
@@ -1293,7 +1387,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1304,7 +1398,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1359,7 +1453,7 @@ const exportDialogWidth = computed(() => {
                       </span>
                       <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
                       <span class="text-xs text-neutral-400">放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm')
-                        }}</span>
+                      }}</span>
                       <span v-if="g.deadline" class="text-xs text-neutral-400">截止 {{
                         dayjs(g.deadline).format('YYYY-MM-DD') }}</span>
                     </div>
@@ -1403,7 +1497,7 @@ const exportDialogWidth = computed(() => {
                   <div class="flex flex-col gap-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="font-medium">{{ record.todoTitle }}</span>
-                      <span v-if="record.category" class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+                      <span v-if="record.category" class="px-1 rounded text-[11px] font-semibold border"
                         :style="getCategoryCssVars(record.category)" :class="getCategoryTagClass(record.category)">{{
                           record.category }}</span>
                       <span class="text-xs text-neutral-400">{{ dayjs(record.timestamp).format('HH:mm:ss') }}</span>
@@ -1420,6 +1514,29 @@ const exportDialogWidth = computed(() => {
                       <div v-else class="flex items-center gap-2 group cursor-pointer" @click="startEditRecord(record)">
                         <span class="text-sm text-neutral-600 dark:text-neutral-400">
                           {{ record.note || '无备注 (点击添加)' }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <div v-if="editingRecordMinutesId === record.id" class="flex flex-wrap items-center gap-2">
+                        <t-input-number v-model="editingRecordMinutes" :min="0" :step="5" size="small"
+                          class="w-[120px]" />
+                        <div class="flex gap-1">
+                          <t-button size="small" theme="primary" variant="text" @click="saveRecordMinutes">保存</t-button>
+                          <t-button size="small" theme="default" variant="text"
+                            @click="editingRecordMinutesId = null">取消</t-button>
+                        </div>
+                      </div>
+                      <div v-else class="flex items-center gap-2 group cursor-pointer"
+                        @click="startEditRecordMinutes(record)">
+                        <span class="text-sm text-neutral-600 dark:text-neutral-400">
+                          <template v-if="getRecordMinutes(record) > 0">
+                            {{ getRecordMinutes(record) }} 分钟 (点击修改)
+                          </template>
+                          <template v-else>
+                            分钟未记录 (点击补充)
+                          </template>
                         </span>
                       </div>
                     </div>
@@ -1457,7 +1574,7 @@ const exportDialogWidth = computed(() => {
                         <template v-else>目标 {{ item.minFrequency }} 次</template>
                       </t-tag>
                       <span class="text-xs text-neutral-400">归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                        }}</span>
                     </div>
                     <div v-if="item.description" class="text-sm text-neutral-600 dark:text-neutral-400">
                       {{ item.description }}
@@ -1484,8 +1601,11 @@ const exportDialogWidth = computed(() => {
               <t-radio-button value="7d">7天</t-radio-button>
               <t-radio-button value="30d">30天</t-radio-button>
             </t-radio-group>
-            <t-button size="small" theme="primary" variant="outline" :disabled="exporting" @click="openExportDialog">
-              导出
+            <t-button shape="square" size="small" theme="primary" variant="outline" :disabled="exporting"
+              @click="openExportDialog">
+              <template v-slot:icon>
+                <file-export-icon />
+              </template>
             </t-button>
           </div>
         </div>
@@ -1527,7 +1647,7 @@ const exportDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-              }}</div>
+                }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -1657,7 +1777,7 @@ const exportDialogWidth = computed(() => {
                   <div v-for="r in d.records" :key="r.id" class="p-2 rounded border" :style="exportItemStyle">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-xs" :style="exportMutedTextStyle">{{ dayjs(r.timestamp).format('HH:mm')
-                        }}</span>
+                      }}</span>
                       <span class="font-medium">{{ r.todoTitle }}</span>
                       <span v-if="r.category" :style="getCategoryExportTagStyle(r.category)">
                         {{ r.category }}
@@ -1692,7 +1812,7 @@ const exportDialogWidth = computed(() => {
                     </span>
                     <span class="text-xs" :style="exportMutedTextStyle">完成于 {{
                       dayjs(g.completedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                    }}</span>
                   </div>
                 </div>
               </div>
@@ -1716,23 +1836,37 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">任务分类</div>
+          <div class="text-sm mb-1">任务描述</div>
+          <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end gap-2">
+        <t-button variant="outline" @click="editVisible = false">取消</t-button>
+        <t-button theme="primary" @click="saveEdit">保存</t-button>
+      </div>
+    </t-dialog>
+
+    <t-dialog v-model:visible="templateEditVisible" header="编辑模板" :width="editDialogWidth" :footer="false">
+      <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
+        <div class="col-span-12">
+          <div class="text-sm mb-1">模板名称</div>
+          <t-input v-model="templateTitle" placeholder="请输入模板名称" />
+        </div>
+
+        <div class="col-span-12">
+          <div class="text-sm mb-1">模板分类</div>
           <div class="flex items-center gap-2">
-            <t-radio-group v-if="editCategoryOptions.length" v-model="editCategory" variant="default-filled"
-              size="small" class="flex flex-wrap" :disabled="editOnlyDescription">
-              <t-radio-button v-for="c in editCategoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
+            <t-radio-group v-if="templateCategoryOptions.length" v-model="templateCategory" variant="default-filled"
+              size="small" class="flex flex-wrap">
+              <t-radio-button v-for="c in templateCategoryOptions" :key="c" :value="c">{{ c }}</t-radio-button>
             </t-radio-group>
-            <t-input v-else v-model="editCategory" placeholder="暂无分类，请先在配置管理中添加" disabled class="flex-1" />
-            <t-button variant="text" size="small" disabled>
-              <template #icon><setting-icon /></template>
-            </t-button>
+            <t-input v-else v-model="templateCategory" placeholder="暂无分类，请先在配置管理中添加" disabled class="flex-1" />
           </div>
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">任务周期</div>
-          <t-radio-group v-model="editPeriod" variant="default-filled" size="small" class="flex flex-wrap"
-            :disabled="editOnlyDescription">
+          <div class="text-sm mb-1">模板周期</div>
+          <t-radio-group v-model="templatePeriod" variant="default-filled" size="small" class="flex flex-wrap">
             <t-radio-button value="daily">每天</t-radio-button>
             <t-radio-button value="weekly">每周</t-radio-button>
             <t-radio-button value="monthly">每月</t-radio-button>
@@ -1742,9 +1876,9 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">任务单位</div>
-          <t-radio-group v-model="editUnit" variant="default-filled" size="small"
-            :disabled="editOnlyDescription || editPeriod === 'once'" class="flex flex-wrap">
+          <div class="text-sm mb-1">模板单位</div>
+          <t-radio-group v-model="templateUnit" variant="default-filled" size="small"
+            :disabled="templatePeriod === 'once'" class="flex flex-wrap">
             <t-radio-button value="times">次数</t-radio-button>
             <t-radio-button value="minutes">分钟</t-radio-button>
           </t-radio-group>
@@ -1753,55 +1887,46 @@ const exportDialogWidth = computed(() => {
         <div class="col-span-12">
           <div class="text-sm mb-1">最小频率</div>
           <div class="flex items-center gap-2">
-            <t-radio-group v-model="editMinFrequency" variant="default-filled" size="small"
-              :disabled="editOnlyDescription || editPeriod === 'once'" class="flex flex-wrap">
-              <t-radio-button v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{ freq
-                }}</t-radio-button>
+            <t-radio-group v-model="templateMinFrequency" variant="default-filled" size="small"
+              :disabled="templatePeriod === 'once'" class="flex flex-wrap">
+              <t-radio-button v-for="freq in templateMinFrequencyOptions" :key="freq" :value="freq">{{ freq
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
-            <t-button variant="text" size="small" disabled>
-              <template #icon><setting-icon /></template>
-            </t-button>
           </div>
         </div>
 
-        <div class="col-span-12">
+        <div class="col-span-12" v-if="templateUnit === 'minutes'">
           <div class="text-sm mb-1">每次分钟</div>
           <div class="flex items-center gap-2">
-            <t-radio-group v-model="editMinutesPerTime" variant="default-filled" size="small"
-              :disabled="editOnlyDescription || editPeriod === 'once' || editUnit !== 'minutes'" class="flex flex-wrap">
-              <t-radio-button v-for="mins in editMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-                }}</t-radio-button>
+            <t-radio-group v-model="templateMinutesPerTime" variant="default-filled" size="small"
+              class="flex flex-wrap">
+              <t-radio-button v-for="mins in templateMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
-            <t-button variant="text" size="small" disabled>
-              <template #icon><setting-icon /></template>
-            </t-button>
           </div>
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">任务描述</div>
-          <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
-        </div>
-
-        <div class="col-span-12" v-if="editPeriod === 'once'">
-          <div class="text-sm mb-1">截止日期</div>
-          <t-date-picker v-model="editDeadline" placeholder="可选：选择截止日期" class="w-full"
-            :disabled="editOnlyDescription" />
+          <div class="text-sm mb-1">模板描述</div>
+          <t-input v-model="templateDescription" placeholder="可选：添加模板的详细描述" />
         </div>
       </div>
       <div class="mt-4 flex justify-end gap-2">
-        <t-button variant="outline" @click="editVisible = false">取消</t-button>
-        <t-button theme="primary" @click="saveEdit">保存</t-button>
+        <t-button variant="outline" @click="templateEditVisible = false">取消</t-button>
+        <t-button theme="primary" @click="saveTemplateEdit">保存</t-button>
       </div>
     </t-dialog>
 
-    <t-dialog v-model:visible="punchDialogVisible" header="打卡备注" :width="punchDialogWidth" :footer="false"
-      @close="confirmPunch">
+    <t-dialog v-model:visible="punchDialogVisible" header="打卡备注" :width="punchDialogWidth" :footer="false">
       <div class="flex flex-col gap-3">
         <div class="text-sm">请输入本次打卡备注（可选）：</div>
         <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
+        <div v-if="punchMinutesEnabled" class="flex items-center gap-3">
+          <div class="text-sm shrink-0">本次分钟</div>
+          <t-input-number v-model="punchMinutes" :min="0" :step="5" theme="column" class="flex-1" />
+        </div>
         <div class="flex justify-end gap-2 mt-2">
           <t-button variant="outline" @click="punchDialogVisible = false">取消</t-button>
           <t-button theme="primary" @click="confirmPunch">确认打卡</t-button>

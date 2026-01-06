@@ -173,27 +173,25 @@ const getPeriodTheme = (period: string) => {
     </div>
 
     <div class="flex gap-2 items-center mt-3 sm:mt-0 justify-end shrink-0">
-      <t-button v-if="todo.period !== 'once'" theme="primary" size="small" @click.stop="emit('punch-in', todo.id)">
+      <t-button v-if="todo.period !== 'once'" shape="square" theme="primary" size="small"
+        @click.stop="emit('punch-in', todo.id)">
         <template #icon>
           <refresh-icon v-if="todo.punchIns > 0" size="12" />
           <check-icon v-if="todo.punchIns <= 0" size="12" />
         </template>
-        {{ todo.punchIns > 0 ? '再次打卡' : '打卡' }}
       </t-button>
 
-      <t-button v-if="todo.period === 'once' && !todo.done" theme="success" size="small"
+      <t-button shape="square" v-if="todo.period === 'once' && !todo.done" theme="success" size="small"
         @click.stop="emit('toggle-done', todo.id, true)">
         <template #icon>
           <check-circle-icon size="12" />
         </template>
-        完成目标
       </t-button>
 
-      <t-button theme="default" variant="outline" size="small" @click.stop="emit('edit', todo.id)">
-        <template #icon>
+      <t-button shape="square" variant="outline" size="small" @click.stop="emit('edit', todo.id)">
+        <template v-slot:icon>
           <edit-icon size="12" />
         </template>
-        编辑
       </t-button>
 
       <t-button v-if="!(todo.period === 'once' && todo.done)" :title="todo.period === 'once' ? '放弃目标' : '归档'"
