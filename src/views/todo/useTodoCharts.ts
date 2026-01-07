@@ -86,6 +86,9 @@ export const useTodoCharts = (args: {
         symbolSize: 6,
         itemStyle: { color },
         areaStyle: { color: toRgba(color, 0.12) },
+        lineStyle: {
+          width: 4,
+        },
       }
     })
 
@@ -157,6 +160,9 @@ export const useTodoCharts = (args: {
           symbolSize: 6,
           itemStyle: { color: '#a78bfa' },
           areaStyle: { color: 'rgba(167,139,250,0.2)' },
+          lineStyle: {
+            width: 4,
+          },
         },
       ],
     }

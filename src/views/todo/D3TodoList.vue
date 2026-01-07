@@ -1599,7 +1599,7 @@ const exportDialogWidth = computed(() => {
       </t-tabs>
 
       <div
-        class="p-2 sm:p-3 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 rounded-md mt-2">
+        class="p-2 sm:p-2 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 rounded-md mt-2">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
           <div class="text-sm">数据统计</div>
           <div class="flex items-center gap-2">
@@ -1686,10 +1686,10 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden mb-2 relative">
-          <div class="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+          <div class="px-2 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
             <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">最近一年活跃热力图（打卡次数/分钟数）</div>
           </div>
-          <div class="p-3">
+          <div class="p-2">
             <div class="w-full overflow-x-auto">
               <div class="w-fit mx-auto">
                 <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
@@ -1702,7 +1702,7 @@ const exportDialogWidth = computed(() => {
           </div>
         </div>
 
-        <div class="grid grid-cols-12 gap-3">
+        <div class="grid grid-cols-12 gap-2">
           <div
             class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800">
             <div class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30">
@@ -1760,19 +1760,19 @@ const exportDialogWidth = computed(() => {
     <t-dialog v-model:visible="exportDialogVisible" :header="exportDialogTitle" :width="exportDialogWidth"
       :footer="false">
       <div class="p-2 rounded" :style="{ backgroundColor: exportPalette.rootBg, color: exportPalette.rootText }">
-        <div class="flex items-center justify-between gap-2 mb-2 px-1">
+        <div class="flex items-center justify-between gap-2 mb-2 px-2">
           <t-button size="small" variant="outline" @click="prevExportWeek" :disabled="exportingImage">上一周</t-button>
           <div class="text-xs" :style="exportMutedTextStyle">{{ exportWeekRangeText }}</div>
           <t-button size="small" variant="outline" @click="nextExportWeek"
             :disabled="!canNextExportWeek || exportingImage">下一周</t-button>
         </div>
-        <div class="max-h-[70vh] overflow-y-auto px-1">
-          <div ref="exportCaptureRef" class="p-3 rounded border" :style="exportRootStyle">
+        <div class="max-h-[70vh] overflow-y-auto px-2">
+          <div ref="exportCaptureRef" class="p-2 rounded border" :style="exportRootStyle">
             <div class="text-base font-bold mb-3">{{ exportDialogTitle }}</div>
 
-            <div class="flex flex-col gap-3">
-              <div v-for="d in exportSummaries" :key="d.dayKey" class="p-3 rounded border" :style="exportDayCardStyle">
-                <div class="flex items-start justify-between gap-2">
+            <div class="flex flex-col gap-2">
+              <div v-for="d in exportSummaries" :key="d.dayKey" class="p-2 rounded border" :style="exportDayCardStyle">
+                <div class="flex items-center justify-between gap-2">
                   <div class="font-bold">{{ d.dayKey }}</div>
                   <div class="text-xs" :style="exportMutedTextStyle">
                     打卡 {{ d.punchIns }} 次 · {{ d.minutes }} 分钟
@@ -1797,7 +1797,7 @@ const exportDialogWidth = computed(() => {
                     </div>
                   </div>
                 </div>
-                <div v-else class="text-sm mt-2" :style="exportMutedTextStyle">无打卡记录</div>
+                <div v-else class="text-sm" :style="exportMutedTextStyle">无打卡记录</div>
               </div>
             </div>
 
