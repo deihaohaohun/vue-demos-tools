@@ -1328,7 +1328,7 @@ const exportDialogWidth = computed(() => {
     <div class="max-w-[1200px] mx-auto mt-2 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
       <!-- Periodic Categories -->
       <div v-for="cat in periodicCategories" :key="cat" :style="getCategoryCssVars(cat)"
-        class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+        class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>{{ cat }} (模板)</span>
           <span class="px-2 py-0.5 rounded text-[11px] font-semibold border" :class="getCategoryTagClass(cat)">{{
@@ -1348,11 +1348,11 @@ const exportDialogWidth = computed(() => {
       </div>
 
       <!-- Unfinished Goals -->
-      <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+      <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>未完成目标</span>
           <t-tag size="small" variant="light" theme="warning">{{ unfinishedGoalTodos.length
-            }}</t-tag>
+          }}</t-tag>
         </div>
         <div class="flex flex-wrap gap-2">
           <span v-for="todo in unfinishedGoalTodos" :key="todo.id"
@@ -1365,7 +1365,7 @@ const exportDialogWidth = computed(() => {
       </div>
 
       <!-- Completed Goals -->
-      <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+      <div class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
           <span>已完成目标</span>
           <t-tag size="small" variant="light" theme="success">{{ completedGoalTodos.length }}</t-tag>
@@ -1384,7 +1384,7 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <div class="max-w-[1200px] mx-auto mt-2 px-4">
-      <t-tabs :default-value="1" class="rounded-md overflow-hidden">
+      <t-tabs :default-value="1" class="rounded-md overflow-hidden border border-neutral-100 dark:border-neutral-800">
         <t-tab-panel :value="1" :label="`任务列表 (${taskDisplayTodos.length})`">
           <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': taskDisplayTodos.length }">
             <template v-if="taskDisplayTodos.length">
@@ -1393,7 +1393,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">未开始 ({{ unstartedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in unstartedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1404,7 +1404,7 @@ const exportDialogWidth = computed(() => {
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300">已打卡 ({{ punchedTodos.length
-                    }})</span>
+                  }})</span>
                 </div>
                 <TodoItem v-for="todo in punchedTodos" :key="todo.id" :todo="todo" @toggle-select="toggleSelect"
                   @toggle-done="toggleDone" @punch-in="handlePunchIn" @edit="openEdit" @archive="archiveTodo" />
@@ -1459,7 +1459,7 @@ const exportDialogWidth = computed(() => {
                       </span>
                       <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
                       <span class="text-xs text-neutral-400">放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm')
-                        }}</span>
+                      }}</span>
                       <span v-if="g.deadline" class="text-xs text-neutral-400">截止 {{
                         dayjs(g.deadline).format('YYYY-MM-DD') }}</span>
                     </div>
@@ -1479,8 +1479,7 @@ const exportDialogWidth = computed(() => {
         </t-tab-panel>
         <t-tab-panel :value="3" label="打卡记录">
           <div class="min-h-[300px] p-2">
-            <div
-              class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 border-b border-neutral-200 dark:border-neutral-800 pb-2 gap-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2">
               <div class="flex items-center gap-2">
                 <t-button variant="text" shape="square" @click="prevDay">
                   <template #icon><chevron-left-icon /></template>
@@ -1580,7 +1579,7 @@ const exportDialogWidth = computed(() => {
                         <template v-else>目标 {{ item.minFrequency }} 次</template>
                       </t-tag>
                       <span class="text-xs text-neutral-400">归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                        }}</span>
                     </div>
                     <div v-if="item.description" class="text-sm text-neutral-600 dark:text-neutral-400">
                       {{ item.description }}
@@ -1599,7 +1598,7 @@ const exportDialogWidth = computed(() => {
       </t-tabs>
 
       <div
-        class="p-2 sm:p-2 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 rounded-md mt-2">
+        class="p-2 sm:p-2 bg-white dark:bg-neutral-950 srounded-md mt-2 border border-neutral-100 dark:border-neutral-800 rounded-md">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
           <div class="text-sm">数据统计</div>
           <div class="flex items-center gap-2">
@@ -1653,7 +1652,7 @@ const exportDialogWidth = computed(() => {
             <div class="flex flex-col items-center justify-center gap-1">
               <div class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400">{{
                 animatedPunchIns
-              }}</div>
+                }}</div>
               <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
                 较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
               </t-tag>
@@ -1710,7 +1709,7 @@ const exportDialogWidth = computed(() => {
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="punchInsByCategoryOption" style="height: 100%; width: 100%" autoresize />
+                <VChart :option="punchInsByCategoryOption" autoresize />
               </div>
             </div>
           </div>
@@ -1723,7 +1722,7 @@ const exportDialogWidth = computed(() => {
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="categoryOption" style="height: 100%; width: 100%" autoresize />
+                <VChart :option="categoryOption" autoresize />
               </div>
             </div>
           </div>
@@ -1736,7 +1735,7 @@ const exportDialogWidth = computed(() => {
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="punchInsOption" style="height: 100%; width: 100%" autoresize />
+                <VChart :option="punchInsOption" autoresize />
               </div>
             </div>
           </div>
@@ -1749,7 +1748,7 @@ const exportDialogWidth = computed(() => {
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="minutesOption" style="height: 100%; width: 100%" autoresize />
+                <VChart :option="minutesOption" autoresize />
               </div>
             </div>
           </div>
@@ -1783,7 +1782,7 @@ const exportDialogWidth = computed(() => {
                   <div v-for="r in d.records" :key="r.id" class="p-2 rounded border" :style="exportItemStyle">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-xs" :style="exportMutedTextStyle">{{ dayjs(r.timestamp).format('HH:mm')
-                        }}</span>
+                      }}</span>
                       <span class="font-medium">{{ r.todoTitle }}</span>
                       <span v-if="r.category" :style="getCategoryExportTagStyle(r.category)">
                         {{ r.category }}
@@ -1818,7 +1817,7 @@ const exportDialogWidth = computed(() => {
                     </span>
                     <span class="text-xs" :style="exportMutedTextStyle">完成于 {{
                       dayjs(g.completedAt).format('YYYY-MM-DD HH:mm')
-                      }}</span>
+                    }}</span>
                   </div>
                 </div>
               </div>
@@ -1896,7 +1895,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-group v-model="templateMinFrequency" variant="default-filled" size="small"
               :disabled="templatePeriod === 'once'" class="flex flex-wrap">
               <t-radio-button v-for="freq in templateMinFrequencyOptions" :key="freq" :value="freq">{{ freq
-                }}</t-radio-button>
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">次</div>
           </div>
@@ -1908,7 +1907,7 @@ const exportDialogWidth = computed(() => {
             <t-radio-group v-model="templateMinutesPerTime" variant="default-filled" size="small"
               class="flex flex-wrap">
               <t-radio-button v-for="mins in templateMinutesPerTimeOptions" :key="mins" :value="mins">{{ mins
-                }}</t-radio-button>
+              }}</t-radio-button>
             </t-radio-group>
             <div class="text-sm text-neutral-400">分钟</div>
           </div>
