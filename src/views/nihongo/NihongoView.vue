@@ -170,7 +170,7 @@ const updateMastery = (id: number, delta: number) => {
 
                 <div
                   class="flex items-center gap-1 bg-white dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-700 p-0.5">
-                  <t-button shape="square" variant="text" size="extra-small" :disabled="item.mastery <= 1"
+                  <t-button shape="square" variant="text" size="small" :disabled="item.mastery <= 1"
                     @click.stop="updateMastery(item.id, -1)">
                     <template #icon><arrow-down-icon /></template>
                   </t-button>
@@ -179,7 +179,7 @@ const updateMastery = (id: number, delta: number) => {
                     <span class="text-xs font-black text-blue-600 dark:text-blue-400 leading-none mt-0.5">{{
                       item.mastery }}</span>
                   </div>
-                  <t-button shape="square" variant="text" size="extra-small" :disabled="item.mastery >= 5"
+                  <t-button shape="square" variant="text" size="small" :disabled="item.mastery >= 5"
                     @click.stop="updateMastery(item.id, 1)">
                     <template #icon><arrow-up-icon /></template>
                   </t-button>

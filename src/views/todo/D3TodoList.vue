@@ -25,6 +25,8 @@ import {
   AddIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   SettingIcon,
   DeleteIcon,
   EditIcon,
@@ -92,6 +94,27 @@ watch(period, (p) => {
 
 watch(todayKey, () => {
   materializeTodayTodosFromTemplates()
+})
+
+const punchedMinutesSumByKey = computed(() => {
+  const out: Record<string, number> = {}
+  for (const r of punchRecords.value) {
+    if (r.unit !== 'minutes') continue
+    const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0
+    const key = `${r.todoId}__${r.dayKey}`
+    out[key] = (out[key] || 0) + mins
+  }
+  return out
+})
+
+const punchedMinutesCountByKey = computed(() => {
+  const out: Record<string, number> = {}
+  for (const r of punchRecords.value) {
+    if (r.unit !== 'minutes') continue
+    const key = `${r.todoId}__${r.dayKey}`
+    out[key] = (out[key] || 0) + 1
+  }
+  return out
 })
 
 const hashString = (s: string) => {
@@ -1231,6 +1254,21 @@ const updateWidth = () => {
   windowWidth.value = window.innerWidth
 }
 
+const isMobile = computed(() => windowWidth.value < 640)
+const isAddPanelOpen = ref(false)
+const isHistoryPanelOpen = ref(false)
+
+watch(
+  isMobile,
+  (m) => {
+    if (m) {
+      isAddPanelOpen.value = false
+      isHistoryPanelOpen.value = false
+    }
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   window.addEventListener('resize', updateWidth)
 })
@@ -1256,7 +1294,25 @@ const exportDialogWidth = computed(() => {
   <div class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4">
     <div class="max-w-[1200px] mx-auto px-4 pt-4">
       <div class="text-lg md:text-2xl mb-4">今天是: {{ todayDisplay }}</div>
-      <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+      <div v-if="isMobile" class="flex items-center justify-between mb-2">
+        <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">添加模板/目标</div>
+        <t-button
+          shape="square"
+          variant="text"
+          size="small"
+          @click="isAddPanelOpen = !isAddPanelOpen"
+        >
+          <template #icon>
+            <chevron-down-icon v-if="!isAddPanelOpen" />
+            <chevron-up-icon v-else />
+          </template>
+        </t-button>
+      </div>
+
+      <div
+        v-show="!isMobile || isAddPanelOpen"
+        class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+      >
         <t-input
           autofocus
           v-model="title"
@@ -1283,7 +1339,10 @@ const exportDialogWidth = computed(() => {
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3">
+    <div
+      v-show="!isMobile || isAddPanelOpen"
+      class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3"
+    >
       <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
         <div class="flex items-center gap-2 flex-1">
@@ -1322,20 +1381,6 @@ const exportDialogWidth = computed(() => {
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">任务单位</div>
-        <t-radio-group
-          v-model="unit"
-          variant="default-filled"
-          size="small"
-          :disabled="period === 'once'"
-          class="flex flex-wrap"
-        >
-          <t-radio-button value="times">次数</t-radio-button>
-          <t-radio-button value="minutes">分钟</t-radio-button>
-        </t-radio-group>
-      </div>
-
-      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm sm:w-[72px] shrink-0">最小频率</div>
         <div class="flex items-center gap-2">
           <t-radio-group
@@ -1354,6 +1399,20 @@ const exportDialogWidth = computed(() => {
             <template #icon><setting-icon /></template>
           </t-button>
         </div>
+      </div>
+
+      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="text-sm sm:w-[72px] shrink-0">任务单位</div>
+        <t-radio-group
+          v-model="unit"
+          variant="default-filled"
+          size="small"
+          :disabled="period === 'once'"
+          class="flex flex-wrap"
+        >
+          <t-radio-button value="times">次数</t-radio-button>
+          <t-radio-button value="minutes">分钟</t-radio-button>
+        </t-radio-group>
       </div>
 
       <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -1393,14 +1452,33 @@ const exportDialogWidth = computed(() => {
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-2 px-4 flex flex-wrap gap-2">
-      <div class="text-sm flex items-center">历史记录:</div>
+    <div class="max-w-[1200px] mx-auto mt-2 px-4 flex items-center justify-between gap-2">
+      <div class="text-sm flex items-center">
+        历史添加记录
+        <span class="ml-1 text-neutral-400">({{ history.length }})</span>
+      </div>
+      <t-button
+        v-if="isMobile"
+        shape="square"
+        variant="text"
+        size="small"
+        @click="isHistoryPanelOpen = !isHistoryPanelOpen"
+      >
+        <template #icon>
+          <chevron-down-icon v-if="!isHistoryPanelOpen" />
+          <chevron-up-icon v-else />
+        </template>
+      </t-button>
+    </div>
+
+    <div v-show="!isMobile || isHistoryPanelOpen" class="max-w-[1200px] mx-auto mt-1 px-4">
       <div v-if="!history.length" class="text-sm text-neutral-400 flex items-center">
         暂无历史数据
       </div>
     </div>
 
     <div
+      v-show="!isMobile || isHistoryPanelOpen"
       class="max-w-[1200px] mx-auto mt-2 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2"
     >
       <!-- Periodic Categories -->
@@ -1513,6 +1591,12 @@ const exportDialogWidth = computed(() => {
                   v-for="todo in unstartedTodos"
                   :key="todo.id"
                   :todo="todo"
+                  :punched-minutes="
+                    todo.unit === 'minutes' &&
+                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
+                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
+                      : undefined
+                  "
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -1533,6 +1617,12 @@ const exportDialogWidth = computed(() => {
                   v-for="todo in punchedTodos"
                   :key="todo.id"
                   :todo="todo"
+                  :punched-minutes="
+                    todo.unit === 'minutes' &&
+                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
+                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
+                      : undefined
+                  "
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -1577,6 +1667,13 @@ const exportDialogWidth = computed(() => {
                   v-for="todo in unfinishedGoalTodos"
                   :key="todo.id"
                   :todo="todo"
+                  :show-meta-tags="false"
+                  :punched-minutes="
+                    todo.unit === 'minutes' &&
+                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
+                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
+                      : undefined
+                  "
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -1596,6 +1693,13 @@ const exportDialogWidth = computed(() => {
                   v-for="todo in completedGoalTodos"
                   :key="todo.id"
                   :todo="todo"
+                  :show-meta-tags="false"
+                  :punched-minutes="
+                    todo.unit === 'minutes' &&
+                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
+                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
+                      : undefined
+                  "
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -2367,11 +2471,7 @@ const exportDialogWidth = computed(() => {
         <div>
           <div class="text-sm mb-2 font-medium">任务分类</div>
           <div class="space-y-2 mb-2">
-            <div
-              v-for="(cat, idx) in draftCategoriesList"
-              :key="idx"
-              class="flex items-center gap-2"
-            >
+            <div v-for="(_, idx) in draftCategoriesList" :key="idx" class="flex items-center gap-2">
               <t-input v-model="draftCategoriesList[idx]" placeholder="请输入分类名称" />
               <t-button
                 variant="text"
@@ -2394,7 +2494,7 @@ const exportDialogWidth = computed(() => {
           <div class="text-sm mb-2 font-medium">最小频率</div>
           <div class="space-y-2 mb-2">
             <div
-              v-for="(freq, idx) in draftMinFrequenciesList"
+              v-for="(_, idx) in draftMinFrequenciesList"
               :key="idx"
               class="flex items-center gap-2"
             >
@@ -2425,7 +2525,7 @@ const exportDialogWidth = computed(() => {
           <div class="text-sm mb-2 font-medium">每次分钟</div>
           <div class="space-y-2 mb-2">
             <div
-              v-for="(min, idx) in draftMinutesPerTimesList"
+              v-for="(_, idx) in draftMinutesPerTimesList"
               :key="idx"
               class="flex items-center gap-2"
             >

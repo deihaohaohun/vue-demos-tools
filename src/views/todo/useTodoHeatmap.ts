@@ -124,7 +124,7 @@ export const useTodoHeatmap = (args: {
         scale: {
           color: {
             type: 'threshold',
-            domain: [1, 3, 6, 10],
+            domain: [1, 5, 8, 10],
             range: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
           },
         },

@@ -78,7 +78,7 @@ const saveEdit = () => {
         </div>
       </div>
 
-      <t-timeline v-if="views.length > 0" mode="left" class="mt-4">
+      <t-timeline v-if="views.length > 0" mode="same" label-align="left" class="mt-4">
         <t-timeline-item v-for="item in views" :key="item.id" :label="formatDate(item.timestamp)">
           <div
             class="bg-neutral-50 dark:bg-neutral-900 p-4 rounded-lg border border-neutral-100 dark:border-neutral-700">

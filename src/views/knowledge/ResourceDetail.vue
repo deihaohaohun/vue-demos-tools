@@ -3,12 +3,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useKnowledgeStore, type ResourceType, type VideoPlatform } from './useKnowledgeStore'
 import { AiEditor } from 'aieditor'
-import {
-  ArrowLeftIcon,
-  TimeIcon,
-  DeleteIcon,
-  EditIcon
-} from 'tdesign-icons-vue-next'
+import { ArrowLeftIcon, TimeIcon, DeleteIcon, EditIcon } from 'tdesign-icons-vue-next'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import dayjs from 'dayjs'
 
@@ -59,7 +54,7 @@ const handleDelete = () => {
         confirmDialog.hide()
         router.replace('/knowledge')
       }
-    }
+    },
   })
 }
 
@@ -166,7 +161,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="w-full min-h-screen bg-neutral-50 dark:bg-neutral-900 pb-10">
     <!-- Header -->
-    <header class="bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 sticky top-0 z-10">
+    <header
+      class="bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 sticky top-0 z-10"
+    >
       <div class="max-w-[1000px] mx-auto px-4 h-16 flex items-center justify-between">
         <div class="flex items-center gap-4">
           <t-button variant="text" shape="circle" @click="goBack">
@@ -189,44 +186,72 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div v-if="resource" class="max-w-[1000px] mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div
+      v-if="resource"
+      class="max-w-[1000px] mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6"
+    >
       <!-- Main Content -->
       <div class="lg:col-span-2 space-y-6">
         <!-- Info Card -->
         <div
-          class="bg-white dark:bg-neutral-800 rounded-xl p-6 shadow-sm border border-neutral-100 dark:border-neutral-700">
+          class="bg-white dark:bg-neutral-800 rounded-xl p-6 shadow-sm border border-neutral-100 dark:border-neutral-700"
+        >
           <div class="flex flex-wrap gap-2 mb-4">
             <t-tag size="medium" variant="light" theme="primary" class="capitalize">
               {{ resource.type }}
             </t-tag>
-            <t-tag v-for="tag in resource.tags" :key="tag" size="medium" variant="outline" theme="default">
+            <t-tag
+              v-for="tag in resource.tags"
+              :key="tag"
+              size="medium"
+              variant="outline"
+              theme="default"
+            >
               #{{ tag }}
             </t-tag>
           </div>
 
-          <div v-if="resource.cover"
-            class="mb-6 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700">
+          <div
+            v-if="resource.cover"
+            class="mb-6 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700"
+          >
             <img :src="resource.cover" class="w-full max-h-[400px] object-cover" alt="cover" />
           </div>
 
           <div class="prose dark:prose-invert max-w-none">
             <h2 class="text-xl font-bold mb-4">内容详情</h2>
-            <div v-if="resource.content" class="text-neutral-700 dark:text-neutral-300 leading-relaxed"
-              v-html="resource.content"></div>
-            <div v-else class="whitespace-pre-wrap text-neutral-700 dark:text-neutral-300 leading-relaxed">暂无详细内容</div>
+            <div
+              v-if="resource.content"
+              class="text-neutral-700 dark:text-neutral-300 leading-relaxed"
+              v-html="resource.content"
+            ></div>
+            <div
+              v-else
+              class="whitespace-pre-wrap text-neutral-700 dark:text-neutral-300 leading-relaxed"
+            >
+              暂无详细内容
+            </div>
           </div>
 
           <div v-if="resource.sourceUrl" class="mt-4 flex items-center justify-between gap-2">
             <div class="text-sm text-neutral-500 truncate">
-              原始链接：<span class="text-neutral-700 dark:text-neutral-300">{{ resource.sourceUrl }}</span>
+              原始链接：<span class="text-neutral-700 dark:text-neutral-300">{{
+                resource.sourceUrl
+              }}</span>
             </div>
-            <t-button size="small" theme="primary" variant="outline" @click="openSourceUrl(resource.sourceUrl)">
+            <t-button
+              size="small"
+              theme="primary"
+              variant="outline"
+              @click="openSourceUrl(resource.sourceUrl)"
+            >
               打开
             </t-button>
           </div>
 
           <div
-            class="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-700 text-sm text-neutral-400 flex items-center gap-2">
+            class="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-700 text-sm text-neutral-400 flex items-center gap-2"
+          >
             <time-icon />
             <span>添加于 {{ formatDate(resource.createdAt) }}</span>
           </div>
@@ -236,21 +261,30 @@ onBeforeUnmount(() => {
       <!-- Timeline Sidebar -->
       <div class="lg:col-span-1 space-y-4">
         <div
-          class="bg-white dark:bg-neutral-800 rounded-xl p-6 shadow-sm border border-neutral-100 dark:border-neutral-700 sticky top-24">
+          class="bg-white dark:bg-neutral-800 rounded-xl p-6 shadow-sm border border-neutral-100 dark:border-neutral-700 sticky top-24"
+        >
           <div class="flex items-center justify-between mb-6">
             <h3 class="font-bold text-lg flex items-center gap-2">
               查看记录
               <span
-                class="text-xs font-normal text-neutral-400 bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full">{{
-                  views.length }}</span>
+                class="text-xs font-normal text-neutral-400 bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full"
+                >{{ views.length }}</span
+              >
             </h3>
           </div>
 
-          <t-timeline mode="left">
-            <t-timeline-item v-for="item in views" :key="item.id" :label="formatDate(item.timestamp)">
+          <t-timeline mode="same" label-align="left">
+            <t-timeline-item
+              v-for="item in views"
+              :key="item.id"
+              :label="formatDate(item.timestamp)"
+            >
               <div
-                class="bg-neutral-50 dark:bg-neutral-900 p-3 rounded-lg border border-neutral-100 dark:border-neutral-700">
-                <div class="text-xs text-neutral-400 mb-2">查看时间：{{ formatDate(item.timestamp) }}</div>
+                class="bg-neutral-50 dark:bg-neutral-900 p-3 rounded-lg border border-neutral-100 dark:border-neutral-700"
+              >
+                <div class="text-xs text-neutral-400 mb-2">
+                  查看时间：{{ formatDate(item.timestamp) }}
+                </div>
                 <div class="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
                   <span v-if="item.description">{{ item.description }}</span>
                   <span v-else class="text-neutral-400">无描述</span>
@@ -274,7 +308,9 @@ onBeforeUnmount(() => {
     <t-dialog v-model:visible="editDialogVisible" header="编辑资源" width="860px" :footer="false">
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标题</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >标题</label
+          >
           <t-input v-model="editForm.title" placeholder="请输入资源标题" />
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -294,8 +330,12 @@ onBeforeUnmount(() => {
         <div v-if="editForm.type === 'video'" class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm text-neutral-500 mb-1">视频平台</label>
-            <t-radio-group v-model="editForm.videoPlatform" variant="default-filled" size="small"
-              class="flex flex-wrap gap-2">
+            <t-radio-group
+              v-model="editForm.videoPlatform"
+              variant="default-filled"
+              size="small"
+              class="flex flex-wrap gap-2"
+            >
               <t-radio-button value="bilibili">B站</t-radio-button>
               <t-radio-button value="youtube">油管</t-radio-button>
             </t-radio-group>
@@ -304,7 +344,9 @@ onBeforeUnmount(() => {
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">原始链接 (可选)</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >原始链接 (可选)</label
+          >
           <t-input v-model="editForm.sourceUrl" placeholder="https://..." />
         </div>
         <div>
@@ -315,9 +357,10 @@ onBeforeUnmount(() => {
         </div>
         <div>
           <label class="block text-sm text-neutral-500 mb-1">内容</label>
-          <div ref="editEditorEl"
-            class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900">
-          </div>
+          <div
+            ref="editEditorEl"
+            class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900"
+          ></div>
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <t-button variant="outline" @click="editDialogVisible = false">取消</t-button>
