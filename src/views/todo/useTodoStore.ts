@@ -1038,7 +1038,23 @@ export const useTodoStore = () => {
     }
 
     const now = Date.now()
-    const dk = formatDayKey(now)
+    let dk = formatDayKey(now)
+    if (params.period !== 'once') {
+      const today = new Date(now)
+      if (params.period === 'weekly') {
+        const dayOfWeek = today.getDay()
+        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+        const weekStart = new Date(today)
+        weekStart.setDate(today.getDate() - diff)
+        dk = formatDayKey(weekStart.getTime())
+      } else if (params.period === 'monthly') {
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+        dk = formatDayKey(monthStart.getTime())
+      } else if (params.period === 'yearly') {
+        const yearStart = new Date(today.getFullYear(), 0, 1)
+        dk = formatDayKey(yearStart.getTime())
+      }
+    }
     let templateId: string | undefined
 
     if (params.period !== 'once') {

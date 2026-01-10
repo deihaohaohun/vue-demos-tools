@@ -96,26 +96,58 @@ watch(todayKey, () => {
   materializeTodayTodosFromTemplates()
 })
 
-const punchedMinutesSumByKey = computed(() => {
-  const out: Record<string, number> = {}
+const punchRecordsByTodoId = computed(() => {
+  const out: Record<string, PunchRecord[]> = {}
   for (const r of punchRecords.value) {
-    if (r.unit !== 'minutes') continue
-    const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0
-    const key = `${r.todoId}__${r.dayKey}`
-    out[key] = (out[key] || 0) + mins
+    ;(out[r.todoId] || (out[r.todoId] = [])).push(r)
   }
   return out
 })
 
-const punchedMinutesCountByKey = computed(() => {
-  const out: Record<string, number> = {}
-  for (const r of punchRecords.value) {
-    if (r.unit !== 'minutes') continue
-    const key = `${r.todoId}__${r.dayKey}`
-    out[key] = (out[key] || 0) + 1
+const getTodoCycleStartDayKey = (period: TodoPeriod, dayKey: string) => {
+  if (period === 'daily' || period === 'once') return dayKey
+  const d = dayjs(dayKey)
+  if (!d.isValid()) return dayKey
+
+  if (period === 'weekly') {
+    const jsDay = d.day()
+    const diff = jsDay === 0 ? 6 : jsDay - 1
+    return d.subtract(diff, 'day').format('YYYY-MM-DD')
   }
-  return out
-})
+  if (period === 'monthly') return d.startOf('month').format('YYYY-MM-DD')
+  return d.startOf('year').format('YYYY-MM-DD')
+}
+
+const getTodoCycleEndDayKey = (period: TodoPeriod, cycleStartDayKey: string) => {
+  if (period === 'daily' || period === 'once') return cycleStartDayKey
+  const start = dayjs(cycleStartDayKey)
+  if (!start.isValid()) return cycleStartDayKey
+
+  if (period === 'weekly') return start.add(6, 'day').format('YYYY-MM-DD')
+  if (period === 'monthly') return start.endOf('month').format('YYYY-MM-DD')
+  return start.endOf('year').format('YYYY-MM-DD')
+}
+
+const getPunchedMinutesForTodo = (todo: (typeof todos.value)[number]) => {
+  if (todo.unit !== 'minutes') return undefined
+  if (todo.period === 'once') return undefined
+
+  const list = punchRecordsByTodoId.value[todo.id] || []
+  if (!list.length) return undefined
+
+  const startKey = getTodoCycleStartDayKey(todo.period, todo.dayKey)
+  const endKey = getTodoCycleEndDayKey(todo.period, startKey)
+
+  let sum = 0
+  let hit = 0
+  for (const r of list) {
+    if (r.unit !== 'minutes') continue
+    if (r.dayKey < startKey || r.dayKey > endKey) continue
+    sum += typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0
+    hit += 1
+  }
+  return hit ? sum : undefined
+}
 
 const hashString = (s: string) => {
   let h = 0
@@ -1591,12 +1623,7 @@ const exportDialogWidth = computed(() => {
                   v-for="todo in unstartedTodos"
                   :key="todo.id"
                   :todo="todo"
-                  :punched-minutes="
-                    todo.unit === 'minutes' &&
-                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
-                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
-                      : undefined
-                  "
+                  :punched-minutes="getPunchedMinutesForTodo(todo)"
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -1617,12 +1644,7 @@ const exportDialogWidth = computed(() => {
                   v-for="todo in punchedTodos"
                   :key="todo.id"
                   :todo="todo"
-                  :punched-minutes="
-                    todo.unit === 'minutes' &&
-                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
-                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
-                      : undefined
-                  "
+                  :punched-minutes="getPunchedMinutesForTodo(todo)"
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -1668,12 +1690,7 @@ const exportDialogWidth = computed(() => {
                   :key="todo.id"
                   :todo="todo"
                   :show-meta-tags="false"
-                  :punched-minutes="
-                    todo.unit === 'minutes' &&
-                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
-                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
-                      : undefined
-                  "
+                  :punched-minutes="getPunchedMinutesForTodo(todo)"
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
@@ -1694,12 +1711,7 @@ const exportDialogWidth = computed(() => {
                   :key="todo.id"
                   :todo="todo"
                   :show-meta-tags="false"
-                  :punched-minutes="
-                    todo.unit === 'minutes' &&
-                    punchedMinutesCountByKey[`${todo.id}__${todo.dayKey}`]
-                      ? punchedMinutesSumByKey[`${todo.id}__${todo.dayKey}`] || 0
-                      : undefined
-                  "
+                  :punched-minutes="getPunchedMinutesForTodo(todo)"
                   @toggle-select="toggleSelect"
                   @toggle-done="toggleDone"
                   @punch-in="handlePunchIn"
