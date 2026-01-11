@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { EChartsOption } from 'echarts'
+import { useDark } from '@vueuse/core'
 
 type TodoLike = {
   dayKey: string
@@ -42,7 +43,38 @@ export const useTodoCharts = (args: {
   minutesSeries: ComputedRef<number[]>
   categoryCounts: ComputedRef<Record<string, number>>
 }) => {
+  const isDark = useDark()
   const palette = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
+  const chartTheme = computed(() => {
+    if (isDark.value) {
+      return {
+        text: '#a1a1aa',
+        mutedText: '#71717a',
+        axisLine: '#3f3f46',
+        splitLine: '#27272a',
+        tooltipBg: 'rgba(10,10,10,0.92)',
+        tooltipBorder: '#27272a',
+      }
+    }
+    return {
+      text: '#374151',
+      mutedText: '#6b7280',
+      axisLine: '#e5e7eb',
+      splitLine: '#f3f4f6',
+      tooltipBg: 'rgba(255,255,255,0.95)',
+      tooltipBorder: '#e5e7eb',
+    }
+  })
+
+  const axisCommon = computed(() => {
+    const t = chartTheme.value
+    return {
+      axisLabel: { color: t.text },
+      nameTextStyle: { color: t.mutedText },
+      axisLine: { lineStyle: { color: t.axisLine } },
+      splitLine: { lineStyle: { color: t.splitLine } },
+    }
+  })
 
   const punchInsByCategory = computed((): { categories: string[]; series: LineSeriesLike[] } => {
     const dayKeys = args.rangeDayKeys.value
@@ -98,6 +130,7 @@ export const useTodoCharts = (args: {
   const punchInsByCategoryOption = computed((): EChartsOption => {
     const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v) => v > 0))
     if (!hasData) {
+      const t = chartTheme.value
       return {
         backgroundColor: 'transparent',
         title: {
@@ -105,7 +138,7 @@ export const useTodoCharts = (args: {
           left: 'center',
           top: 'middle',
           textStyle: {
-            color: '#999',
+            color: t.mutedText,
             fontSize: 14,
           },
         },
@@ -114,13 +147,36 @@ export const useTodoCharts = (args: {
         series: [],
       }
     }
+    const t = chartTheme.value
+    const a = axisCommon.value
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { data: punchInsByCategory.value.categories, top: 0 },
+      textStyle: { color: t.text },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: t.tooltipBg,
+        borderColor: t.tooltipBorder,
+        textStyle: { color: t.text },
+      },
+      legend: { data: punchInsByCategory.value.categories, top: 0, textStyle: { color: t.text } },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
-      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
-      yAxis: { type: 'value', name: '次', minInterval: 1 },
+      xAxis: {
+        type: 'category',
+        data: args.rangeLabels.value,
+        axisTick: { show: false },
+        axisLabel: a.axisLabel,
+        axisLine: a.axisLine,
+      },
+      yAxis: {
+        type: 'value',
+        name: '次',
+        minInterval: 1,
+        axisLabel: a.axisLabel,
+        nameTextStyle: a.nameTextStyle,
+        axisLine: a.axisLine,
+        splitLine: a.splitLine,
+      },
       series: punchInsByCategory.value.series as unknown as EChartsOption['series'],
     }
   })
@@ -128,6 +184,7 @@ export const useTodoCharts = (args: {
   const punchInsOption = computed((): EChartsOption => {
     const hasData = args.punchInsSeries.value.some((v: number) => v > 0)
     if (!hasData) {
+      const t = chartTheme.value
       return {
         backgroundColor: 'transparent',
         title: {
@@ -135,7 +192,7 @@ export const useTodoCharts = (args: {
           left: 'center',
           top: 'middle',
           textStyle: {
-            color: '#999',
+            color: t.mutedText,
             fontSize: 14,
           },
         },
@@ -144,13 +201,36 @@ export const useTodoCharts = (args: {
         series: [],
       }
     }
+    const t = chartTheme.value
+    const a = axisCommon.value
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { data: ['打卡次数'], top: 0 },
+      textStyle: { color: t.text },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: t.tooltipBg,
+        borderColor: t.tooltipBorder,
+        textStyle: { color: t.text },
+      },
+      legend: { data: ['打卡次数'], top: 0, textStyle: { color: t.text } },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
-      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
-      yAxis: { type: 'value', name: '次', minInterval: 1 },
+      xAxis: {
+        type: 'category',
+        data: args.rangeLabels.value,
+        axisTick: { show: false },
+        axisLabel: a.axisLabel,
+        axisLine: a.axisLine,
+      },
+      yAxis: {
+        type: 'value',
+        name: '次',
+        minInterval: 1,
+        axisLabel: a.axisLabel,
+        nameTextStyle: a.nameTextStyle,
+        axisLine: a.axisLine,
+        splitLine: a.splitLine,
+      },
       series: [
         {
           name: '打卡次数',
@@ -209,6 +289,7 @@ export const useTodoCharts = (args: {
       dayKeys.some((dk) => categories.some((c) => (byDay[dk]?.[c] || 0) > 0))
 
     if (!hasData) {
+      const t = chartTheme.value
       return {
         backgroundColor: 'transparent',
         title: {
@@ -216,7 +297,7 @@ export const useTodoCharts = (args: {
           left: 'center',
           top: 'middle',
           textStyle: {
-            color: '#999',
+            color: t.mutedText,
             fontSize: 14,
           },
         },
@@ -226,6 +307,8 @@ export const useTodoCharts = (args: {
       }
     }
 
+    const t = chartTheme.value
+    const a = axisCommon.value
     const series = categories.map((c, idx) => {
       const color = palette[idx % palette.length] ?? '#60a5fa'
       return {
@@ -239,17 +322,22 @@ export const useTodoCharts = (args: {
 
     return {
       backgroundColor: 'transparent',
+      textStyle: { color: t.text },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
+        backgroundColor: t.tooltipBg,
+        borderColor: t.tooltipBorder,
+        textStyle: { color: t.text },
         formatter: (params: unknown) => {
-          const list = params as Array<{
+          const raw = params as Array<{
             axisValue: string
             value: number
             seriesName: string
             color: string
           }>
-          if (!list || list.length === 0) return ''
+          const list = Array.isArray(raw) ? raw.filter((p) => p.seriesName !== '总计') : []
+          if (!list.length) return ''
           let total = 0
           const firstItem = list[0]
           let html = `<div class="font-bold mb-1">${firstItem?.axisValue || ''}</div>`
@@ -272,11 +360,47 @@ export const useTodoCharts = (args: {
           return html
         },
       },
-      legend: { data: categories, top: 0 },
-      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
-      xAxis: { type: 'category', data: args.rangeLabels.value, axisTick: { show: false } },
-      yAxis: { type: 'value', name: '分钟', minInterval: 1 },
-      series: series as unknown as EChartsOption['series'],
+      legend: { data: categories, top: 0, textStyle: { color: t.text } },
+      grid: { left: 24, right: 24, top: 46, bottom: 0, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: args.rangeLabels.value,
+        axisTick: { show: false },
+        axisLabel: a.axisLabel,
+        axisLine: a.axisLine,
+      },
+      yAxis: {
+        type: 'value',
+        name: '分钟',
+        minInterval: 1,
+        axisLabel: a.axisLabel,
+        nameTextStyle: a.nameTextStyle,
+        axisLine: a.axisLine,
+        splitLine: a.splitLine,
+      },
+      series: [
+        ...((series as unknown as unknown[]) || []),
+        {
+          name: '总计',
+          type: 'bar',
+          data: dayKeys.map((dk) => categories.reduce((acc, c) => acc + (byDay[dk]?.[c] || 0), 0)),
+          barGap: '-100%',
+          itemStyle: { color: 'transparent' },
+          emphasis: { disabled: true },
+          tooltip: { show: false },
+          label: {
+            show: true,
+            position: 'top',
+            color: t.text,
+            formatter: (p: { value?: unknown }) => {
+              const v = typeof p.value === 'number' ? p.value : Number(p.value)
+              if (!Number.isFinite(v) || v <= 0) return ''
+              return `${v}`
+            },
+          },
+          z: 10,
+        },
+      ] as unknown as EChartsOption['series'],
     }
   })
 
@@ -284,6 +408,7 @@ export const useTodoCharts = (args: {
     const data = Object.entries(args.categoryCounts.value).sort((a, b) => (b[1] || 0) - (a[1] || 0))
     const hasData = data.some((d) => (d[1] || 0) > 0)
     if (!hasData) {
+      const t = chartTheme.value
       return {
         backgroundColor: 'transparent',
         title: {
@@ -291,7 +416,7 @@ export const useTodoCharts = (args: {
           left: 'center',
           top: 'middle',
           textStyle: {
-            color: '#999',
+            color: t.mutedText,
             fontSize: 14,
           },
         },
@@ -300,11 +425,17 @@ export const useTodoCharts = (args: {
         series: [],
       }
     }
+    const t = chartTheme.value
+    const a = axisCommon.value
     return {
       backgroundColor: 'transparent',
+      textStyle: { color: t.text },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
+        backgroundColor: t.tooltipBg,
+        borderColor: t.tooltipBorder,
+        textStyle: { color: t.text },
         formatter: (params: unknown) => {
           const first = Array.isArray(params) ? params[0] : params
           if (!first || typeof first !== 'object') return ''
@@ -323,9 +454,18 @@ export const useTodoCharts = (args: {
         type: 'category',
         data: data.map((d) => d[0]),
         axisTick: { show: false },
-        axisLabel: { interval: 0, rotate: data.length > 6 ? 30 : 0 },
+        axisLabel: { ...a.axisLabel, interval: 0, rotate: data.length > 6 ? 30 : 0 },
+        axisLine: a.axisLine,
       },
-      yAxis: { type: 'value', name: '个', minInterval: 1 },
+      yAxis: {
+        type: 'value',
+        name: '个',
+        minInterval: 1,
+        axisLabel: a.axisLabel,
+        nameTextStyle: a.nameTextStyle,
+        axisLine: a.axisLine,
+        splitLine: a.splitLine,
+      },
       series: [
         {
           name: '任务分类',

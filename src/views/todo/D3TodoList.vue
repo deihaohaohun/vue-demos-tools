@@ -18,6 +18,7 @@ import {
   useTodoStore,
   type TodoPeriod,
   type TodoUnit,
+  type Todo,
   type PunchRecord,
   type HistoryItem,
   type GoalHistoryRecord,
@@ -855,11 +856,19 @@ const allDisplayTodos = computed(() =>
 
 const taskDisplayTodos = computed(() => allDisplayTodos.value.filter((t) => t.period !== 'once'))
 
-const unstartedTodos = computed(() =>
-  taskDisplayTodos.value.filter((t) => t.punchIns === 0 && !t.done),
-)
+const isTaskCompleted = (t: Todo) => {
+  if (t.unit === 'minutes') {
+    const punched = getPunchedMinutesForTodo(t) || 0
+    const perTime = typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15
+    const goal = (t.minFrequency || 0) * perTime
+    if (goal <= 0) return false
+    return punched >= goal
+  }
+  return (t.punchIns || 0) >= (t.minFrequency || 0)
+}
 
-const punchedTodos = computed(() => taskDisplayTodos.value.filter((t) => t.punchIns > 0 || t.done))
+const unfinishedTodos = computed(() => taskDisplayTodos.value.filter((t) => !isTaskCompleted(t)))
+const completedTodos = computed(() => taskDisplayTodos.value.filter((t) => isTaskCompleted(t)))
 
 const handlePunchIn = (id: string) => {
   onPunchTrigger(id)
@@ -1752,16 +1761,16 @@ const exportDialogWidth = computed(() => {
         <t-tab-panel :value="1" :label="`任务列表 (${taskDisplayTodos.length})`">
           <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': taskDisplayTodos.length }">
             <template v-if="taskDisplayTodos.length">
-              <!-- 未开始任务 -->
-              <div v-if="unstartedTodos.length" class="mb-2">
+              <!-- 未完成任务 -->
+              <div v-if="unfinishedTodos.length" class="mb-2">
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >未开始 ({{ unstartedTodos.length }})</span
+                    >未完成 ({{ unfinishedTodos.length }})</span
                   >
                 </div>
                 <TodoItem
-                  v-for="todo in unstartedTodos"
+                  v-for="todo in unfinishedTodos"
                   :key="todo.id"
                   :todo="todo"
                   :punched-minutes="getPunchedMinutesForTodo(todo)"
@@ -1774,16 +1783,16 @@ const exportDialogWidth = computed(() => {
                 />
               </div>
 
-              <!-- 已打卡任务 -->
-              <div v-if="punchedTodos.length">
+              <!-- 已完成任务 -->
+              <div v-if="completedTodos.length">
                 <div class="flex items-center gap-2 mb-2 px-1">
                   <div class="w-1 h-4 bg-green-500 rounded-full"></div>
                   <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >已打卡 ({{ punchedTodos.length }})</span
+                    >已完成 ({{ completedTodos.length }})</span
                   >
                 </div>
                 <TodoItem
-                  v-for="todo in punchedTodos"
+                  v-for="todo in completedTodos"
                   :key="todo.id"
                   :todo="todo"
                   :punched-minutes="getPunchedMinutesForTodo(todo)"

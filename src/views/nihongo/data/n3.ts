@@ -249,4 +249,46 @@ export const n3Data: GrammarItem[] = [
     ],
     isRemembered: false,
   },
+  {
+    id: 20,
+    title: '～ということだ・とのことだ',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '据说~, 听说~',
+        usage: ['PI([だ]・[だ]) + ということだ・とのことだ'],
+        tips: ['比そうだ硬い'],
+        examples: [
+          'A社からの回答は、これ以上の値下げは難しいということです。',
+          '友人の話では、田中さんは卒業後、カナダに留学に行ったとのことだ。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=37',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+      {
+        meaning: '也就是说~',
+        usage: ['PI([だ]・[だ]) + ということだ'],
+        tips: ['比そうだ硬い'],
+        examples: [
+          'A社からの回答は、これ以上の値下げは難しいということです。',
+          '友人の話では、田中さんは卒業後、カナダに留学に行ったとのことだ。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=37',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
 ]
