@@ -86,6 +86,15 @@ interface PunchRecord {
   note?: string
 }
 
+interface GoalHistoryRecord {
+  id: string
+  goalId: string
+  content: string
+  type: 'regular' | 'milestone'
+  timestamp: number
+  note?: string
+}
+
 const STORAGE_KEY = 'todos'
 const HISTORY_KEY = 'todo_history'
 const ARCHIVED_HISTORY_KEY = 'todo_archived_history'
@@ -93,6 +102,7 @@ const ABANDONED_GOALS_KEY = 'todo_abandoned_goals'
 const TEMPLATES_KEY = 'todo_templates'
 const DAY_STATS_KEY = 'todo_day_stats'
 const PUNCH_RECORDS_KEY = 'todo_punch_records'
+const GOAL_HISTORY_KEY = 'todo_goal_history'
 
 export type {
   Todo,
@@ -104,6 +114,7 @@ export type {
   ArchivedHistoryItem,
   AbandonedGoal,
   PunchRecord,
+  GoalHistoryRecord,
 }
 
 export const useTodoStore = () => {
@@ -114,6 +125,7 @@ export const useTodoStore = () => {
   const archivedHistory = ref<ArchivedHistoryItem[]>([])
   const abandonedGoals = ref<AbandonedGoal[]>([])
   const punchRecords = ref<PunchRecord[]>([])
+  const goalHistoryRecords = ref<GoalHistoryRecord[]>([])
 
   const formatDayKey = (ts: number) => {
     const d = dayjs(ts)
@@ -743,6 +755,25 @@ export const useTodoStore = () => {
         console.error('加载打卡记录失败:', e)
       }
     }
+
+    const storedGoalHistory = localStorage.getItem(GOAL_HISTORY_KEY)
+    if (storedGoalHistory) {
+      try {
+        const parsed = JSON.parse(storedGoalHistory)
+        if (Array.isArray(parsed)) {
+          goalHistoryRecords.value = parsed.map((item: Partial<GoalHistoryRecord>) => ({
+            id: typeof item.id === 'string' ? item.id : nanoid(),
+            goalId: typeof item.goalId === 'string' ? item.goalId : '',
+            content: typeof item.content === 'string' ? item.content : '',
+            type: item.type === 'regular' || item.type === 'milestone' ? item.type : 'regular',
+            timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+            note: typeof item.note === 'string' ? item.note : undefined,
+          }))
+        }
+      } catch (e) {
+        console.error('加载目标历史记录失败:', e)
+      }
+    }
   }
 
   // 保存数据到 localStorage
@@ -774,6 +805,10 @@ export const useTodoStore = () => {
     localStorage.setItem(PUNCH_RECORDS_KEY, JSON.stringify(punchRecords.value))
   }
 
+  const saveGoalHistoryRecords = () => {
+    localStorage.setItem(GOAL_HISTORY_KEY, JSON.stringify(goalHistoryRecords.value))
+  }
+
   // 页面加载时读取数据
   onMounted(() => {
     loadData()
@@ -792,6 +827,7 @@ export const useTodoStore = () => {
   watch(templates, saveTemplates, { deep: true })
   watch(dayStats, saveDayStats, { deep: true })
   watch(punchRecords, savePunchRecords, { deep: true })
+  watch(goalHistoryRecords, saveGoalHistoryRecords, { deep: true })
 
   const updateHistory = (item: HistoryItem) => {
     const index = history.value.findIndex(
@@ -901,6 +937,55 @@ export const useTodoStore = () => {
     record.unit = 'minutes'
 
     return true
+  }
+
+  // Goal History Management Functions
+  const addGoalHistoryRecord = (
+    goalId: string,
+    content: string,
+    type: 'regular' | 'milestone',
+    note?: string,
+  ) => {
+    const goal = todos.value.find((t) => t.id === goalId && t.period === 'once')
+    if (!goal) return { kind: 'not_found' as const }
+
+    const trimmedContent = content.trim()
+    if (!trimmedContent) return { kind: 'empty_content' as const }
+
+    const record: GoalHistoryRecord = {
+      id: nanoid(),
+      goalId,
+      content: trimmedContent,
+      type,
+      timestamp: Date.now(),
+      note: note?.trim() || undefined,
+    }
+
+    goalHistoryRecords.value.unshift(record)
+    return { kind: 'success' as const, record }
+  }
+
+  const updateGoalHistoryRecord = (id: string, content: string, note?: string) => {
+    const record = goalHistoryRecords.value.find((r) => r.id === id)
+    if (!record) return false
+
+    const trimmedContent = content.trim()
+    if (!trimmedContent) return false
+
+    record.content = trimmedContent
+    record.note = note?.trim() || undefined
+    return true
+  }
+
+  const deleteGoalHistoryRecord = (id: string) => {
+    const index = goalHistoryRecords.value.findIndex((r) => r.id === id)
+    if (index === -1) return false
+    goalHistoryRecords.value.splice(index, 1)
+    return true
+  }
+
+  const getGoalHistoryRecords = (goalId: string) => {
+    return goalHistoryRecords.value.filter((r) => r.goalId === goalId)
   }
 
   const createTodo = (params: {
@@ -1559,5 +1644,12 @@ export const useTodoStore = () => {
     removeHistoryItem,
     clearHistoryAll,
     materializeTodayTodosFromTemplates,
+
+    // Goal History
+    goalHistoryRecords,
+    addGoalHistoryRecord,
+    updateGoalHistoryRecord,
+    deleteGoalHistoryRecord,
+    getGoalHistoryRecords,
   }
 }

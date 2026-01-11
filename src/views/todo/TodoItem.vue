@@ -5,6 +5,7 @@ import {
   EditIcon,
   CheckCircleIcon,
   CloseIcon,
+  TimeIcon,
 } from 'tdesign-icons-vue-next'
 import { computed } from 'vue'
 import dayjs from 'dayjs'
@@ -36,6 +37,7 @@ interface Emits {
   (e: 'punch-in', id: string): void
   (e: 'edit', id: string): void
   (e: 'archive', id: string): void
+  (e: 'view-history', id: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -234,6 +236,21 @@ const getPeriodTheme = (period: string) => {
       <t-button shape="square" variant="outline" size="small" @click.stop="emit('edit', todo.id)">
         <template v-slot:icon>
           <edit-icon size="12" />
+        </template>
+      </t-button>
+
+      <!-- 目标历史按钮 (仅目标显示) -->
+      <t-button
+        v-if="todo.period === 'once'"
+        shape="square"
+        variant="outline"
+        theme="primary"
+        size="small"
+        title="查看进度记录"
+        @click.stop="emit('view-history', todo.id)"
+      >
+        <template #icon>
+          <time-icon size="12" />
         </template>
       </t-button>
 

@@ -20,6 +20,7 @@ import {
   type TodoUnit,
   type PunchRecord,
   type HistoryItem,
+  type GoalHistoryRecord,
 } from './useTodoStore'
 import {
   AddIcon,
@@ -73,6 +74,10 @@ const {
   maxConsecutivePunchDays,
   templates,
   materializeTodayTodosFromTemplates,
+  addGoalHistoryRecord,
+  updateGoalHistoryRecord,
+  deleteGoalHistoryRecord,
+  getGoalHistoryRecords,
 } = useTodoStore()
 
 const title = ref('')
@@ -584,6 +589,20 @@ const editOnlyDescription = computed(() => {
   return t.period === 'once' && t.done
 })
 
+const isEditingGoal = computed(() => {
+  const t = editingTodo.value
+  if (!t) return false
+  return t.period === 'once'
+})
+
+const currentGoalHistory = computed(() => {
+  const id = currentGoalId.value
+  if (!id) return []
+  const todo = getTodoById(id)
+  if (!todo || todo.period !== 'once') return []
+  return getGoalHistoryRecords(id).sort((a, b) => b.timestamp - a.timestamp)
+})
+
 const todayDisplay = computed(() => {
   const w = ['日', '一', '二', '三', '四', '五', '六']
   return `${todayKey.value} 周${w[new Date().getDay()]}`
@@ -645,6 +664,97 @@ const saveEdit = () => {
   MessagePlugin.success('已保存修改')
 }
 
+// Goal History Management Functions
+const openGoalHistoryDialog = (goalId: string) => {
+  currentGoalId.value = goalId
+  goalHistoryDialogVisible.value = true
+  // 重置表单
+  goalHistoryContent.value = ''
+  goalHistoryNote.value = ''
+  goalHistoryType.value = 'regular'
+  editingGoalHistoryId.value = null
+}
+
+const addGoalHistory = () => {
+  const id = currentGoalId.value
+  if (!id) return
+
+  const content = goalHistoryContent.value.trim()
+  if (!content) {
+    MessagePlugin.warning('请输入历史记录内容')
+    return
+  }
+
+  const result = addGoalHistoryRecord(id, content, goalHistoryType.value, goalHistoryNote.value)
+  if (result.kind === 'not_found') {
+    MessagePlugin.error('目标不存在')
+    return
+  }
+  if (result.kind === 'empty_content') {
+    MessagePlugin.warning('历史记录内容不能为空')
+    return
+  }
+
+  goalHistoryContent.value = ''
+  goalHistoryNote.value = ''
+  goalHistoryType.value = 'regular'
+  MessagePlugin.success('已添加历史记录')
+}
+
+const startEditGoalHistory = (record: GoalHistoryRecord) => {
+  editingGoalHistoryId.value = record.id
+  goalHistoryContent.value = record.content
+  goalHistoryNote.value = record.note || ''
+}
+
+const saveGoalHistory = () => {
+  const id = editingGoalHistoryId.value
+  if (!id) return
+
+  const content = goalHistoryContent.value.trim()
+  if (!content) {
+    MessagePlugin.warning('历史记录内容不能为空')
+    return
+  }
+
+  const success = updateGoalHistoryRecord(id, content, goalHistoryNote.value)
+  if (!success) {
+    MessagePlugin.error('更新失败')
+    return
+  }
+
+  editingGoalHistoryId.value = null
+  goalHistoryContent.value = ''
+  goalHistoryNote.value = ''
+  MessagePlugin.success('已更新历史记录')
+}
+
+const cancelEditGoalHistory = () => {
+  editingGoalHistoryId.value = null
+  goalHistoryContent.value = ''
+  goalHistoryNote.value = ''
+}
+
+const deleteGoalHistory = (id: string) => {
+  const confirmDialog = DialogPlugin.confirm({
+    header: '确认删除',
+    body: '确定要删除这条历史记录吗？',
+    confirmBtn: {
+      content: '删除',
+      theme: 'danger',
+    },
+    onConfirm: () => {
+      const success = deleteGoalHistoryRecord(id)
+      if (success) {
+        MessagePlugin.success('已删除历史记录')
+      } else {
+        MessagePlugin.error('删除失败')
+      }
+      confirmDialog.hide()
+    },
+  })
+}
+
 const templateEditVisible = ref(false)
 const editingTemplateId = ref<string | null>(null)
 const templateTitle = ref('')
@@ -654,6 +764,17 @@ const templateMinFrequency = ref<number>(1)
 const templateUnit = ref<TodoUnit>('times')
 const templateMinutesPerTime = ref<number>(15)
 const templateDescription = ref('')
+
+// Goal History State
+const showGoalHistory = ref(false)
+const goalHistoryContent = ref('')
+const goalHistoryType = ref<'regular' | 'milestone'>('regular')
+const goalHistoryNote = ref('')
+const editingGoalHistoryId = ref<string | null>(null)
+
+// Goal History Dialog State (独立对话框)
+const goalHistoryDialogVisible = ref(false)
+const currentGoalId = ref<string | null>(null)
 
 const templateCategoryOptions = computed(() => {
   const cats = [...categoryOptions.value]
@@ -704,11 +825,11 @@ const saveTemplateEdit = () => {
 
   const nextTitle = templateTitle.value.trim()
   if (!nextTitle) {
-    MessagePlugin.warning('模板名称不能为空')
+    MessagePlugin.warning('任务名称不能为空')
     return
   }
   if (templateCategoryOptions.value.length && !templateCategory.value) {
-    MessagePlugin.warning('请选择模板分类')
+    MessagePlugin.warning('请选择任务分类')
     return
   }
 
@@ -725,7 +846,7 @@ const saveTemplateEdit = () => {
 
   templateEditVisible.value = false
   editingTemplateId.value = null
-  MessagePlugin.success('模板已更新')
+  MessagePlugin.success('任务已更新')
 }
 
 const allDisplayTodos = computed(() =>
@@ -853,6 +974,26 @@ const toggleSelect = (id: string) => {
 }
 
 const toggleDone = (id: string, done: boolean) => {
+  // 如果是完成目标,需要确认
+  if (done) {
+    const todo = getTodoById(id)
+    if (todo && todo.period === 'once') {
+      const confirmDialog = DialogPlugin.confirm({
+        header: '确认完成目标',
+        body: `确定要标记目标"${todo.title}"为已完成吗?`,
+        confirmBtn: {
+          content: '确认完成',
+          theme: 'success',
+        },
+        onConfirm: () => {
+          toggleTodoDone(id, done)
+          confirmDialog.hide()
+        },
+      })
+      return
+    }
+  }
+
   toggleTodoDone(id, done)
 }
 
@@ -1327,7 +1468,7 @@ const exportDialogWidth = computed(() => {
     <div class="max-w-[1200px] mx-auto px-4 pt-4">
       <div class="text-lg md:text-2xl mb-4">今天是: {{ todayDisplay }}</div>
       <div v-if="isMobile" class="flex items-center justify-between mb-2">
-        <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">添加模板/目标</div>
+        <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">添加任务/目标</div>
         <t-button
           shape="square"
           variant="text"
@@ -1354,7 +1495,7 @@ const exportDialogWidth = computed(() => {
               ? '请先在配置管理中添加分类'
               : period === 'once'
                 ? '添加目标'
-                : '添加任务模板'
+                : '添加任务'
           "
           class="flex-1"
         ></t-input>
@@ -1366,7 +1507,7 @@ const exportDialogWidth = computed(() => {
           <template #icon>
             <add-icon size="20" />
           </template>
-          {{ period === 'once' ? '新建目标' : '新建任务模板' }}
+          {{ period === 'once' ? '新建目标' : '新建任务' }}
         </t-button>
       </div>
     </div>
@@ -1521,7 +1662,7 @@ const exportDialogWidth = computed(() => {
         class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800"
       >
         <div class="text-sm mb-2 font-bold flex items-center gap-2">
-          <span>{{ cat }} (模板)</span>
+          <span>{{ cat }} (任务)</span>
           <span
             class="px-2 py-0.5 rounded text-[11px] font-semibold border"
             :class="getCategoryTagClass(cat)"
@@ -1629,6 +1770,7 @@ const exportDialogWidth = computed(() => {
                   @punch-in="handlePunchIn"
                   @edit="openEdit"
                   @archive="archiveTodo"
+                  @view-history="openGoalHistoryDialog"
                 />
               </div>
 
@@ -1650,6 +1792,7 @@ const exportDialogWidth = computed(() => {
                   @punch-in="handlePunchIn"
                   @edit="openEdit"
                   @archive="archiveTodo"
+                  @view-history="openGoalHistoryDialog"
                 />
               </div>
             </template>
@@ -1696,6 +1839,7 @@ const exportDialogWidth = computed(() => {
                   @punch-in="handlePunchIn"
                   @edit="openEdit"
                   @archive="archiveTodo"
+                  @view-history="openGoalHistoryDialog"
                 />
               </div>
 
@@ -1717,6 +1861,7 @@ const exportDialogWidth = computed(() => {
                   @punch-in="handlePunchIn"
                   @edit="openEdit"
                   @archive="archiveTodo"
+                  @view-history="openGoalHistoryDialog"
                 />
               </div>
 
@@ -2309,6 +2454,90 @@ const exportDialogWidth = computed(() => {
           <div class="text-sm mb-1">任务描述</div>
           <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
         </div>
+
+        <!-- Goal History Section (only for goals) - 只读展示 -->
+        <div v-if="isEditingGoal" class="col-span-12">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-bold">目标进度记录</div>
+            <div class="flex items-center gap-2">
+              <t-button
+                size="small"
+                theme="primary"
+                variant="outline"
+                @click="openGoalHistoryDialog(editingTodoId!)"
+              >
+                管理记录
+              </t-button>
+              <t-button size="small" variant="text" @click="showGoalHistory = !showGoalHistory">
+                <template #icon>
+                  <chevron-down-icon v-if="!showGoalHistory" />
+                  <chevron-up-icon v-else />
+                </template>
+                {{ showGoalHistory ? '收起' : '展开' }} ({{
+                  getGoalHistoryRecords(editingTodoId || '').length
+                }})
+              </t-button>
+            </div>
+          </div>
+
+          <div v-show="showGoalHistory" class="space-y-3">
+            <!-- 提示信息 -->
+            <div
+              class="text-xs text-neutral-500 dark:text-neutral-400 bg-blue-50 dark:bg-blue-950/30 p-2 rounded border border-blue-200 dark:border-blue-800"
+            >
+              💡 点击上方"管理记录"按钮可以添加、编辑或删除历史记录
+            </div>
+
+            <!-- History Records List - 只读展示 -->
+            <div v-if="getGoalHistoryRecords(editingTodoId || '').length" class="space-y-2">
+              <div
+                v-for="record in getGoalHistoryRecords(editingTodoId || '').sort(
+                  (a, b) => b.timestamp - a.timestamp,
+                )"
+                :key="record.id"
+                class="p-3 rounded-lg border transition-all"
+                :class="
+                  record.type === 'milestone'
+                    ? 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
+                    : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
+                "
+              >
+                <div class="flex items-start gap-2">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                      <t-tag
+                        v-if="record.type === 'milestone'"
+                        size="small"
+                        theme="warning"
+                        variant="light"
+                      >
+                        <template #icon>
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path
+                              d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
+                            />
+                          </svg>
+                        </template>
+                        里程碑
+                      </t-tag>
+                      <span class="text-xs text-neutral-500 dark:text-neutral-400">
+                        {{ dayjs(record.timestamp).format('YYYY-MM-DD HH:mm') }}
+                      </span>
+                    </div>
+                    <div class="text-sm mb-1 whitespace-pre-wrap">{{ record.content }}</div>
+                    <div
+                      v-if="record.note"
+                      class="text-xs text-neutral-600 dark:text-neutral-400 mt-1"
+                    >
+                      备注: {{ record.note }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-sm text-neutral-400 text-center py-4">暂无进度记录</div>
+          </div>
+        </div>
       </div>
       <div class="mt-4 flex justify-end gap-2">
         <t-button variant="outline" @click="editVisible = false">取消</t-button>
@@ -2318,18 +2547,18 @@ const exportDialogWidth = computed(() => {
 
     <t-dialog
       v-model:visible="templateEditVisible"
-      header="编辑模板"
+      header="编辑任务"
       :width="editDialogWidth"
       :footer="false"
     >
       <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
-          <div class="text-sm mb-1">模板名称</div>
-          <t-input v-model="templateTitle" placeholder="请输入模板名称" />
+          <div class="text-sm mb-1">任务名称</div>
+          <t-input v-model="templateTitle" placeholder="请输入任务名称" />
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">模板分类</div>
+          <div class="text-sm mb-1">任务分类</div>
           <div class="flex items-center gap-2">
             <t-radio-group
               v-if="templateCategoryOptions.length"
@@ -2353,7 +2582,7 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">模板周期</div>
+          <div class="text-sm mb-1">任务周期</div>
           <t-radio-group
             v-model="templatePeriod"
             variant="default-filled"
@@ -2369,7 +2598,7 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">模板单位</div>
+          <div class="text-sm mb-1">任务单位</div>
           <t-radio-group
             v-model="templateUnit"
             variant="default-filled"
@@ -2424,8 +2653,8 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">模板描述</div>
-          <t-input v-model="templateDescription" placeholder="可选：添加模板的详细描述" />
+          <div class="text-sm mb-1">任务描述</div>
+          <t-input v-model="templateDescription" placeholder="可选：添加任务的详细描述" />
         </div>
       </div>
       <div class="mt-4 flex justify-end gap-2">
@@ -2472,6 +2701,144 @@ const exportDialogWidth = computed(() => {
         </div>
       </div>
     </t-dialog>
+    <!-- 目标历史记录对话框 -->
+    <t-dialog
+      v-model:visible="goalHistoryDialogVisible"
+      header="目标进度记录"
+      :width="editDialogWidth"
+      :footer="false"
+    >
+      <div class="max-h-[70vh] overflow-y-auto px-1">
+        <!-- 添加新记录表单 -->
+        <div
+          class="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 mb-3"
+        >
+          <div class="text-xs font-semibold mb-2">
+            {{ editingGoalHistoryId ? '编辑记录' : '添加新记录' }}
+          </div>
+
+          <div class="space-y-2">
+            <div>
+              <div class="text-xs mb-1">记录类型</div>
+              <t-radio-group
+                v-model="goalHistoryType"
+                variant="default-filled"
+                size="small"
+                :disabled="!!editingGoalHistoryId"
+              >
+                <t-radio-button value="regular">普通历史</t-radio-button>
+                <t-radio-button value="milestone">里程碑</t-radio-button>
+              </t-radio-group>
+            </div>
+
+            <div>
+              <div class="text-xs mb-1">记录内容</div>
+              <t-textarea
+                v-model="goalHistoryContent"
+                placeholder="记录你做了什么..."
+                :autosize="{ minRows: 2, maxRows: 4 }"
+              />
+            </div>
+
+            <div>
+              <div class="text-xs mb-1">备注（可选）</div>
+              <t-input v-model="goalHistoryNote" placeholder="添加额外说明..." size="small" />
+            </div>
+
+            <div class="flex gap-2">
+              <t-button
+                v-if="!editingGoalHistoryId"
+                size="small"
+                theme="primary"
+                @click="addGoalHistory"
+              >
+                添加记录
+              </t-button>
+              <template v-else>
+                <t-button size="small" theme="primary" @click="saveGoalHistory"> 保存 </t-button>
+                <t-button size="small" variant="outline" @click="cancelEditGoalHistory">
+                  取消
+                </t-button>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- 历史记录列表 -->
+        <div v-if="currentGoalHistory.length" class="space-y-2">
+          <div class="text-sm font-semibold mb-2">历史记录 ({{ currentGoalHistory.length }})</div>
+          <div
+            v-for="record in currentGoalHistory"
+            :key="record.id"
+            class="p-3 rounded-lg border transition-all"
+            :class="
+              record.type === 'milestone'
+                ? 'bg-linear-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
+                : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
+            "
+          >
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <t-tag
+                    v-if="record.type === 'milestone'"
+                    size="small"
+                    theme="warning"
+                    variant="light"
+                  >
+                    <template #icon>
+                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
+                        />
+                      </svg>
+                    </template>
+                    里程碑
+                  </t-tag>
+                  <span class="text-xs text-neutral-500 dark:text-neutral-400">
+                    {{ dayjs(record.timestamp).format('YYYY-MM-DD HH:mm') }}
+                  </span>
+                </div>
+                <div class="text-sm mb-1 whitespace-pre-wrap">{{ record.content }}</div>
+                <div v-if="record.note" class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                  备注: {{ record.note }}
+                </div>
+              </div>
+              <div class="flex gap-1 shrink-0">
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="startEditGoalHistory(record)"
+                >
+                  <template #icon>
+                    <edit-icon size="14" />
+                  </template>
+                </t-button>
+                <t-button
+                  size="small"
+                  variant="text"
+                  theme="danger"
+                  shape="square"
+                  @click="deleteGoalHistory(record.id)"
+                >
+                  <template #icon>
+                    <delete-icon size="14" />
+                  </template>
+                </t-button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="text-sm text-neutral-400 text-center py-8">
+          暂无进度记录,点击上方"添加记录"开始记录目标进展
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end">
+        <t-button variant="outline" @click="goalHistoryDialogVisible = false">关闭</t-button>
+      </div>
+    </t-dialog>
+
     <t-drawer
       v-model:visible="configDrawerVisible"
       placement="right"
