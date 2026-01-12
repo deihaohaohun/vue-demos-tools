@@ -273,22 +273,16 @@ export const useTodoStore = () => {
   }
 
   const getCycleStart = (tpl: TodoTemplate, today: Date) => {
-    const anchor = dayjs(tpl.createdAt).startOf('day')
     const now = dayjs(today).startOf('day')
 
-    if (tpl.period === 'daily') {
-      return now
-    } else if (tpl.period === 'weekly') {
-      const diffDays = now.diff(anchor, 'day')
-      const weeksElapsed = Math.floor(diffDays / 7)
-      return anchor.add(weeksElapsed * 7, 'day')
-    } else if (tpl.period === 'monthly') {
-      const diffMonths = now.diff(anchor, 'month')
-      return anchor.add(diffMonths, 'month')
-    } else if (tpl.period === 'yearly') {
-      const diffYears = now.diff(anchor, 'year')
-      return anchor.add(diffYears, 'year')
+    if (tpl.period === 'daily') return now
+    if (tpl.period === 'weekly') {
+      const jsDay = now.day()
+      const diff = jsDay === 0 ? 6 : jsDay - 1
+      return now.subtract(diff, 'day')
     }
+    if (tpl.period === 'monthly') return now.startOf('month')
+    if (tpl.period === 'yearly') return now.startOf('year')
     return now
   }
 
