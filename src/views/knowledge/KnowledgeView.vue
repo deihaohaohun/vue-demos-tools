@@ -5,13 +5,7 @@ import { useKnowledgeStore, type ResourceType, type VideoPlatform } from './useK
 import ResourceCard from './ResourceCard.vue'
 import ResourceHistoryDialog from './ResourceHistoryDialog.vue'
 import { AiEditor } from 'aieditor'
-import {
-  AddIcon,
-  SearchIcon,
-  VideoIcon,
-  ArticleIcon,
-  FilterIcon
-} from 'tdesign-icons-vue-next'
+import { AddIcon, SearchIcon, VideoIcon, ArticleIcon, FilterIcon } from 'tdesign-icons-vue-next'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 
 const router = useRouter()
@@ -32,18 +26,20 @@ const filteredResources = computed(() => {
 
   // Type filter
   if (selectedType.value !== 'all') {
-    res = res.filter(r => r.type === selectedType.value)
+    res = res.filter((r) => r.type === selectedType.value)
   }
 
   // Tag filter
   if (selectedTags.value.length > 0) {
-    res = res.filter(r => selectedTags.value.every(t => r.tags.includes(t)))
+    res = res.filter((r) => selectedTags.value.every((t) => r.tags.includes(t)))
   }
 
   // Search
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
-    res = res.filter(r => r.title.toLowerCase().includes(q) || r.tags.some(t => t.toLowerCase().includes(q)))
+    res = res.filter(
+      (r) => r.title.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)),
+    )
   }
 
   return res
@@ -121,6 +117,7 @@ watch(addDialogVisible, async (visible) => {
     addEditor = new AiEditor({
       element: addEditorEl.value,
       placeholder: '请输入详细内容、心得或笔记...',
+      draggable: false,
     })
     disableAiEditorResize(addEditorEl.value)
     if (form.value.content) {
@@ -165,7 +162,7 @@ const confirmAdd = () => {
     cover: form.value.cover,
     sourceUrl: form.value.sourceUrl.trim() || undefined,
     tags: form.value.tags,
-    content: form.value.content
+    content: form.value.content,
   })
 
   MessagePlugin.success('添加成功')
@@ -181,7 +178,9 @@ const handleDelete = (id: string) => {
   const title = res?.title || ''
   const confirmDialog = DialogPlugin.confirm({
     header: '确认删除',
-    body: title ? `确定要删除「${title}」吗？相关查看记录也会被删除。` : '确定要删除这个资源吗？相关查看记录也会被删除。',
+    body: title
+      ? `确定要删除「${title}」吗？相关查看记录也会被删除。`
+      : '确定要删除这个资源吗？相关查看记录也会被删除。',
     confirmBtn: { content: '删除', theme: 'danger' },
     onConfirm: () => {
       if (store.deleteResource(id)) {
@@ -295,14 +294,19 @@ watch(
 <template>
   <div class="w-full min-h-screen bg-neutral-50 dark:bg-neutral-900 flex flex-col">
     <!-- Header -->
-    <header class="bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 sticky top-0 z-10">
+    <header
+      class="bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 sticky top-0 z-10"
+    >
       <div class="mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <div class="flex items-center gap-2">
           <div
-            class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-blue-200 shadow-md">
+            class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-blue-200 shadow-md"
+          >
             知
           </div>
-          <h1 class="text-xl font-bold text-neutral-800 dark:text-neutral-100 hidden sm:block">温故而知新</h1>
+          <h1 class="text-xl font-bold text-neutral-800 dark:text-neutral-100 hidden sm:block">
+            温故而知新
+          </h1>
         </div>
 
         <div class="flex-1 max-w-md">
@@ -324,13 +328,22 @@ watch(
       <!-- Sidebar Filters -->
       <aside class="w-full md:w-64 shrink-0 space-y-6">
         <!-- Type Filter -->
-        <div class="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700">
+        <div
+          class="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700"
+        >
           <h3 class="text-sm font-bold text-neutral-400 uppercase mb-3 px-2">分类</h3>
           <div class="space-y-1">
-            <button v-for="opt in typeOptions" :key="opt.value"
+            <button
+              v-for="opt in typeOptions"
+              :key="opt.value"
               class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
-              :class="selectedType === opt.value ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 font-medium' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'"
-              @click="selectedType = opt.value as any">
+              :class="
+                selectedType === opt.value
+                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 font-medium'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'
+              "
+              @click="selectedType = opt.value as any"
+            >
               <component :is="opt.icon" size="16" />
               {{ opt.label }}
             </button>
@@ -338,13 +351,20 @@ watch(
         </div>
 
         <!-- Tag Cloud -->
-        <div class="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700">
+        <div
+          class="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700"
+        >
           <h3 class="text-sm font-bold text-neutral-400 uppercase mb-3 px-2">标签</h3>
           <div class="flex flex-wrap gap-2">
-            <t-tag v-for="tag in allTags" :key="tag" size="small"
+            <t-tag
+              v-for="tag in allTags"
+              :key="tag"
+              size="small"
               :variant="selectedTags.includes(tag) ? 'dark' : 'outline'"
-              :theme="selectedTags.includes(tag) ? 'primary' : 'default'" class="cursor-pointer transition-all"
-              @click="toggleTag(tag)">
+              :theme="selectedTags.includes(tag) ? 'primary' : 'default'"
+              class="cursor-pointer transition-all"
+              @click="toggleTag(tag)"
+            >
               {{ tag }}
             </t-tag>
             <div v-if="allTags.length === 0" class="text-xs text-neutral-400 px-2">暂无标签</div>
@@ -354,10 +374,19 @@ watch(
 
       <!-- Main Grid -->
       <main class="flex-1">
-        <div v-if="filteredResources.length > 0"
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-          <ResourceCard v-for="item in filteredResources" :key="item.id" :resource="item" @detail="goToDetail"
-            @edit="openEdit" @delete="handleDelete" @history="handleHistory" />
+        <div
+          v-if="filteredResources.length > 0"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-4"
+        >
+          <ResourceCard
+            v-for="item in filteredResources"
+            :key="item.id"
+            :resource="item"
+            @detail="goToDetail"
+            @edit="openEdit"
+            @delete="handleDelete"
+            @history="handleHistory"
+          />
         </div>
         <div v-else class="h-64 flex flex-col items-center justify-center text-neutral-400">
           <t-empty description="暂无相关资源，快去添加吧" />
@@ -366,21 +395,33 @@ watch(
     </div>
 
     <!-- History Dialog -->
-    <ResourceHistoryDialog v-model:visible="historyDialogVisible" :resource-id="currentHistoryResourceId" />
+    <ResourceHistoryDialog
+      v-model:visible="historyDialogVisible"
+      :resource-id="currentHistoryResourceId"
+    />
 
     <!-- Add Resource Dialog -->
     <t-dialog v-model:visible="addDialogVisible" header="添加新资源" width="800px" :footer="false">
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标题</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >标题</label
+          >
           <t-input v-model="form.title" placeholder="请输入资源标题" />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">类型</label>
+            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+              >类型</label
+            >
             <t-select v-model="form.type">
-              <t-option v-for="opt in typeOptions.slice(1)" :key="opt.value" :value="opt.value" :label="opt.label">
+              <t-option
+                v-for="opt in typeOptions.slice(1)"
+                :key="opt.value"
+                :value="opt.value"
+                :label="opt.label"
+              >
                 <div class="flex items-center gap-2">
                   <component :is="opt.icon" />
                   {{ opt.label }}
@@ -389,16 +430,24 @@ watch(
             </t-select>
           </div>
           <div>
-            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">封面链接 (可选)</label>
+            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+              >封面链接 (可选)</label
+            >
             <t-input v-model="form.cover" placeholder="https://..." />
           </div>
         </div>
 
         <div v-if="form.type === 'video'" class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">视频平台</label>
-            <t-radio-group v-model="form.videoPlatform" variant="default-filled" size="small"
-              class="flex flex-wrap gap-2">
+            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+              >视频平台</label
+            >
+            <t-radio-group
+              v-model="form.videoPlatform"
+              variant="default-filled"
+              size="small"
+              class="flex flex-wrap gap-2"
+            >
               <t-radio-button value="bilibili">B站</t-radio-button>
               <t-radio-button value="youtube">油管</t-radio-button>
               <t-radio-button value="youtube">抖音</t-radio-button>
@@ -408,22 +457,29 @@ watch(
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">原始链接 (可选)</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >原始链接 (可选)</label
+          >
           <t-input v-model="form.sourceUrl" placeholder="https://..." />
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标签</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >标签</label
+          >
           <t-checkbox-group v-model="form.tags" class="flex flex-wrap gap-2">
             <t-checkbox v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</t-checkbox>
           </t-checkbox-group>
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">备注</label>
-          <div ref="addEditorEl"
-            class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900">
-          </div>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >备注</label
+          >
+          <div
+            ref="addEditorEl"
+            class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900"
+          ></div>
         </div>
 
         <div class="flex justify-end gap-2 pt-2">
@@ -437,15 +493,24 @@ watch(
     <t-dialog v-model:visible="editDialogVisible" header="编辑资源" width="800px" :footer="false">
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标题</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >标题</label
+          >
           <t-input v-model="editForm.title" placeholder="请输入资源标题" />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">类型</label>
+            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+              >类型</label
+            >
             <t-select v-model="editForm.type">
-              <t-option v-for="opt in typeOptions.slice(1)" :key="opt.value" :value="opt.value" :label="opt.label">
+              <t-option
+                v-for="opt in typeOptions.slice(1)"
+                :key="opt.value"
+                :value="opt.value"
+                :label="opt.label"
+              >
                 <div class="flex items-center gap-2">
                   <component :is="opt.icon" />
                   {{ opt.label }}
@@ -454,16 +519,24 @@ watch(
             </t-select>
           </div>
           <div>
-            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">封面链接 (可选)</label>
+            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+              >封面链接 (可选)</label
+            >
             <t-input v-model="editForm.cover" placeholder="https://..." />
           </div>
         </div>
 
         <div v-if="editForm.type === 'video'" class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">视频平台</label>
-            <t-radio-group v-model="editForm.videoPlatform" variant="default-filled" size="small"
-              class="flex flex-wrap gap-2">
+            <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+              >视频平台</label
+            >
+            <t-radio-group
+              v-model="editForm.videoPlatform"
+              variant="default-filled"
+              size="small"
+              class="flex flex-wrap gap-2"
+            >
               <t-radio-button value="bilibili">B站</t-radio-button>
               <t-radio-button value="youtube">油管</t-radio-button>
               <t-radio-button value="douyin">抖音</t-radio-button>
@@ -473,22 +546,29 @@ watch(
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">原始链接 (可选)</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >原始链接 (可选)</label
+          >
           <t-input v-model="editForm.sourceUrl" placeholder="https://..." />
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">标签</label>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >标签</label
+          >
           <t-checkbox-group v-model="editForm.tags" class="flex flex-wrap gap-2">
             <t-checkbox v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</t-checkbox>
           </t-checkbox-group>
         </div>
 
         <div>
-          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1">备注</label>
-          <div ref="editEditorEl"
-            class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900">
-          </div>
+          <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
+            >备注</label
+          >
+          <div
+            ref="editEditorEl"
+            class="aieditor-host w-full dark:border-neutral-700 rounded-md overflow-hidden bg-white dark:bg-neutral-900"
+          ></div>
         </div>
 
         <div class="flex justify-end gap-2 pt-2">

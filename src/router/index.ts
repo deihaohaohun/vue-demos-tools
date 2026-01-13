@@ -40,6 +40,12 @@ const router = createRouter({
       component: () => import('@/views/knowledge/ResourceDetail.vue'),
     },
     {
+      path: '/websocket',
+      name: 'websocket',
+      meta: { title: '聊天室' },
+      component: () => import('@/views/websocket/WebsocketView.vue'),
+    },
+    {
       path: '/login',
       name: 'login',
       meta: { title: '登录' },
