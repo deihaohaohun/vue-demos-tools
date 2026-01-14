@@ -16,6 +16,8 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@iconify-json/fluent-emoji-flat": "^1.2.5",
+    "@iconify/vue": "^5.0.0",
     "@popperjs/core": "^2.11.8",
     "@primeuix/themes": "^1.2.5",
     "@supabase/supabase-js": "^2.86.0",
@@ -32,6 +34,7 @@
     "motion-v": "^1.7.4",
     "nanoid": "^5.1.6",
     "pinia": "^3.0.3",
+    "socket.io-client": "^4.8.3",
     "swiper": "^12.0.3",
     "tailwindcss": "^4.1.17",
     "tdesign-icons-vue-next": "^0.4.1",
