@@ -9,6 +9,8 @@ import './app.css'
 import TDesign from 'tdesign-vue-next'
 import 'tdesign-vue-next/es/style/index.css'
 import 'aieditor/dist/style.css'
+import 'viewerjs/dist/viewer.css'
+import VueViewer from 'v-viewer'
 import './lib/spaghetti.ts'
 
 const app = createApp(App)
@@ -16,4 +18,5 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(TDesign)
+app.use(VueViewer)
 app.mount('#app')

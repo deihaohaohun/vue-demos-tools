@@ -40,6 +40,8 @@
     "tailwindcss": "^4.1.17",
     "tdesign-icons-vue-next": "^0.4.1",
     "tdesign-vue-next": "^1.17.6",
+    "v-viewer": "^3.0.22",
+    "viewerjs": "^1.11.7",
     "vue": "^3.5.22",
     "vue-echarts": "^7.0.3",
     "vue-router": "^4.6.3"
