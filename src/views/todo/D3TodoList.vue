@@ -33,6 +33,7 @@ import {
   DeleteIcon,
   EditIcon,
   FileExportIcon,
+  DownloadIcon,
   MinusIcon,
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
@@ -671,7 +672,7 @@ const openGoalHistoryDialog = (goalId: string) => {
   goalHistoryDialogVisible.value = true
   // 重置表单
   goalHistoryContent.value = ''
-  goalHistoryNote.value = ''
+  goalHistoryMinutes.value = 0
   goalHistoryType.value = 'regular'
   editingGoalHistoryId.value = null
 }
@@ -686,7 +687,8 @@ const addGoalHistory = () => {
     return
   }
 
-  const result = addGoalHistoryRecord(id, content, goalHistoryType.value, goalHistoryNote.value)
+  // 1. 添加进度记录
+  const result = addGoalHistoryRecord(id, content, goalHistoryType.value)
   if (result.kind === 'not_found') {
     MessagePlugin.error('目标不存在')
     return
@@ -696,16 +698,40 @@ const addGoalHistory = () => {
     return
   }
 
+  // 2. 自动打卡联动
+  // 将进度内容作为打卡备注
+  const punchRes = punchInTodo(id, content)
+
+  // 3. 如果有输入时间，更新打卡时间
+  if (punchRes.kind === 'ok' || punchRes.kind === 'auto_done') {
+    const mins = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
+    if (mins > 0 && typeof punchRes.recordId === 'string') {
+      updatePunchRecordMinutes(punchRes.recordId, mins)
+    }
+  }
+
   goalHistoryContent.value = ''
-  goalHistoryNote.value = ''
+  goalHistoryMinutes.value = 0
   goalHistoryType.value = 'regular'
-  MessagePlugin.success('已添加历史记录')
+  MessagePlugin.success('已添加记录并同步打卡')
 }
 
 const startEditGoalHistory = (record: GoalHistoryRecord) => {
   editingGoalHistoryId.value = record.id
   goalHistoryContent.value = record.content
-  goalHistoryNote.value = record.note || ''
+
+  // 查找对应的打卡记录以获取时间
+  // 通过 content (note) 和 goalId (todoId) 匹配
+  const relatedPunch = punchRecords.value.find(
+    (p) => p.todoId === record.goalId && p.note === record.content,
+  )
+
+  if (relatedPunch && relatedPunch.unit === 'minutes') {
+    goalHistoryMinutes.value =
+      typeof relatedPunch.minutesPerTime === 'number' ? relatedPunch.minutesPerTime : 0
+  } else {
+    goalHistoryMinutes.value = 0
+  }
 }
 
 const saveGoalHistory = () => {
@@ -718,7 +744,7 @@ const saveGoalHistory = () => {
     return
   }
 
-  const success = updateGoalHistoryRecord(id, content, goalHistoryNote.value)
+  const success = updateGoalHistoryRecord(id, content)
   if (!success) {
     MessagePlugin.error('更新失败')
     return
@@ -726,14 +752,12 @@ const saveGoalHistory = () => {
 
   editingGoalHistoryId.value = null
   goalHistoryContent.value = ''
-  goalHistoryNote.value = ''
   MessagePlugin.success('已更新历史记录')
 }
 
 const cancelEditGoalHistory = () => {
   editingGoalHistoryId.value = null
   goalHistoryContent.value = ''
-  goalHistoryNote.value = ''
 }
 
 const deleteGoalHistory = (id: string) => {
@@ -767,10 +791,9 @@ const templateMinutesPerTime = ref<number>(15)
 const templateDescription = ref('')
 
 // Goal History State
-const showGoalHistory = ref(false)
 const goalHistoryContent = ref('')
 const goalHistoryType = ref<'regular' | 'milestone'>('regular')
-const goalHistoryNote = ref('')
+const goalHistoryMinutes = ref(0)
 const editingGoalHistoryId = ref<string | null>(null)
 
 // Goal History Dialog State (独立对话框)
@@ -1125,6 +1148,32 @@ type ExportGoal = {
 
 const exportSummaries = ref<ExportDaySummary[]>([])
 const exportGoals = ref<ExportGoal[]>([])
+
+const chart1Ref = ref(null)
+const chart2Ref = ref(null)
+const chart3Ref = ref(null)
+const chart4Ref = ref(null)
+
+const exportChart = (chartRef: unknown, title: string) => {
+  if (!chartRef) return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const instance = (chartRef as any).chart
+  if (!instance) return
+
+  const url = instance.getDataURL({
+    type: 'png',
+    pixelRatio: 2,
+    backgroundColor: isDark.value ? '#171717' : '#ffffff',
+    excludeComponents: ['toolbox'],
+  })
+
+  const link = document.createElement('a')
+  link.download = `${title}_${dayjs().format('YYYY-MM-DD')}.png`
+  link.href = url
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
 
 const exportWeekOffset = ref(0)
 
@@ -1678,7 +1727,7 @@ const exportDialogWidth = computed(() => {
             >{{ periodicHistory.filter((h) => h.category === cat).length }}</span
           >
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
           <span
             v-for="item in periodicHistory.filter((h) => h.category === cat)"
             :key="`${item.title}-${item.category}-${item.period}`"
@@ -1708,7 +1757,7 @@ const exportDialogWidth = computed(() => {
             unfinishedGoalTodos.length
           }}</t-tag>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
           <span
             v-for="todo in unfinishedGoalTodos"
             :key="todo.id"
@@ -1733,7 +1782,7 @@ const exportDialogWidth = computed(() => {
             completedGoalTodos.length
           }}</t-tag>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
           <t-tag
             v-for="todo in completedGoalTodos"
             :key="todo.id"
@@ -1922,7 +1971,7 @@ const exportDialogWidth = computed(() => {
             </template>
           </div>
         </t-tab-panel>
-        <t-tab-panel :value="3" label="打卡记录">
+        <t-tab-panel :value="3" :label="`打卡记录 (${currentHistoryRecords.length})`">
           <div class="min-h-[300px] p-2">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2">
               <div class="flex items-center gap-2">
@@ -2255,15 +2304,23 @@ const exportDialogWidth = computed(() => {
             class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
           >
             <div
-              class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30"
+              class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center"
             >
               <div class="text-xs font-bold text-blue-600 dark:text-blue-400">
                 各任务类型的打卡趋势
               </div>
+              <t-button
+                size="small"
+                variant="text"
+                shape="square"
+                @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
+              >
+                <template #icon><download-icon /></template>
+              </t-button>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="punchInsByCategoryOption" autoresize />
+                <VChart ref="chart1Ref" :option="punchInsByCategoryOption" autoresize />
               </div>
             </div>
           </div>
@@ -2272,13 +2329,21 @@ const exportDialogWidth = computed(() => {
             class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
           >
             <div
-              class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-900/30"
+              class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center"
             >
               <div class="text-xs font-bold text-purple-600 dark:text-purple-400">任务分类</div>
+              <t-button
+                size="small"
+                variant="text"
+                shape="square"
+                @click="exportChart(chart2Ref, '任务分类')"
+              >
+                <template #icon><download-icon /></template>
+              </t-button>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="categoryOption" autoresize />
+                <VChart ref="chart2Ref" :option="categoryOption" autoresize />
               </div>
             </div>
           </div>
@@ -2287,15 +2352,23 @@ const exportDialogWidth = computed(() => {
             class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
           >
             <div
-              class="px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border-b border-green-100 dark:border-green-900/30"
+              class="px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border-b border-green-100 dark:border-green-900/30 flex justify-between items-center"
             >
               <div class="text-xs font-bold text-green-600 dark:text-green-400">
                 每日打卡次数趋势
               </div>
+              <t-button
+                size="small"
+                variant="text"
+                shape="square"
+                @click="exportChart(chart3Ref, '每日打卡次数趋势')"
+              >
+                <template #icon><download-icon /></template>
+              </t-button>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="punchInsOption" autoresize />
+                <VChart ref="chart3Ref" :option="punchInsOption" autoresize />
               </div>
             </div>
           </div>
@@ -2304,15 +2377,23 @@ const exportDialogWidth = computed(() => {
             class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
           >
             <div
-              class="px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-900/30"
+              class="px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-900/30 flex justify-between items-center"
             >
               <div class="text-xs font-bold text-orange-600 dark:text-orange-400">
                 每日打卡分钟数趋势
               </div>
+              <t-button
+                size="small"
+                variant="text"
+                shape="square"
+                @click="exportChart(chart4Ref, '每日打卡分钟数趋势')"
+              >
+                <template #icon><download-icon /></template>
+              </t-button>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart :option="minutesOption" autoresize />
+                <VChart ref="chart4Ref" :option="minutesOption" autoresize />
               </div>
             </div>
           </div>
@@ -2445,107 +2526,26 @@ const exportDialogWidth = computed(() => {
 
     <t-dialog
       v-model:visible="editVisible"
-      header="编辑任务"
+      :header="isEditingGoal ? '编辑目标' : '编辑任务'"
       :width="editDialogWidth"
       :footer="false"
     >
       <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
-          <div class="text-sm mb-1">任务名称</div>
+          <div class="text-sm mb-1">{{ isEditingGoal ? '目标名称' : '任务名称' }}</div>
           <t-input
             v-model="editTitle"
-            placeholder="请输入任务名称"
+            :placeholder="isEditingGoal ? '请输入目标名称' : '请输入任务名称'"
             :disabled="editOnlyDescription"
           />
         </div>
 
         <div class="col-span-12">
-          <div class="text-sm mb-1">任务描述</div>
-          <t-input v-model="editDescription" placeholder="可选：添加任务的详细描述" />
-        </div>
-
-        <!-- Goal History Section (only for goals) - 只读展示 -->
-        <div v-if="isEditingGoal" class="col-span-12">
-          <div class="flex items-center justify-between mb-2">
-            <div class="text-sm font-bold">目标进度记录</div>
-            <div class="flex items-center gap-2">
-              <t-button
-                size="small"
-                theme="primary"
-                variant="outline"
-                @click="openGoalHistoryDialog(editingTodoId!)"
-              >
-                管理记录
-              </t-button>
-              <t-button size="small" variant="text" @click="showGoalHistory = !showGoalHistory">
-                <template #icon>
-                  <chevron-down-icon v-if="!showGoalHistory" />
-                  <chevron-up-icon v-else />
-                </template>
-                {{ showGoalHistory ? '收起' : '展开' }} ({{
-                  getGoalHistoryRecords(editingTodoId || '').length
-                }})
-              </t-button>
-            </div>
-          </div>
-
-          <div v-show="showGoalHistory" class="space-y-3">
-            <!-- 提示信息 -->
-            <div
-              class="text-xs text-neutral-500 dark:text-neutral-400 bg-blue-50 dark:bg-blue-950/30 p-2 rounded border border-blue-200 dark:border-blue-800"
-            >
-              💡 点击上方"管理记录"按钮可以添加、编辑或删除历史记录
-            </div>
-
-            <!-- History Records List - 只读展示 -->
-            <div v-if="getGoalHistoryRecords(editingTodoId || '').length" class="space-y-2">
-              <div
-                v-for="record in getGoalHistoryRecords(editingTodoId || '').sort(
-                  (a, b) => b.timestamp - a.timestamp,
-                )"
-                :key="record.id"
-                class="p-3 rounded-lg border transition-all"
-                :class="
-                  record.type === 'milestone'
-                    ? 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
-                    : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
-                "
-              >
-                <div class="flex items-start gap-2">
-                  <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-1">
-                      <t-tag
-                        v-if="record.type === 'milestone'"
-                        size="small"
-                        theme="warning"
-                        variant="light"
-                      >
-                        <template #icon>
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
-                            />
-                          </svg>
-                        </template>
-                        里程碑
-                      </t-tag>
-                      <span class="text-xs text-neutral-500 dark:text-neutral-400">
-                        {{ dayjs(record.timestamp).format('YYYY-MM-DD HH:mm') }}
-                      </span>
-                    </div>
-                    <div class="text-sm mb-1 whitespace-pre-wrap">{{ record.content }}</div>
-                    <div
-                      v-if="record.note"
-                      class="text-xs text-neutral-600 dark:text-neutral-400 mt-1"
-                    >
-                      备注: {{ record.note }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-sm text-neutral-400 text-center py-4">暂无进度记录</div>
-          </div>
+          <div class="text-sm mb-1">{{ isEditingGoal ? '目标描述' : '任务描述' }}</div>
+          <t-input
+            v-model="editDescription"
+            :placeholder="isEditingGoal ? '可选：添加目标的详细描述' : '可选：添加任务的详细描述'"
+          />
         </div>
       </div>
       <div class="mt-4 flex justify-end gap-2">
@@ -2750,8 +2750,8 @@ const exportDialogWidth = computed(() => {
             </div>
 
             <div>
-              <div class="text-xs mb-1">备注（可选）</div>
-              <t-input v-model="goalHistoryNote" placeholder="添加额外说明..." size="small" />
+              <div class="text-xs mb-1">投入时间（分钟）</div>
+              <t-input-number v-model="goalHistoryMinutes" :min="0" :step="5" size="small" />
             </div>
 
             <div class="flex gap-2">

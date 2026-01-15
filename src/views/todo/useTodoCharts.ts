@@ -112,15 +112,10 @@ export const useTodoCharts = (args: {
       const color = palette[idx % palette.length] ?? '#60a5fa'
       return {
         name: c,
-        type: 'line' as const,
+        type: 'bar',
         data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
-        smooth: true,
-        symbolSize: 6,
+        stack: 'punchIns',
         itemStyle: { color },
-        areaStyle: { color: toRgba(color, 0.12) },
-        lineStyle: {
-          width: 4,
-        },
       }
     })
 
@@ -149,6 +144,14 @@ export const useTodoCharts = (args: {
     }
     const t = chartTheme.value
     const a = axisCommon.value
+    
+    // Calculate totals for "Total" series
+    const dayKeys = args.rangeDayKeys.value
+    const seriesData = punchInsByCategory.value.series
+    const totalData = dayKeys.map((_, dayIdx) => {
+      return seriesData.reduce((sum, s) => sum + (s.data[dayIdx] || 0), 0)
+    })
+
     return {
       backgroundColor: 'transparent',
       textStyle: { color: t.text },
@@ -158,9 +161,38 @@ export const useTodoCharts = (args: {
         backgroundColor: t.tooltipBg,
         borderColor: t.tooltipBorder,
         textStyle: { color: t.text },
+        formatter: (params: unknown) => {
+          const raw = params as Array<{
+            axisValue: string
+            value: number
+            seriesName: string
+            color: string
+          }>
+          const list = Array.isArray(raw) ? raw.filter((p) => p.seriesName !== '总计') : []
+          if (!list.length) return ''
+          let total = 0
+          const firstItem = list[0]
+          let html = `<div class="font-bold mb-1">${firstItem?.axisValue || ''}</div>`
+          list.forEach((p) => {
+            const val = p.value || 0
+            total += val
+            html += `<div class="flex items-center justify-between gap-4">
+              <span class="flex items-center gap-1">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background-color:${p.color};"></span>
+                ${p.seriesName}
+              </span>
+              <span class="font-medium">${val} 次</span>
+            </div>`
+          })
+          html += `<div class="mt-1 pt-1 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-between gap-4 font-bold">
+            <span>总计</span>
+            <span>${total} 次</span>
+          </div>`
+          return html
+        },
       },
       legend: { data: punchInsByCategory.value.categories, top: 0, textStyle: { color: t.text } },
-      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
+      grid: { left: 24, right: 24, top: 46, bottom: 0, containLabel: true },
       xAxis: {
         type: 'category',
         data: args.rangeLabels.value,
@@ -177,7 +209,29 @@ export const useTodoCharts = (args: {
         axisLine: a.axisLine,
         splitLine: a.splitLine,
       },
-      series: punchInsByCategory.value.series as unknown as EChartsOption['series'],
+      series: [
+        ...(punchInsByCategory.value.series as unknown as unknown[]),
+        {
+          name: '总计',
+          type: 'bar',
+          data: totalData,
+          barGap: '-100%',
+          itemStyle: { color: 'transparent' },
+          emphasis: { disabled: true },
+          tooltip: { show: false },
+          label: {
+            show: true,
+            position: 'top',
+            color: t.text,
+            formatter: (p: { value?: unknown }) => {
+              const v = typeof p.value === 'number' ? p.value : Number(p.value)
+              if (!Number.isFinite(v) || v <= 0) return ''
+              return `${v}`
+            },
+          },
+          z: 10,
+        },
+      ] as unknown as EChartsOption['series'],
     }
   })
 

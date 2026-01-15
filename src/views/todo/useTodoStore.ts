@@ -856,7 +856,9 @@ export const useTodoStore = () => {
   const punchInTodo = (id: string, note?: string) => {
     const todo = todos.value.find((t) => t.id === id)
     if (!todo) return { kind: 'not_found' as const }
-    if (todo.period === 'once') return { kind: 'once' as const }
+    
+    // 如果是目标且已完成，不允许打卡
+    if (todo.period === 'once' && todo.done) return { kind: 'once' as const }
 
     const punchDayKey = formatDayKey(Date.now())
     const recordId = nanoid()
