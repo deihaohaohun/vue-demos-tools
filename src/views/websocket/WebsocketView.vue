@@ -235,6 +235,7 @@
           <!-- Messages -->
           <div
             v-if="selectedUser"
+            ref="messagesContainerRef"
             class="flex-1 p-2 sm:p-2 overflow-y-auto space-y-2 sm:space-y-4 custom-scrollbar min-h-0"
           >
             <!-- Date Divider -->
@@ -273,12 +274,12 @@
                   <span class="text-[9px] sm:text-[10px] text-neutral-500">{{ msg.time }}</span>
                 </div>
                 <div
-                  class="p-2 sm:p-2 rounded-2xl text-sm leading-relaxed shadow-sm transition-all hover:shadow-md"
-                  :class="
+                  class="p-2 sm:p-2 rounded-2xl text-sm leading-relaxed shadow-sm transition-all hover:shadow-md w-fit"
+                  :class="[
                     msg.isMe
                       ? 'bg-blue-600 text-white rounded-tr-none'
-                      : 'bg-neutral-800 text-neutral-200 rounded-tl-none border border-neutral-700/50'
-                  "
+                      : 'bg-neutral-800 text-neutral-200 rounded-tl-none border border-neutral-700/50',
+                  ]"
                   @contextmenu="onContextMenu($event, msg)"
                 >
                   <!-- Reply Context -->
@@ -500,7 +501,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { onClickOutside } from '@vueuse/core'
 import ContextMenu from '@imengyu/vue3-context-menu'
@@ -558,9 +559,89 @@ const socketRef = ref<Socket | null>(null)
 const allMessages = ref<Record<string, Message[]>>({})
 const unreadCounts = ref<Record<string, number>>({})
 const replyingMessage = ref<Message | null>(null)
+const messagesContainerRef = ref<HTMLDivElement | null>(null)
 
 const vFocus = {
   mounted: (el: HTMLElement) => el.focus(),
+}
+
+const requestNotificationPermission = async () => {
+  if (!('Notification' in window)) {
+    console.warn('此浏览器不支持桌面通知')
+    return
+  }
+  console.log('当前通知权限状态:', Notification.permission)
+  if (Notification.permission !== 'granted') {
+    const permission = await Notification.requestPermission()
+    console.log('用户选择的权限状态:', permission)
+  }
+}
+
+const playNotificationSound = () => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContext) return
+
+    const ctx = new AudioContext()
+    const oscillator = ctx.createOscillator()
+    const gainNode = ctx.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(ctx.destination)
+
+    // 提示音：清脆的 "叮" 声
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime) // A5
+    oscillator.frequency.exponentialRampToValueAtTime(587, ctx.currentTime + 0.3) // D5
+
+    gainNode.gain.setValueAtTime(0.2, ctx.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
+
+    oscillator.start()
+    oscillator.stop(ctx.currentTime + 0.3)
+  } catch (e) {
+    console.error('Audio error:', e)
+  }
+}
+
+const sendSystemNotification = (sender: string, body: string) => {
+  // 播放应用内提示音
+  playNotificationSound()
+
+  if (!('Notification' in window)) return
+
+  console.log('尝试发送通知', {
+    permission: Notification.permission,
+    sender,
+    selectedUser: selectedUser.value,
+    visibility: document.visibilityState,
+    focused: document.hasFocus(),
+  })
+
+  if (Notification.permission === 'granted') {
+    // 移除聚焦检查，始终发送通知
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const options: any = {
+        body,
+        icon: `https://api.dicebear.com/7.x/avataaars/svg?seed=${sender}`,
+        silent: false, // 确保有声音
+        tag: `msg-${sender}`, // 相同用户的消息合并
+        renotify: true, // 即使是同一个 tag，也重新触发弹窗提醒
+        requireInteraction: true, // 通知保持显示，直到用户点击或关闭
+      }
+      const n = new Notification(`来自 ${sender} 的消息`, options)
+
+      n.onclick = () => {
+        window.focus()
+        selectUser(sender)
+        n.close()
+      }
+    } catch (e) {
+      console.error('Notification error:', e)
+    }
+  }
 }
 
 const addMessageToUser = (user: string, msg: Message) => {
@@ -568,6 +649,14 @@ const addMessageToUser = (user: string, msg: Message) => {
     allMessages.value[user] = []
   }
   allMessages.value[user].push(msg)
+
+  if (user === selectedUser.value) {
+    nextTick(() => {
+      if (messagesContainerRef.value) {
+        messagesContainerRef.value.scrollTop = messagesContainerRef.value.scrollHeight
+      }
+    })
+  }
 }
 
 const onContextMenu = (e: MouseEvent, msg: Message) => {
@@ -675,6 +764,7 @@ const addEmoji = (emojiName: string) => {
   if (!emojiUnicode) return
   messageInput.value += emojiUnicode
   showEmojiPicker.value = false
+  textareaRef.value?.focus()
 }
 
 const openImagePicker = () => {
@@ -806,6 +896,8 @@ const connectSocket = () => {
       unreadCounts.value[sender] = (unreadCounts.value[sender] || 0) + 1
     }
 
+    sendSystemNotification(sender, text)
+
     addMessageToUser(sender, {
       sender,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -850,6 +942,8 @@ const connectSocket = () => {
     if (sender !== selectedUser.value) {
       unreadCounts.value[sender] = (unreadCounts.value[sender] || 0) + 1
     }
+
+    sendSystemNotification(sender, '[图片]')
 
     addMessageToUser(sender, {
       sender,
@@ -953,6 +1047,7 @@ const handleLogin = () => {
     allMessages.value = {}
     unreadCounts.value = {}
     fetchUsers()
+    requestNotificationPermission()
   }
 }
 
