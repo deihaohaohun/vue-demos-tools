@@ -14,6 +14,9 @@ importers:
       '@iconify/vue':
         specifier: ^5.0.0
         version: 5.0.0(vue@3.5.24(typescript@5.9.3))
+      '@imengyu/vue3-context-menu':
+        specifier: ^1.5.3
+        version: 1.5.3
       '@popperjs/core':
         specifier: ^2.11.8
         version: 2.11.8
@@ -508,6 +511,12 @@ packages:
     resolution: {integrity: sha512-C+KuEWIF5nSBrobFJhT//JS87OZ++QDORB6f2q2Wm6fl2mueSTpFBeBsveK0KW9hWiZ4mNiPjsh6Zs4jjdROSg==}
     peerDependencies:
       vue: '>=3'
+
+  '@imengyu/vue-scroll-rect@0.1.8':
+    resolution: {integrity: sha512-Mg7rgHlsGPO0tcMFjp1kB2BZ3oRrRtFN8MoE52jTgQnlc+Y0N6ttFnbIxOh2fc9j82uhdQ8zgZcXlFHUXeGnCA==}
+
+  '@imengyu/vue3-context-menu@1.5.3':
+    resolution: {integrity: sha512-PysXO1/3r+1fetumAkpZcXG5FyKAS/Bs6TtSvJqcAvk+gSvnN4C6x9KfgN8cBhyCDT8XLHMOzw+gkevY2Mx7zA==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -3260,6 +3269,12 @@ snapshots:
     dependencies:
       '@iconify/types': 2.0.0
       vue: 3.5.24(typescript@5.9.3)
+
+  '@imengyu/vue-scroll-rect@0.1.8': {}
+
+  '@imengyu/vue3-context-menu@1.5.3':
+    dependencies:
+      '@imengyu/vue-scroll-rect': 0.1.8
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

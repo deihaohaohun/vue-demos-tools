@@ -1,6 +1,6 @@
 <template>
   <div
-    class="min-h-screen bg-neutral-900 text-white flex items-stretch sm:items-center justify-center p-0 sm:p-4"
+    class="min-h-screen bg-neutral-900 text-white flex items-stretch sm:items-center justify-center p-0 sm:p-2"
   >
     <!-- Login Screen -->
     <transition
@@ -14,9 +14,9 @@
     >
       <div
         v-if="!username"
-        class="w-full max-w-md bg-neutral-800/50 backdrop-blur-xl rounded-2xl border border-neutral-700 p-8 shadow-2xl"
+        class="w-full max-w-md bg-neutral-800/50 backdrop-blur-xl rounded-2xl border border-neutral-700 p-4 shadow-2xl"
       >
-        <div class="text-center mb-8">
+        <div class="text-center mb-4">
           <div
             class="w-16 h-16 bg-linear-to-br from-blue-500 to-indigo-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-blue-500/30"
           >
@@ -26,11 +26,12 @@
           <p class="text-neutral-400">Connect with your team instantly</p>
         </div>
 
-        <div class="space-y-6">
+        <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-neutral-400 mb-2">Username/ID</label>
             <div class="relative group">
               <input
+                v-focus
                 v-model="inputUsername"
                 type="text"
                 placeholder="Enter your username"
@@ -61,11 +62,11 @@
       >
         <!-- Sidebar -->
         <div
-          class="w-full sm:w-80 bg-neutral-900 sm:border-r border-neutral-800 flex flex-col"
+          class="w-full sm:w-80 h-full bg-neutral-900 sm:border-r border-neutral-800 flex flex-col"
           :class="selectedUser ? 'hidden sm:flex' : ''"
         >
-          <div class="p-4 sm:p-6 pb-0">
-            <div class="flex items-center gap-3 mb-8">
+          <div class="p-2 sm:p-2 pb-0">
+            <div class="flex items-center gap-2 mb-4">
               <div
                 class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white overflow-hidden ring-2 ring-blue-500/20"
               >
@@ -84,7 +85,7 @@
             </div>
           </div>
 
-          <div class="px-4 sm:px-6 pb-4">
+          <div class="px-2 sm:px-2 pb-2">
             <div class="relative group">
               <input
                 type="text"
@@ -99,12 +100,12 @@
             </div>
           </div>
 
-          <div class="flex-1 overflow-y-auto px-2 sm:px-4 space-y-2">
+          <div class="flex-1 overflow-y-auto px-2 sm:px-2 space-y-2">
             <!-- Contact Items -->
             <div
               v-for="name in displayUsers"
               :key="name"
-              class="p-2 sm:p-3 rounded-xl hover:bg-neutral-800 cursor-pointer transition-all flex gap-3 items-center group"
+              class="p-2 rounded-xl hover:bg-neutral-800 cursor-pointer transition-all flex gap-3 items-center group"
               :class="{ 'bg-neutral-800 border-l-2 border-blue-500': selectedUser === name }"
               @click="selectUser(name)"
             >
@@ -127,13 +128,18 @@
                   <h3 class="font-medium truncate text-sm sm:text-base text-neutral-300">
                     {{ name }}
                   </h3>
+                  <span
+                    v-if="unreadCounts[name]"
+                    class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center shrink-0 ml-2"
+                  >
+                    {{ unreadCounts[name] > 99 ? '99+' : unreadCounts[name] }}
+                  </span>
                 </div>
-                <p
-                  class="text-xs truncate"
-                  :class="isUserOnline(name) ? 'text-green-500' : 'text-neutral-500'"
-                >
-                  {{ isUserOnline(name) ? '在线' : '离线' }}
-                </p>
+                <div class="flex justify-between items-center min-w-0">
+                  <p class="text-xs text-neutral-500 truncate mr-2">
+                    {{ getLastMessage(name) || (isUserOnline(name) ? '在线' : '离线') }}
+                  </p>
+                </div>
               </div>
             </div>
             <div v-if="usersLoading" class="px-3 py-2 text-xs text-neutral-500">加载中...</div>
@@ -148,7 +154,7 @@
             </div>
           </div>
 
-          <div class="p-4 border-t border-neutral-800">
+          <div class="p-2 border-t border-neutral-800">
             <div class="flex items-center justify-between">
               <div
                 class="flex items-center gap-3 text-neutral-400 hover:text-white cursor-pointer transition-colors"
@@ -166,12 +172,12 @@
 
         <!-- Main Chat Area -->
         <div
-          class="flex-1 flex flex-col bg-neutral-900/50 backdrop-blur-sm"
+          class="flex-1 flex flex-col bg-neutral-900/50 backdrop-blur-sm overflow-hidden h-full"
           :class="!selectedUser ? 'hidden sm:flex' : ''"
         >
           <!-- Header -->
           <div
-            class="h-16 sm:h-20 border-b border-neutral-800 flex items-center justify-between px-4 sm:px-8 bg-neutral-800/30"
+            class="h-16 sm:h-16 border-b border-neutral-800 flex items-center justify-between px-2 sm:px-4 bg-neutral-800/30"
           >
             <template v-if="selectedUser">
               <div class="flex items-center gap-3 sm:gap-4">
@@ -229,18 +235,18 @@
           <!-- Messages -->
           <div
             v-if="selectedUser"
-            class="flex-1 p-4 sm:p-8 overflow-y-auto space-y-6 sm:space-y-8 custom-scrollbar"
+            class="flex-1 p-2 sm:p-2 overflow-y-auto space-y-2 sm:space-y-4 custom-scrollbar min-h-0"
           >
             <!-- Date Divider -->
             <div class="flex justify-center">
               <span
                 class="bg-neutral-800 text-neutral-500 text-[10px] font-bold tracking-widest px-3 py-1 rounded-full uppercase"
-                >Today, Oct 24</span
+                >{{ dayjs().format('Today, MMM D') }}</span
               >
             </div>
 
             <div
-              v-for="(msg, index) in mockMessages"
+              v-for="(msg, index) in currentMessages"
               :key="index"
               class="flex gap-3 sm:gap-4"
               :class="{ 'flex-row-reverse': msg.isMe }"
@@ -267,13 +273,36 @@
                   <span class="text-[9px] sm:text-[10px] text-neutral-500">{{ msg.time }}</span>
                 </div>
                 <div
-                  class="p-3 sm:p-4 rounded-2xl text-sm leading-relaxed shadow-sm transition-all hover:shadow-md"
+                  class="p-2 sm:p-2 rounded-2xl text-sm leading-relaxed shadow-sm transition-all hover:shadow-md"
                   :class="
                     msg.isMe
                       ? 'bg-blue-600 text-white rounded-tr-none'
                       : 'bg-neutral-800 text-neutral-200 rounded-tl-none border border-neutral-700/50'
                   "
+                  @contextmenu="onContextMenu($event, msg)"
                 >
+                  <!-- Reply Context -->
+                  <div
+                    v-if="msg.replyTo"
+                    class="mb-2 p-2 rounded-lg text-xs flex flex-col gap-1"
+                    :class="
+                      msg.isMe
+                        ? 'bg-black/20 border-l-2 border-white/50 text-white/90'
+                        : 'bg-neutral-900/40 border-l-2 border-blue-500 text-neutral-300'
+                    "
+                  >
+                    <span class="font-bold">{{ msg.replyTo.sender }}</span>
+                    <span v-if="msg.replyTo.type === 'text'" class="truncate opacity-90">{{
+                      msg.replyTo.text
+                    }}</span>
+                    <span
+                      v-else-if="msg.replyTo.type === 'image'"
+                      class="flex items-center gap-1 opacity-90"
+                    >
+                      <ImageIcon class="w-3 h-3" /> Photo
+                    </span>
+                  </div>
+
                   <template v-if="msg.type === 'text'">
                     <template v-for="(part, pIdx) in parseMessage(msg.text || '')" :key="pIdx">
                       <span v-if="part.type === 'text'">{{ part.content }}</span>
@@ -300,7 +329,46 @@
           </div>
 
           <!-- Input Area -->
-          <div v-if="selectedUser" class="p-3 sm:p-6 bg-neutral-900/50 border-t border-neutral-800">
+          <div v-if="selectedUser" class="p-2 sm:p-2 bg-neutral-900/50 border-t border-neutral-800">
+            <!-- Replying Banner -->
+            <div
+              v-if="replyingMessage"
+              class="mb-2 p-2 bg-neutral-800/80 backdrop-blur-md rounded-xl border border-neutral-700/50 flex items-center justify-between animate-fade-in-up"
+            >
+              <div class="flex items-center gap-3 overflow-hidden">
+                <div class="w-1 h-8 bg-blue-500 rounded-full"></div>
+                <div class="flex flex-col min-w-0">
+                  <span class="text-xs font-bold text-blue-400"
+                    >Replying to {{ replyingMessage.sender }}</span
+                  >
+                  <span
+                    v-if="replyingMessage.type === 'text'"
+                    class="text-xs text-neutral-300 truncate"
+                    >{{ replyingMessage.text }}</span
+                  >
+                  <span
+                    v-else-if="replyingMessage.type === 'image'"
+                    class="text-xs text-neutral-300 flex items-center gap-1"
+                  >
+                    <ImageIcon class="w-3 h-3" /> Photo
+                  </span>
+                </div>
+              </div>
+              <button
+                @click="replyingMessage = null"
+                class="p-1.5 hover:bg-neutral-700 rounded-full text-neutral-400 hover:text-white transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+
             <div
               class="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-2.5 flex items-center gap-2 focus-within:border-blue-500/50 focus-within:bg-neutral-800 transition-all relative"
             >
@@ -413,7 +481,7 @@
                   @compositionstart="handleCompositionStart"
                   @compositionend="handleCompositionEnd"
                   @scroll="syncInputOverlayScroll"
-                  @keyup.enter.exact.prevent="sendMessage"
+                  @keydown.enter.exact.prevent="sendMessage"
                 ></textarea>
               </div>
               <button
@@ -435,9 +503,12 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { onClickOutside } from '@vueuse/core'
+import ContextMenu from '@imengyu/vue3-context-menu'
+import '@imengyu/vue3-context-menu/lib/vue3-context-menu.css'
 import fluentEmojiChars from '@iconify-json/fluent-emoji-flat/chars.json'
 import fluentEmojiMetadata from '@iconify-json/fluent-emoji-flat/metadata.json'
 import { io, type Socket } from 'socket.io-client'
+import dayjs from 'dayjs'
 import {
   ChatIcon,
   UserIcon,
@@ -463,6 +534,12 @@ type Message = {
   image?: string
   audio?: string
   file?: string
+  replyTo?: {
+    sender: string
+    text?: string
+    image?: string
+    type: 'text' | 'image' | 'audio' | 'file'
+  }
 }
 
 const inputUsername = ref('')
@@ -478,6 +555,37 @@ const imageFileInputRef = ref<HTMLInputElement | null>(null)
 const socketStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
 const socketErrorMessage = ref('')
 const socketRef = ref<Socket | null>(null)
+const allMessages = ref<Record<string, Message[]>>({})
+const unreadCounts = ref<Record<string, number>>({})
+const replyingMessage = ref<Message | null>(null)
+
+const vFocus = {
+  mounted: (el: HTMLElement) => el.focus(),
+}
+
+const addMessageToUser = (user: string, msg: Message) => {
+  if (!allMessages.value[user]) {
+    allMessages.value[user] = []
+  }
+  allMessages.value[user].push(msg)
+}
+
+const onContextMenu = (e: MouseEvent, msg: Message) => {
+  e.preventDefault()
+  ContextMenu.showContextMenu({
+    x: e.x,
+    y: e.y,
+    items: [
+      {
+        label: '引用回复',
+        onClick: () => {
+          replyingMessage.value = msg
+          textareaRef.value?.focus()
+        },
+      },
+    ],
+  })
+}
 
 onClickOutside(emojiPickerRef, () => {
   showEmojiPicker.value = false
@@ -592,21 +700,37 @@ const handleImageSelected = async (evt: Event) => {
 
   const image = await fileToDataUrl(file)
 
-  mockMessages.value.push({
+  const newMessage: Message = {
     sender: username.value,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type: 'image',
     isMe: true,
     image,
-  })
+  }
+
+  if (replyingMessage.value) {
+    newMessage.replyTo = {
+      sender: replyingMessage.value.sender,
+      text: replyingMessage.value.text,
+      image: replyingMessage.value.image,
+      type: replyingMessage.value.type,
+    }
+    replyingMessage.value = null
+  }
+
+  addMessageToUser(selectedUser.value, newMessage)
 
   if (socketRef.value?.connected) {
+    const fileName =
+      file.name + (newMessage.replyTo ? '|||REPLY|||' + JSON.stringify(newMessage.replyTo) : '')
+
     socketRef.value.emit('imageMessage', {
       sender: username.value,
       to: selectedUser.value,
-      fileName: file.name,
+      fileName,
       mimeType: file.type,
       image,
+      replyTo: newMessage.replyTo,
     })
   }
 }
@@ -651,24 +775,44 @@ const connectSocket = () => {
     userPresence.value = { ...userPresence.value, [name]: false }
   })
 
-  type IncomingMessage = { sender?: string; text?: string; to?: string }
+  type IncomingMessage = {
+    sender?: string
+    text?: string
+    to?: string
+    replyTo?: Message['replyTo']
+  }
   socket.on('message', (payload: IncomingMessage) => {
-    const text = payload.text ?? ''
+    let text = payload.text ?? ''
     const sender = payload.sender ?? 'unknown'
+    let replyTo = payload.replyTo
 
-    if (sender === username.value) return
-    if (!selectedUser.value) return
-    if (typeof payload !== 'string') {
-      const related = sender === selectedUser.value || payload.to === selectedUser.value
-      if (!related) return
+    if (text && text.includes('|||REPLY|||')) {
+      const parts = text.split('|||REPLY|||')
+      text = parts[0]!
+      try {
+        if (!replyTo && parts[1]) replyTo = JSON.parse(parts[1])
+      } catch {
+        // ignore
+      }
     }
 
-    mockMessages.value.push({
+    if (sender === username.value) return
+
+    if (!users.value.includes(sender)) {
+      users.value = [sender, ...users.value]
+    }
+
+    if (sender !== selectedUser.value) {
+      unreadCounts.value[sender] = (unreadCounts.value[sender] || 0) + 1
+    }
+
+    addMessageToUser(sender, {
       sender,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       text,
       type: 'text',
       isMe: false,
+      replyTo,
     })
   })
 
@@ -678,22 +822,42 @@ const connectSocket = () => {
     image?: string
     fileName?: string
     mimeType?: string
+    replyTo?: Message['replyTo']
   }
   socket.on('imageMessage', (payload: IncomingImageMessage) => {
     const sender = payload.sender ?? 'unknown'
     const image = payload.image ?? ''
+    let replyTo = payload.replyTo
+    let fileName = payload.fileName ?? ''
+
+    if (fileName && fileName.includes('|||REPLY|||')) {
+      const parts = fileName.split('|||REPLY|||')
+      fileName = parts[0]!
+      try {
+        if (!replyTo && parts[1]) replyTo = JSON.parse(parts[1])
+      } catch {
+        // ignore
+      }
+    }
+
     if (!image) return
     if (sender === username.value) return
-    if (!selectedUser.value) return
-    const related = sender === selectedUser.value || payload.to === selectedUser.value
-    if (!related) return
 
-    mockMessages.value.push({
+    if (!users.value.includes(sender)) {
+      users.value = [sender, ...users.value]
+    }
+
+    if (sender !== selectedUser.value) {
+      unreadCounts.value[sender] = (unreadCounts.value[sender] || 0) + 1
+    }
+
+    addMessageToUser(sender, {
       sender,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'image',
       isMe: false,
       image,
+      replyTo,
     })
   })
 
@@ -714,6 +878,15 @@ const users = ref<string[]>([])
 const userPresence = ref<Record<string, boolean>>({})
 const usersLoading = ref(false)
 const usersError = ref('')
+
+const getLastMessage = (user: string) => {
+  const msgs = allMessages.value[user]
+  if (!msgs || msgs.length === 0) return ''
+  const last = msgs[msgs.length - 1]
+  if (!last) return ''
+  if (last.type === 'image') return '[图片]'
+  return last.text || ''
+}
 
 const isUserOnline = (name: string) => {
   return Boolean(userPresence.value[name])
@@ -756,14 +929,16 @@ const fetchUsers = async () => {
 
 const backToList = () => {
   selectedUser.value = null
-  mockMessages.value = []
   messageInput.value = ''
   showEmojiPicker.value = false
 }
 
 const selectUser = (name: string) => {
   selectedUser.value = name
-  mockMessages.value = []
+  if (!allMessages.value[name]) {
+    allMessages.value[name] = []
+  }
+  unreadCounts.value[name] = 0
   messageInput.value = ''
   showEmojiPicker.value = false
 }
@@ -775,7 +950,8 @@ const handleLogin = () => {
     users.value = []
     userPresence.value = {}
     selectedUser.value = null
-    mockMessages.value = []
+    allMessages.value = {}
+    unreadCounts.value = {}
     fetchUsers()
   }
 }
@@ -789,7 +965,8 @@ const logout = () => {
   userPresence.value = {}
   usersError.value = ''
   usersLoading.value = false
-  mockMessages.value = []
+  allMessages.value = {}
+  unreadCounts.value = {}
   messageInput.value = ''
   showEmojiPicker.value = false
 }
@@ -798,20 +975,36 @@ const sendMessage = () => {
   if (!selectedUser.value) return
   if (messageInput.value.trim()) {
     const text = messageInput.value.trim()
-    mockMessages.value.push({
+    const newMessage: Message = {
       sender: username.value,
-      time: '10:45 AM',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       text,
       type: 'text',
       isMe: true,
-    })
+    }
+
+    if (replyingMessage.value) {
+      newMessage.replyTo = {
+        sender: replyingMessage.value.sender,
+        text: replyingMessage.value.text,
+        image: replyingMessage.value.image,
+        type: replyingMessage.value.type,
+      }
+      replyingMessage.value = null
+    }
+
+    addMessageToUser(selectedUser.value, newMessage)
 
     if (socketRef.value?.connected) {
+      const textToSend =
+        text + (newMessage.replyTo ? '|||REPLY|||' + JSON.stringify(newMessage.replyTo) : '')
+
       socketRef.value.emit('message', {
         sender: username.value,
         receiver: selectedUser.value,
         to: selectedUser.value,
-        text,
+        text: textToSend,
+        replyTo: newMessage.replyTo,
       })
     }
     messageInput.value = ''
@@ -822,7 +1015,9 @@ onBeforeUnmount(() => {
   disconnectSocket()
 })
 
-const mockMessages = ref<Message[]>([])
+const currentMessages = computed(() => {
+  return selectedUser.value ? allMessages.value[selectedUser.value] || [] : []
+})
 </script>
 
 <style scoped>
