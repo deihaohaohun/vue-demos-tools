@@ -13,6 +13,7 @@ const store = useKnowledgeStore()
 
 const searchQuery = ref('')
 const selectedType = ref<ResourceType | 'all'>('all')
+const selectedPlatform = ref<VideoPlatform | 'all'>('all')
 const selectedTags = ref<string[]>([])
 
 const typeOptions = [
@@ -21,12 +22,24 @@ const typeOptions = [
   { label: '文章', value: 'article', icon: ArticleIcon },
 ]
 
+const platformOptions = [
+  { label: '全部平台', value: 'all' },
+  { label: 'B站', value: 'bilibili' },
+  { label: '油管', value: 'youtube' },
+  { label: '抖音', value: 'douyin' },
+]
+
 const filteredResources = computed(() => {
   let res = store.resources.value
 
   // Type filter
   if (selectedType.value !== 'all') {
     res = res.filter((r) => r.type === selectedType.value)
+  }
+
+  // Platform filter (only for video)
+  if (selectedType.value === 'video' && selectedPlatform.value !== 'all') {
+    res = res.filter((r) => r.videoPlatform === selectedPlatform.value)
   }
 
   // Tag filter
@@ -41,6 +54,9 @@ const filteredResources = computed(() => {
       (r) => r.title.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)),
     )
   }
+
+  // Sort by createdAt ascending (older first)
+  res.sort((a, b) => a.createdAt - b.createdAt)
 
   return res
 })
@@ -216,7 +232,7 @@ const editForm = ref({
 const editEditorEl = ref<HTMLElement | null>(null)
 let editEditor: AiEditor | null = null
 
-const openEdit = (id: string) => {
+const openEdit = (id: string, focusCover = false) => {
   const res = store.getResourceById(id)
   if (!res) return
   editingId.value = id
@@ -230,6 +246,25 @@ const openEdit = (id: string) => {
     content: res.content || '',
   }
   editDialogVisible.value = true
+
+  if (focusCover) {
+    nextTick(() => {
+      // Find the cover input and focus it
+      const inputs = document.querySelectorAll('.t-dialog input')
+      // The cover input is the 3rd input in the form (Title, Type Select, Cover)
+      // But type select might be implemented differently. Let's rely on placeholder if possible or index.
+      // Index strategy: Title(0), Cover(1) if select is not an input.
+      // Let's try to find by placeholder "https://..." which is used for cover
+      // Actually there are two inputs with "https://..." placeholder (cover and sourceUrl). Cover is the first one.
+      const coverInput = Array.from(inputs).find(
+        (input) => input.getAttribute('placeholder') === 'https://...',
+      ) as HTMLInputElement | undefined
+
+      if (coverInput) {
+        coverInput.focus()
+      }
+    })
+  }
 }
 
 const confirmEdit = () => {
@@ -332,21 +367,47 @@ watch(
           class="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700"
         >
           <h3 class="text-sm font-bold text-neutral-400 uppercase mb-3 px-2">分类</h3>
-          <div class="space-y-1">
-            <button
+          <div class="flex flex-wrap gap-2">
+            <t-tag
               v-for="opt in typeOptions"
               :key="opt.value"
-              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
-              :class="
-                selectedType === opt.value
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 font-medium'
-                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'
+              size="small"
+              :variant="selectedType === opt.value ? 'dark' : 'outline'"
+              :theme="selectedType === opt.value ? 'primary' : 'default'"
+              class="cursor-pointer transition-all"
+              @click="
+                () => {
+                  selectedType = opt.value as any
+                  if (selectedType !== 'video') selectedPlatform = 'all'
+                }
               "
-              @click="selectedType = opt.value as any"
             >
-              <component :is="opt.icon" size="16" />
+              <template #icon>
+                <component :is="opt.icon" />
+              </template>
               {{ opt.label }}
-            </button>
+            </t-tag>
+          </div>
+
+          <!-- Video Platform Sub-filter -->
+          <div
+            v-if="selectedType === 'video'"
+            class="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700"
+          >
+            <div class="text-xs text-neutral-400 mb-2 px-1">视频平台</div>
+            <div class="flex flex-wrap gap-2">
+              <t-tag
+                v-for="platform in platformOptions"
+                :key="platform.value"
+                size="small"
+                :variant="selectedPlatform === platform.value ? 'dark' : 'outline'"
+                :theme="selectedPlatform === platform.value ? 'primary' : 'default'"
+                class="cursor-pointer transition-all"
+                @click="selectedPlatform = platform.value as any"
+              >
+                {{ platform.label }}
+              </t-tag>
+            </div>
           </div>
         </div>
 
@@ -383,7 +444,8 @@ watch(
             :key="item.id"
             :resource="item"
             @detail="goToDetail"
-            @edit="openEdit"
+            @edit="(id: string) => openEdit(id, false)"
+            @set-cover="(id: string) => openEdit(id, true)"
             @delete="handleDelete"
             @history="handleHistory"
           />
@@ -401,7 +463,14 @@ watch(
     />
 
     <!-- Add Resource Dialog -->
-    <t-dialog v-model:visible="addDialogVisible" header="添加新资源" width="800px" :footer="false">
+    <t-dialog
+      v-model:visible="addDialogVisible"
+      header="添加新资源"
+      width="800px"
+      :footer="false"
+      placement="top"
+      top="30px"
+    >
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-bold text-neutral-600 dark:text-neutral-400 mb-1"
@@ -450,7 +519,7 @@ watch(
             >
               <t-radio-button value="bilibili">B站</t-radio-button>
               <t-radio-button value="youtube">油管</t-radio-button>
-              <t-radio-button value="youtube">抖音</t-radio-button>
+              <t-radio-button value="douyin">抖音</t-radio-button>
             </t-radio-group>
           </div>
           <div />
