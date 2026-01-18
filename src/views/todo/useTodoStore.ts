@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 
@@ -95,14 +95,15 @@ interface GoalHistoryRecord {
   note?: string
 }
 
-const STORAGE_KEY = 'todos'
-const HISTORY_KEY = 'todo_history'
-const ARCHIVED_HISTORY_KEY = 'todo_archived_history'
-const ABANDONED_GOALS_KEY = 'todo_abandoned_goals'
-const TEMPLATES_KEY = 'todo_templates'
-const DAY_STATS_KEY = 'todo_day_stats'
-const PUNCH_RECORDS_KEY = 'todo_punch_records'
-const GOAL_HISTORY_KEY = 'todo_goal_history'
+interface UiConfig {
+  categories: string[]
+  categoryColors: Record<string, string>
+  showTime: boolean
+  showDate: boolean
+  backgroundImage?: string
+  minFrequencies: number[]
+  minutesPerTimes: number[]
+}
 
 export type {
   Todo,
@@ -115,6 +116,7 @@ export type {
   AbandonedGoal,
   PunchRecord,
   GoalHistoryRecord,
+  UiConfig,
 }
 
 export const useTodoStore = () => {
@@ -126,6 +128,15 @@ export const useTodoStore = () => {
   const abandonedGoals = ref<AbandonedGoal[]>([])
   const punchRecords = ref<PunchRecord[]>([])
   const goalHistoryRecords = ref<GoalHistoryRecord[]>([])
+
+  const uiConfig = ref<UiConfig>({
+    categories: ['默认', '工作', '学习', '健康', '生活'],
+    categoryColors: {},
+    showTime: true,
+    showDate: true,
+    minFrequencies: [1, 2, 3, 4],
+    minutesPerTimes: [12, 15, 18, 20],
+  })
 
   const formatDayKey = (ts: number) => {
     const d = dayjs(ts)
@@ -235,41 +246,6 @@ export const useTodoStore = () => {
     const k = key || '未分类'
     record[k] = (record[k] || 0) + delta
     if (record[k] <= 0) delete record[k]
-  }
-
-  const getTodoMinutesPerPunch = (todo: Todo) => {
-    if (todo.unit !== 'minutes') return 0
-    return typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
-  }
-
-  const syncTemplatesFromTodos = () => {
-    for (const t of todos.value) {
-      if (t.period === 'once') continue
-      if (t.templateId) continue
-      const existing = templates.value.find(
-        (tpl) =>
-          !tpl.archived &&
-          tpl.title === t.title &&
-          tpl.period === t.period &&
-          tpl.category === (t.category || '未分类'),
-      )
-      if (existing) {
-        t.templateId = existing.id
-      } else {
-        const tplId = nanoid()
-        templates.value.push({
-          id: tplId,
-          title: t.title,
-          category: t.category || '未分类',
-          period: t.period,
-          minFrequency: t.minFrequency,
-          unit: t.unit,
-          minutesPerTime: t.unit === 'minutes' ? t.minutesPerTime : undefined,
-          createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
-        })
-        t.templateId = tplId
-      }
-    }
   }
 
   const getCycleStart = (tpl: TodoTemplate, today: Date) => {
@@ -440,388 +416,10 @@ export const useTodoStore = () => {
     todos.value = instances
   }
 
-  const rebuildStatsFromTodos = () => {
-    const grouped: Record<string, DayStat> = {}
-    for (const t of todos.value) {
-      const dk = t.dayKey
-      if (!grouped[dk]) {
-        grouped[dk] = {
-          createdCount: 0,
-          completedCount: 0,
-          punchInsTotal: 0,
-          minutesTotal: 0,
-          categoryCreated: {},
-          categoryCompleted: {},
-          categoryPunchIns: {},
-          categoryMinutes: {},
-        }
-      }
-      grouped[dk].createdCount += 1
-      incCategory(grouped[dk].categoryCreated, t.category || '未分类', 1)
-      if (t.done) grouped[dk].completedCount += 1
-      if (t.done) incCategory(grouped[dk].categoryCompleted, t.category || '未分类', 1)
-    }
-
-    for (const [dk, stat] of Object.entries(grouped)) {
-      const target = ensureDayStat(dk)
-      target.createdCount = Math.max(target.createdCount, stat.createdCount)
-      target.completedCount = Math.max(target.completedCount, stat.completedCount)
-
-      for (const [c, v] of Object.entries(stat.categoryCreated)) {
-        target.categoryCreated[c] = Math.max(target.categoryCreated[c] || 0, v)
-      }
-      for (const [c, v] of Object.entries(stat.categoryCompleted)) {
-        target.categoryCompleted[c] = Math.max(target.categoryCompleted[c] || 0, v)
-      }
-    }
-  }
-
-  const rebuildPunchStatsFromRecords = () => {
-    const newStats: Record<
-      string,
-      {
-        punchInsTotal: number
-        minutesTotal: number
-        categoryPunchIns: Record<string, number>
-        categoryMinutes: Record<string, number>
-      }
-    > = {}
-
-    for (const r of punchRecords.value) {
-      if (!r.dayKey) continue
-      if (!newStats[r.dayKey]) {
-        newStats[r.dayKey] = {
-          punchInsTotal: 0,
-          minutesTotal: 0,
-          categoryPunchIns: {},
-          categoryMinutes: {},
-        }
-      }
-      const s = newStats[r.dayKey]
-      if (s) {
-        s.punchInsTotal += 1
-        incCategory(s.categoryPunchIns, r.category || '未分类', 1)
-
-        let mins = 0
-        if (r.unit === 'minutes') {
-          mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
-        } else {
-          const tpl = templates.value.find(
-            (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
-          )
-          if (tpl && tpl.unit === 'minutes') {
-            mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
-          }
-        }
-
-        if (mins > 0) {
-          s.minutesTotal += mins
-          incCategory(s.categoryMinutes, r.category || '未分类', mins)
-        }
-      }
-    }
-
-    // 更新 dayStats，保留 createdCount 等其他统计
-    for (const [dk, s] of Object.entries(newStats)) {
-      const target = ensureDayStat(dk)
-      target.punchInsTotal = s.punchInsTotal
-      target.minutesTotal = s.minutesTotal
-      target.categoryPunchIns = { ...s.categoryPunchIns }
-      target.categoryMinutes = { ...s.categoryMinutes }
-    }
-
-    // 对于没有打卡记录的日期，也要清空打卡统计（以防是删除记录后的重建）
-    for (const [dk, target] of Object.entries(dayStats.value)) {
-      if (!newStats[dk]) {
-        target.punchInsTotal = 0
-        target.minutesTotal = 0
-        target.categoryPunchIns = {}
-        target.categoryMinutes = {}
-      }
-    }
-  }
-
-  // 从 localStorage 加载数据
-  const loadData = () => {
-    const storedTodos = localStorage.getItem(STORAGE_KEY)
-    if (storedTodos) {
-      try {
-        const parsed = JSON.parse(storedTodos)
-        todos.value = parsed.map(
-          (t: Partial<Todo> & { title: string; id: string; done: boolean }) => {
-            let createdAt = typeof t.createdAt === 'number' ? t.createdAt : undefined
-            if (!createdAt && typeof t.dayKey === 'string') {
-              // 尝试从 dayKey 恢复创建时间
-              const d = dayjs(t.dayKey)
-              if (d.isValid()) {
-                createdAt = d.valueOf()
-              }
-            }
-            if (!createdAt) createdAt = Date.now()
-
-            const dayKey = typeof t.dayKey === 'string' ? t.dayKey : formatDayKey(createdAt)
-            const completedAt =
-              typeof t.completedAt === 'number' ? t.completedAt : t.done ? createdAt : undefined
-            const normalized: Todo = {
-              title: t.title,
-              id: t.id,
-              done: !!t.done,
-              completedAt,
-              punchIns: typeof t.punchIns === 'number' ? t.punchIns : 0,
-              category: typeof t.category === 'string' ? t.category : '',
-              period: (t.period as TodoPeriod) || 'daily',
-              minFrequency: typeof t.minFrequency === 'number' ? t.minFrequency : 1,
-              unit: (t.unit as TodoUnit) || 'times',
-              minutesPerTime: typeof t.minutesPerTime === 'number' ? t.minutesPerTime : undefined,
-              description: typeof t.description === 'string' ? t.description : undefined,
-              createdAt,
-              dayKey,
-              templateId: typeof t.templateId === 'string' ? t.templateId : undefined,
-              deadline: typeof t.deadline === 'number' ? t.deadline : undefined,
-            }
-
-            if (normalized.unit === 'minutes' && typeof normalized.minutesPerTime !== 'number') {
-              normalized.minutesPerTime = 15
-            }
-            return normalized
-          },
-        )
-      } catch (e) {
-        console.error('加载任务数据失败:', e)
-      }
-    }
-
-    const storedTemplates = localStorage.getItem(TEMPLATES_KEY)
-    if (storedTemplates) {
-      try {
-        const parsed = JSON.parse(storedTemplates)
-        templates.value = (Array.isArray(parsed) ? parsed : []).map((t: Partial<TodoTemplate>) => {
-          const createdAt = typeof t.createdAt === 'number' ? t.createdAt : Date.now()
-          const unitValue = (t.unit as TodoUnit) || 'times'
-          return {
-            id: typeof t.id === 'string' ? t.id : nanoid(),
-            title: typeof t.title === 'string' ? t.title : '',
-            category: typeof t.category === 'string' ? t.category : '',
-            period: (t.period as TodoPeriod) || 'daily',
-            minFrequency: typeof t.minFrequency === 'number' ? t.minFrequency : 1,
-            unit: unitValue,
-            minutesPerTime:
-              unitValue === 'minutes'
-                ? typeof t.minutesPerTime === 'number'
-                  ? t.minutesPerTime
-                  : 15
-                : undefined,
-            description: typeof t.description === 'string' ? t.description : undefined,
-            createdAt,
-            deadline: typeof t.deadline === 'number' ? t.deadline : undefined,
-            archived: typeof t.archived === 'boolean' ? t.archived : false,
-            archivedAt: typeof t.archivedAt === 'number' ? t.archivedAt : undefined,
-          }
-        })
-      } catch (e) {
-        console.error('加载模板数据失败:', e)
-      }
-    }
-
-    const storedDayStats = localStorage.getItem(DAY_STATS_KEY)
-    if (storedDayStats) {
-      try {
-        const parsed = JSON.parse(storedDayStats)
-        const normalized: Record<string, DayStat> = {}
-        for (const [dk, s] of Object.entries(parsed || {})) {
-          const obj = s as Partial<DayStat>
-          normalized[dk] = {
-            createdCount: typeof obj.createdCount === 'number' ? obj.createdCount : 0,
-            completedCount: typeof obj.completedCount === 'number' ? obj.completedCount : 0,
-            punchInsTotal: typeof obj.punchInsTotal === 'number' ? obj.punchInsTotal : 0,
-            minutesTotal: typeof obj.minutesTotal === 'number' ? obj.minutesTotal : 0,
-            categoryCreated: (obj.categoryCreated as Record<string, number>) || {},
-            categoryCompleted: (obj.categoryCompleted as Record<string, number>) || {},
-            categoryPunchIns: (obj.categoryPunchIns as Record<string, number>) || {},
-            categoryMinutes: (obj.categoryMinutes as Record<string, number>) || {},
-          }
-        }
-        dayStats.value = normalized
-      } catch (e) {
-        console.error('加载统计数据失败:', e)
-      }
-    }
-
-    const storedHistory = localStorage.getItem(HISTORY_KEY)
-    if (storedHistory) {
-      try {
-        const parsed = JSON.parse(storedHistory)
-        // 向后兼容：处理旧的字符串格式
-        if (Array.isArray(parsed)) {
-          history.value = parsed.map((item: string | HistoryItem) => {
-            if (typeof item === 'string') {
-              // 旧格式：只有标题字符串
-              return {
-                title: item,
-                category: '',
-                period: 'daily' as TodoPeriod,
-                minFrequency: 1,
-                unit: 'times' as TodoUnit,
-                minutesPerTime: undefined,
-              }
-            }
-            // 新格式：完整的历史项对象
-            return {
-              title: typeof item.title === 'string' ? item.title : '',
-              category: typeof item.category === 'string' ? item.category : '',
-              period: (item.period as TodoPeriod) || 'daily',
-              minFrequency: typeof item.minFrequency === 'number' ? item.minFrequency : 1,
-              unit: (item.unit as TodoUnit) || 'times',
-              minutesPerTime:
-                typeof item.minutesPerTime === 'number' ? item.minutesPerTime : undefined,
-            }
-          })
-        }
-      } catch (e) {
-        console.error('加载历史任务记录失败:', e)
-      }
-    }
-
-    const storedArchivedHistory = localStorage.getItem(ARCHIVED_HISTORY_KEY)
-    if (storedArchivedHistory) {
-      try {
-        const parsed = JSON.parse(storedArchivedHistory)
-        if (Array.isArray(parsed)) {
-          archivedHistory.value = parsed.map((item: HistoryItem | ArchivedHistoryItem) => ({
-            title: typeof item.title === 'string' ? item.title : '',
-            category: typeof item.category === 'string' ? item.category : '',
-            period: (item.period as TodoPeriod) || 'daily',
-            minFrequency: typeof item.minFrequency === 'number' ? item.minFrequency : 1,
-            unit: (item.unit as TodoUnit) || 'times',
-            minutesPerTime:
-              typeof item.minutesPerTime === 'number' ? item.minutesPerTime : undefined,
-            description: typeof item.description === 'string' ? item.description : undefined,
-            archivedAt:
-              typeof (item as ArchivedHistoryItem).archivedAt === 'number'
-                ? (item as ArchivedHistoryItem).archivedAt
-                : Date.now(),
-          }))
-        }
-      } catch (e) {
-        console.error('加载归档模板记录失败:', e)
-      }
-    }
-
-    const storedAbandonedGoals = localStorage.getItem(ABANDONED_GOALS_KEY)
-    if (storedAbandonedGoals) {
-      try {
-        const parsed = JSON.parse(storedAbandonedGoals)
-        if (Array.isArray(parsed)) {
-          abandonedGoals.value = parsed.map((item: Partial<AbandonedGoal>) => ({
-            id: typeof item.id === 'string' ? item.id : nanoid(),
-            title: typeof item.title === 'string' ? item.title : '',
-            category: typeof item.category === 'string' ? item.category : '',
-            createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
-            deadline: typeof item.deadline === 'number' ? item.deadline : undefined,
-            description: typeof item.description === 'string' ? item.description : undefined,
-            abandonedAt: typeof item.abandonedAt === 'number' ? item.abandonedAt : Date.now(),
-          }))
-        }
-      } catch (e) {
-        console.error('加载已放弃目标失败:', e)
-      }
-    }
-
-    const storedPunchRecords = localStorage.getItem(PUNCH_RECORDS_KEY)
-    if (storedPunchRecords) {
-      try {
-        const parsed = JSON.parse(storedPunchRecords)
-        if (Array.isArray(parsed)) {
-          punchRecords.value = parsed.map((item: Partial<PunchRecord>) => ({
-            id: typeof item.id === 'string' ? item.id : nanoid(),
-            todoId: typeof item.todoId === 'string' ? item.todoId : '',
-            todoTitle: typeof item.todoTitle === 'string' ? item.todoTitle : '未知任务',
-            category: typeof item.category === 'string' ? item.category : '未分类',
-            timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
-            dayKey: typeof item.dayKey === 'string' ? item.dayKey : formatDayKey(Date.now()),
-            unit: item.unit === 'minutes' || item.unit === 'times' ? item.unit : undefined,
-            minutesPerTime:
-              typeof item.minutesPerTime === 'number' ? item.minutesPerTime : undefined,
-            note: typeof item.note === 'string' ? item.note : undefined,
-          }))
-        }
-      } catch (e) {
-        console.error('加载打卡记录失败:', e)
-      }
-    }
-
-    const storedGoalHistory = localStorage.getItem(GOAL_HISTORY_KEY)
-    if (storedGoalHistory) {
-      try {
-        const parsed = JSON.parse(storedGoalHistory)
-        if (Array.isArray(parsed)) {
-          goalHistoryRecords.value = parsed.map((item: Partial<GoalHistoryRecord>) => ({
-            id: typeof item.id === 'string' ? item.id : nanoid(),
-            goalId: typeof item.goalId === 'string' ? item.goalId : '',
-            content: typeof item.content === 'string' ? item.content : '',
-            type: item.type === 'regular' || item.type === 'milestone' ? item.type : 'regular',
-            timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
-            note: typeof item.note === 'string' ? item.note : undefined,
-          }))
-        }
-      } catch (e) {
-        console.error('加载目标历史记录失败:', e)
-      }
-    }
-  }
-
-  // 保存数据到 localStorage
-  const saveTodos = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(todos.value))
-  }
-
-  const saveHistory = () => {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value))
-  }
-
-  const saveArchivedHistory = () => {
-    localStorage.setItem(ARCHIVED_HISTORY_KEY, JSON.stringify(archivedHistory.value))
-  }
-
-  const saveAbandonedGoals = () => {
-    localStorage.setItem(ABANDONED_GOALS_KEY, JSON.stringify(abandonedGoals.value))
-  }
-
-  const saveTemplates = () => {
-    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates.value))
-  }
-
-  const saveDayStats = () => {
-    localStorage.setItem(DAY_STATS_KEY, JSON.stringify(dayStats.value))
-  }
-
-  const savePunchRecords = () => {
-    localStorage.setItem(PUNCH_RECORDS_KEY, JSON.stringify(punchRecords.value))
-  }
-
-  const saveGoalHistoryRecords = () => {
-    localStorage.setItem(GOAL_HISTORY_KEY, JSON.stringify(goalHistoryRecords.value))
-  }
-
-  // 页面加载时读取数据
-  onMounted(() => {
-    loadData()
-
-    syncTemplatesFromTodos()
-    materializeTodayTodosFromTemplates()
-    rebuildStatsFromTodos()
-    rebuildPunchStatsFromRecords()
-  })
-
-  // 监听变化并保存
-  watch(todos, saveTodos, { deep: true })
-  watch(history, saveHistory, { deep: true })
-  watch(archivedHistory, saveArchivedHistory, { deep: true })
-  watch(abandonedGoals, saveAbandonedGoals, { deep: true })
-  watch(templates, saveTemplates, { deep: true })
-  watch(dayStats, saveDayStats, { deep: true })
-  watch(punchRecords, savePunchRecords, { deep: true })
-  watch(goalHistoryRecords, saveGoalHistoryRecords, { deep: true })
+  // ============================================
+  // Watch triggers (DISABLED - no longer auto-saving to localStorage)
+  // All data persistence now happens through Supabase in D3TodoList.vue
+  // ============================================
 
   const updateHistory = (item: HistoryItem) => {
     const index = history.value.findIndex(
@@ -853,54 +451,87 @@ export const useTodoStore = () => {
     return true
   }
 
-  const punchInTodo = (id: string, note?: string) => {
+  const getTodoMinutesPerPunch = (todo: Todo) => {
+    if (todo.unit !== 'minutes') return 0
+    return typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
+  }
+
+  const preparePunch = (id: string, note?: string, minutes?: number) => {
     const todo = todos.value.find((t) => t.id === id)
     if (!todo) return { kind: 'not_found' as const }
-    
-    // 如果是目标且已完成，不允许打卡
-    if (todo.period === 'once' && todo.done) return { kind: 'once' as const }
 
-    const punchDayKey = formatDayKey(Date.now())
-    const recordId = nanoid()
-
-    todo.punchIns = (todo.punchIns || 0) + 1
-    const stat = ensureDayStat(punchDayKey)
-    stat.punchInsTotal += 1
-    if (todo.unit === 'minutes') {
-      const mins = getTodoMinutesPerPunch(todo)
-      stat.minutesTotal += mins
-      incCategory(stat.categoryMinutes, todo.category || '未分类', mins)
+    // 防止打卡过于频繁（例如1分钟内）
+    const lastRecord = punchRecords.value[0]
+    if (
+      lastRecord &&
+      lastRecord.todoId === id &&
+      Date.now() - lastRecord.timestamp < 60 * 1000 &&
+      !lastRecord.note // 允许快速补充备注，但不允许重复空打卡
+    ) {
+      if (note && !lastRecord.note) {
+        // 其实是补充备注，交给 updatePunchRecordNote 处理
+        return { kind: 'update_note' as const, recordId: lastRecord.id }
+      }
+      return { kind: 'too_frequent' as const }
     }
 
-    // 记录分类统计
-    incCategory(stat.categoryPunchIns, todo.category || '未分类', 1)
+    const now = Date.now()
+    const punchDayKey = formatDayKey(now)
 
-    // 记录打卡流水
-    punchRecords.value.unshift({
-      id: recordId,
+    const record: PunchRecord = {
+      id: '', // Placeholder, will be set by server
       todoId: todo.id,
       todoTitle: todo.title,
       category: todo.category || '未分类',
-      timestamp: Date.now(),
+      timestamp: now,
       dayKey: punchDayKey,
       unit: todo.unit,
-      minutesPerTime: todo.unit === 'minutes' ? getTodoMinutesPerPunch(todo) : undefined,
+      minutesPerTime:
+        todo.unit === 'minutes'
+          ? typeof minutes === 'number'
+            ? minutes
+            : typeof todo.minutesPerTime === 'number'
+              ? todo.minutesPerTime
+              : 15
+          : undefined,
       note,
-    })
+    }
+
+    return { kind: 'ok' as const, record, todo }
+  }
+
+  const addPunchRecordDirectly = (
+    record: PunchRecord,
+    options?: { skipAutoCompletion?: boolean },
+  ) => {
+    const todo = todos.value.find((t) => t.id === record.todoId)
+    // Add to local list
+    punchRecords.value.unshift(record)
+
+    // Update Todo stats
+    if (todo) {
+      todo.punchIns += 1
+      if (todo.punchIns === todo.minFrequency && !todo.done && !options?.skipAutoCompletion) {
+        // Auto-complete if reached frequency (unless skipped)
+        toggleTodoDone(todo.id, true)
+      }
+    }
+
+    // Update Day Stats
+    const stat = ensureDayStat(record.dayKey)
+    stat.punchInsTotal += 1
+    incCategory(stat.categoryPunchIns, record.category || '未分类', 1)
+
+    if (record.unit === 'minutes' && typeof record.minutesPerTime === 'number') {
+      const mins = record.minutesPerTime
+      stat.minutesTotal += mins
+      incCategory(stat.categoryMinutes, record.category || '未分类', mins)
+    }
+
     // 限制最大记录数，避免 localStorage 过大，比如最近 5000 条
     if (punchRecords.value.length > 5000) {
       punchRecords.value.pop()
     }
-
-    if (!todo.done && todo.punchIns >= todo.minFrequency) {
-      todo.done = true
-      todo.completedAt = Date.now()
-      ensureDayStat(todo.dayKey).completedCount += 1
-      incCategory(ensureDayStat(todo.dayKey).categoryCompleted, todo.category || '未分类', 1)
-      return { kind: 'auto_done' as const, punchIns: todo.punchIns, recordId }
-    }
-
-    return { kind: 'ok' as const, punchIns: todo.punchIns, recordId }
   }
 
   const updatePunchRecordNote = (id: string, note: string) => {
@@ -936,7 +567,8 @@ export const useTodoStore = () => {
   }
 
   // Goal History Management Functions
-  const addGoalHistoryRecord = (
+  // Goal History Management Functions
+  const prepareGoalHistoryRecord = (
     goalId: string,
     content: string,
     type: 'regular' | 'milestone',
@@ -948,8 +580,9 @@ export const useTodoStore = () => {
     const trimmedContent = content.trim()
     if (!trimmedContent) return { kind: 'empty_content' as const }
 
-    const record: GoalHistoryRecord = {
-      id: nanoid(),
+    const record = {
+      // id will be assigned by server
+      id: '',
       goalId,
       content: trimmedContent,
       type,
@@ -957,8 +590,11 @@ export const useTodoStore = () => {
       note: note?.trim() || undefined,
     }
 
+    return { kind: 'ok' as const, record }
+  }
+
+  const addGoalHistoryRecordDirectly = (record: GoalHistoryRecord) => {
     goalHistoryRecords.value.unshift(record)
-    return { kind: 'success' as const, record }
   }
 
   const updateGoalHistoryRecord = (id: string, content: string, note?: string) => {
@@ -984,7 +620,7 @@ export const useTodoStore = () => {
     return goalHistoryRecords.value.filter((r) => r.goalId === goalId)
   }
 
-  const createTodo = (params: {
+  const prepareTodo = (params: {
     title: string
     category: string
     period: TodoPeriod
@@ -1015,83 +651,102 @@ export const useTodoStore = () => {
     if (params.period !== 'once') {
       const today = new Date(now)
       if (params.period === 'weekly') {
-        // 计算本周的开始日期（周一）
         const dayOfWeek = today.getDay()
-        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // 周日是0，调整为周一为开始
+        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
         const weekStart = new Date(today)
         weekStart.setDate(today.getDate() - diff)
         dk = formatDayKey(weekStart.getTime())
       } else if (params.period === 'monthly') {
-        // 计算本月的开始日期（1号）
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
         dk = formatDayKey(monthStart.getTime())
       } else if (params.period === 'yearly') {
-        // 计算本年的开始日期（1月1日）
         const yearStart = new Date(today.getFullYear(), 0, 1)
         dk = formatDayKey(yearStart.getTime())
       }
-      // daily任务使用今天的日期，once任务也使用今天的日期
     }
 
-    let templateId: string | undefined
+    // Template logic: try to find existing template
+    let templateId: string | undefined = undefined
+    let newTemplate: TodoTemplate | undefined = undefined
 
     if (params.period !== 'once') {
-      const existingTpl = templates.value.find(
-        (tpl) =>
-          !tpl.archived &&
-          tpl.title === text &&
-          tpl.period === params.period &&
-          tpl.category === params.category,
+      const existingTemplate = templates.value.find(
+        (t) =>
+          !t.archived &&
+          t.title === text &&
+          t.period === params.period &&
+          t.category === params.category,
       )
-      if (existingTpl) {
-        templateId = existingTpl.id
+      if (existingTemplate) {
+        templateId = existingTemplate.id
       } else {
-        templateId = nanoid()
-        templates.value.push({
-          id: templateId,
+        // Need to create new template
+        // We will prepare the object but strict ID generation (if using server)
+        // implies we might want to wait. However, for D3TodoList flow,
+        // we can return the template object.
+        // Note: For 'Server-First', D3TodoList should save this template
+        // to Supabase *before* saving the Todo.
+        newTemplate = {
+          id: '', // Placeholder
           title: text,
           category: params.category,
           period: params.period,
           minFrequency: params.minFrequency,
           unit: params.unit,
-          minutesPerTime: params.unit === 'minutes' ? params.minutesPerTime : undefined,
+          minutesPerTime: params.minutesPerTime,
           description: params.description,
           createdAt: now,
-        })
+          archived: false,
+        }
       }
     }
 
     const todo: Todo = {
       title: text,
-      id: nanoid(),
+      id: '', // Placeholder
       done: false,
       punchIns: 0,
       category: params.category,
       period: params.period,
       minFrequency: params.minFrequency,
       unit: params.unit,
-      minutesPerTime: params.unit === 'minutes' ? params.minutesPerTime : undefined,
+      minutesPerTime: params.minutesPerTime,
       description: params.description,
-      templateId,
       createdAt: now,
       dayKey: dk,
+      templateId, // Might be undefined if newTemplate is present
       deadline: params.deadline,
     }
 
+    if (todo.unit === 'minutes' && typeof todo.minutesPerTime !== 'number') {
+      todo.minutesPerTime = 15
+    }
+
+    return {
+      kind: 'prepared' as const,
+      todo,
+      newTemplate,
+    }
+  }
+
+  const addTodoDirectly = (todo: Todo) => {
     todos.value.push(todo)
-    ensureDayStat(dk).createdCount += 1
-    incCategory(ensureDayStat(dk).categoryCreated, params.category, 1)
+
+    // Update History
     updateHistory({
-      title: text,
-      category: params.category,
-      period: params.period,
-      minFrequency: params.minFrequency,
-      unit: params.unit,
-      minutesPerTime: params.minutesPerTime,
-      description: params.description,
+      title: todo.title,
+      category: todo.category,
+      period: todo.period,
+      minFrequency: todo.minFrequency,
+      unit: todo.unit,
+      minutesPerTime: todo.minutesPerTime,
+      description: todo.description,
     })
 
-    return { kind: 'added' as const }
+    // Update Day Stats
+    const stat = ensureDayStat(todo.dayKey)
+    stat.createdCount += 1
+    incCategory(stat.categoryCreated, todo.category || '未分类', 1)
   }
 
   const addTodoFromHistory = (
@@ -1626,10 +1281,12 @@ export const useTodoStore = () => {
     getTodoMinutesPerPunch,
 
     getTodoById,
-    punchInTodo,
+    preparePunch,
+    addPunchRecordDirectly,
     updatePunchRecordNote,
     updatePunchRecordMinutes,
-    createTodo,
+    prepareTodo,
+    addTodoDirectly,
     addTodoFromHistory,
     archiveTodoById,
     giveUpGoalById,
@@ -1643,9 +1300,13 @@ export const useTodoStore = () => {
 
     // Goal History
     goalHistoryRecords,
-    addGoalHistoryRecord,
+    prepareGoalHistoryRecord,
+    addGoalHistoryRecordDirectly,
     updateGoalHistoryRecord,
     deleteGoalHistoryRecord,
     getGoalHistoryRecords,
+
+    // Config
+    uiConfig,
   }
 }

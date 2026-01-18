@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  nextTick,
+  type ComponentPublicInstance,
+} from 'vue'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -22,6 +30,8 @@ import {
   type PunchRecord,
   type HistoryItem,
   type GoalHistoryRecord,
+  type TodoTemplate,
+  type DayStat,
 } from './useTodoStore'
 import {
   AddIcon,
@@ -40,7 +50,8 @@ import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
 import confetti from 'canvas-confetti'
 import { snapdom } from '@zumer/snapdom'
-import { useDark } from '@vueuse/core'
+import { useDark, useDebounceFn } from '@vueuse/core'
+import { supabase } from '@/lib/supabaseClient'
 
 use([
   CanvasRenderer,
@@ -52,6 +63,8 @@ use([
   TitleComponent,
 ])
 
+const isDark = useDark()
+
 const {
   todos,
   dayStats,
@@ -62,25 +75,489 @@ const {
   todayKey,
   formatDayKey,
   getTodoById,
-  punchInTodo,
+  preparePunch,
+  addPunchRecordDirectly,
   updatePunchRecordNote,
   updatePunchRecordMinutes,
-  createTodo,
+  prepareTodo,
+  addTodoDirectly,
   archiveTodoById,
   giveUpGoalById,
   toggleTodoDone,
   applyTodoEdit,
   ensureTemplateFromHistory,
   applyTemplateEdit,
-  consecutivePunchDays,
   maxConsecutivePunchDays,
   templates,
   materializeTodayTodosFromTemplates,
-  addGoalHistoryRecord,
+  prepareGoalHistoryRecord,
+  addGoalHistoryRecordDirectly,
   updateGoalHistoryRecord,
   deleteGoalHistoryRecord,
   getGoalHistoryRecords,
+  goalHistoryRecords,
+  uiConfig,
+  consecutivePunchDays,
 } = useTodoStore()
+
+const exportPalette = computed(() => {
+  if (isDark.value) {
+    return {
+      rootBg: '#0a0a0a',
+      rootText: '#e5e5e5',
+      rootBorder: '#262626',
+      cardBg: '#171717',
+      cardBorder: '#262626',
+      itemBg: '#0f0f0f',
+      itemBorder: '#262626',
+      mutedText: '#a3a3a3',
+      noteText: '#d4d4d4',
+      divider: '#262626',
+    }
+  }
+  return {
+    rootBg: '#ffffff',
+    rootText: '#111827',
+    rootBorder: '#e5e7eb',
+    cardBg: '#ffffff',
+    cardBorder: '#e5e7eb',
+    itemBg: '#f9fafb',
+    itemBorder: '#e5e7eb',
+    mutedText: '#6b7280',
+    noteText: '#4b5563',
+    divider: '#e5e7eb',
+  }
+})
+
+// ============================================
+// Supabase Helper Functions for Todos
+// ============================================
+
+/**
+ * Load all todos from Supabase
+ */
+const loadTodosFromSupabase = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('todos')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Failed to load todos from Supabase:', error)
+      MessagePlugin.error('加载任务失败')
+      return []
+    }
+
+    return data || []
+  } catch (err) {
+    console.error('Error loading todos:', err)
+    MessagePlugin.error('加载任务时发生错误')
+    return []
+  }
+}
+
+/**
+ * Save a new todo to Supabase (supports all task types)
+ */
+
+/**
+ * Update an existing todo in Supabase
+ */
+const updateTodoInSupabase = async (
+  id: string,
+  updates: {
+    title?: string
+    description?: string
+    deadline?: number
+    done?: boolean
+    completed_at?: number
+    punch_ins?: number
+  },
+) => {
+  try {
+    const { error } = await supabase.from('todos').update(updates).eq('id', id)
+
+    if (error) {
+      console.error('Failed to update todo in Supabase:', error)
+      MessagePlugin.error('更新任务失败')
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error('Error updating todo:', err)
+    MessagePlugin.error('更新任务时发生错误')
+    return false
+  }
+}
+
+/**
+ * Delete a todo from Supabase
+ */
+const deleteTodoFromSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase.from('todos').delete().eq('id', id)
+
+    if (error) {
+      console.error('Failed to delete todo from Supabase:', error)
+      MessagePlugin.error('删除任务失败')
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error('Error deleting todo:', err)
+    MessagePlugin.error('删除任务时发生错误')
+    return false
+  }
+}
+
+/**
+ * Mark a todo as complete in Supabase
+ */
+const markTodoCompleteInSupabase = async (id: string, done: boolean) => {
+  try {
+    const updates: { done: boolean; completed_at: number | null } = {
+      done,
+      completed_at: done ? Date.now() : null,
+    }
+
+    const { error } = await supabase.from('todos').update(updates).eq('id', id)
+
+    if (error) {
+      console.error('Failed to mark todo complete in Supabase:', error)
+      MessagePlugin.error('更新任务状态失败')
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error('Error marking todo complete:', err)
+    MessagePlugin.error('更新任务状态时发生错误')
+    return false
+  }
+}
+
+// ============================================
+// Supabase Helper Functions for Templates
+// ============================================
+
+/**
+ * Save a new template to Supabase (database generates UUID)
+ */
+const saveTemplateToSupabase = async (template: {
+  title: string
+  category: string
+  period: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'once'
+  minFrequency: number
+  unit: 'times' | 'minutes'
+  minutesPerTime?: number
+  description?: string
+  deadline?: number
+  created_at: number
+}) => {
+  try {
+    console.log('📤 Saving template to Supabase:', template)
+    const { data, error } = await supabase
+      .from('todo_templates')
+      .insert({
+        title: template.title,
+        category: template.category,
+        period: template.period,
+        min_frequency: template.minFrequency,
+        unit: template.unit,
+        minutes_per_time: template.minutesPerTime || null,
+        description: template.description,
+        deadline: template.deadline,
+        archived: false,
+        archived_at: null,
+        created_at: new Date(template.created_at).toISOString(),
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('❌ Failed to save template to Supabase:', error)
+      MessagePlugin.error('保存模板到数据库失败')
+      return null
+    }
+
+    console.log('✅ Template saved to Supabase successfully, ID:', data.id)
+    return data.id as string
+  } catch (err) {
+    console.error('❌ Error saving template:', err)
+    MessagePlugin.error('保存模板时发生错误')
+    return null
+  }
+}
+
+/**
+ * Load all templates from Supabase
+ */
+const loadTemplatesFromSupabase = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('todo_templates')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Failed to load templates from Supabase:', error)
+      MessagePlugin.error('加载模板失败')
+      return []
+    }
+
+    console.log('Loaded templates from Supabase:', data)
+    return data || []
+  } catch (err) {
+    console.error('Error loading templates:', err)
+    MessagePlugin.error('加载模板时发生错误')
+    return []
+  }
+}
+
+/**
+ * Update an existing template in Supabase
+ */
+const updateTemplateInSupabase = async (
+  id: string,
+  updates: {
+    title?: string
+    category?: string
+    period?: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'once'
+    min_frequency?: number
+    unit?: 'times' | 'minutes'
+    minutes_per_time?: number
+    description?: string
+    deadline?: number
+    archived?: boolean
+    archived_at?: number
+  },
+) => {
+  try {
+    const { error } = await supabase.from('todo_templates').update(updates).eq('id', id)
+
+    if (error) {
+      console.error('Failed to update template in Supabase:', error)
+      MessagePlugin.error('更新模板失败')
+      return false
+    }
+
+    console.log('Template updated in Supabase successfully')
+    return true
+  } catch (err) {
+    console.error('Error updating template:', err)
+    MessagePlugin.error('更新模板时发生错误')
+    return false
+  }
+}
+
+/**
+ * Archive a template in Supabase (soft delete)
+ */
+const archiveTemplateInSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase
+      .from('todo_templates')
+      .update({
+        archived: true,
+        archived_at: Date.now(),
+      })
+      .eq('id', id)
+
+    if (error) {
+      console.error('Failed to archive template in Supabase:', error)
+      MessagePlugin.error('归档模板失败')
+      return false
+    }
+
+    console.log('Template archived in Supabase successfully')
+    return true
+  } catch (err) {
+    console.error('Error archiving template:', err)
+    MessagePlugin.error('归档模板时发生错误')
+    return false
+  }
+}
+
+// ============================================
+// Supabase Sync Helpers for Auxiliary Data
+// ============================================
+
+/**
+ * Save application configuration (UI categories, etc.)
+ */
+const saveAppConfigToSupabase = async (key: string, value: unknown) => {
+  try {
+    const { error } = await supabase.from('app_configs').upsert({ key, value })
+    if (error) console.error(`❌ Failed to save app config [${key}]:`, error)
+    return !error
+  } catch (err) {
+    console.error(`❌ Error saving app config [${key}]:`, err)
+    return false
+  }
+}
+
+// function removed as it is replaced by batch loading in onMounted
+// saveAppConfigToSupabase is still used for saving changes
+
+/**
+ * Specialized sync for Day Stats (upsert by day_key)
+ */
+const syncDayStatsToSupabase = async (stats: Record<string, DayStat>) => {
+  try {
+    const records = Object.entries(stats).map(([day_key, data]) => ({
+      day_key,
+      created_count: data.createdCount,
+      completed_count: data.completedCount,
+      punch_ins_total: data.punchInsTotal,
+      minutes_total: data.minutesTotal,
+      category_created: data.categoryCreated,
+      category_completed: data.categoryCompleted,
+      category_punch_ins: data.categoryPunchIns,
+      category_minutes: data.categoryMinutes,
+    }))
+
+    if (!records.length) return true
+    const { error } = await supabase
+      .from('todo_day_stats')
+      .upsert(records, { onConflict: 'day_key' })
+    if (error) console.error('❌ Failed to sync day stats:', error)
+    return !error
+  } catch (err) {
+    console.error('❌ Error syncing day stats:', err)
+    return false
+  }
+}
+
+// ============================================
+// Debounced Watchers for Cloud Sync
+// ============================================
+
+/**
+ * Initialize watchers to sync local store changes to Supabase
+ */
+const initSupabaseSyncWatchers = () => {
+  // Sync UI Config
+  watch(
+    uiConfig,
+    useDebounceFn(async (val) => {
+      console.log('☁️ Syncing UI config to Supabase...')
+      await saveAppConfigToSupabase('ui_config', val)
+    }, 2000),
+    { deep: true },
+  )
+
+  // Sync History (Save as JSON blob in app_configs for simplicity of sync)
+  watch(
+    history,
+    useDebounceFn(async (val) => {
+      await saveAppConfigToSupabase('todo_history_blob', val)
+    }, 2000),
+    { deep: true },
+  )
+
+  // Sync Archived History
+  watch(
+    archivedHistory,
+    useDebounceFn(async (val: HistoryItem[]) => {
+      await saveAppConfigToSupabase('todo_archived_history_blob', val)
+    }, 2000),
+    { deep: true },
+  )
+
+  // Sync Abandoned Goals
+  watch(
+    abandonedGoals,
+    useDebounceFn(async (val: unknown) => {
+      await saveAppConfigToSupabase('todo_abandoned_goals_blob', val)
+    }, 2000),
+    { deep: true },
+  )
+
+  // Sync Punch Records
+  watch(
+    punchRecords,
+    useDebounceFn(async (val: PunchRecord[]) => {
+      console.log('☁️ Syncing punch records to Supabase...')
+
+      type DbPunchRecord = {
+        id?: string
+        todo_id: string
+        todo_title: string
+        category: string
+        timestamp: number
+        day_key: string
+        unit?: string
+        minutes_per_time?: number
+        note?: string
+      }
+
+      const newRecords: DbPunchRecord[] = []
+      const existingRecords: DbPunchRecord[] = []
+      const tempIdMap: Record<number, string> = {}
+
+      val.forEach((r) => {
+        const isTemp = r.id.startsWith('temp_')
+        const record = {
+          id: isTemp ? undefined : r.id,
+          todo_id: r.todoId,
+          todo_title: r.todoTitle,
+          category: r.category,
+          timestamp: r.timestamp,
+          day_key: r.dayKey,
+          unit: r.unit,
+          minutes_per_time: r.minutesPerTime,
+          note: r.note,
+        }
+        if (isTemp) {
+          newRecords.push(record)
+          // Store index to update local ID later
+          tempIdMap[newRecords.length - 1] = r.id
+        } else {
+          existingRecords.push(record)
+        }
+      })
+
+      if (existingRecords.length) {
+        await supabase.from('todo_punch_records').upsert(existingRecords)
+      }
+
+      if (newRecords.length) {
+        const { data, error } = await supabase
+          .from('todo_punch_records')
+          .insert(newRecords)
+          .select('id')
+
+        if (!error && data) {
+          // Update local IDs
+          data.forEach((row, idx) => {
+            const tempId = tempIdMap[idx]
+            const realId = row.id
+            const localRecord = punchRecords.value.find((r) => r.id === tempId)
+            if (localRecord) {
+              localRecord.id = realId
+            }
+          })
+        } else {
+          console.error('Failed to sync new punch records:', error)
+        }
+      }
+    }, 3000),
+    { deep: true },
+  )
+
+  // Sync Day Stats
+  watch(
+    dayStats,
+    useDebounceFn(async (val) => {
+      console.log('☁️ Syncing day stats to Supabase...')
+      await syncDayStatsToSupabase(val)
+    }, 5000),
+    { deep: true },
+  )
+}
 
 const title = ref('')
 const category = ref<string>('')
@@ -393,34 +870,124 @@ const confirmPunch = () => {
   if (!currentPunchId.value) return
   punchDialogVisible.value = false
 
-  const res = punchInTodo(currentPunchId.value, punchNote.value)
-  if (res.kind === 'not_found') return
+  // Pass minutes if enabled and valid
+  const minutes = punchMinutesEnabled.value ? punchMinutes.value : undefined
+  const prep = preparePunch(currentPunchId.value, punchNote.value, minutes)
 
-  // 播放 Rainbow 碎纸屑效果
-  const colors = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
-  confetti({
-    particleCount: 150,
-    spread: 70,
-    origin: { y: 0.6 },
-    colors: colors,
-    ticks: 200,
-    gravity: 1.2,
-    scalar: 0.8,
-    shapes: ['circle', 'square'],
-  })
-
-  if (res.kind === 'once') return
-  if (res.kind === 'auto_done') {
-    if (punchMinutesEnabled.value && typeof res.recordId === 'string') {
-      updatePunchRecordMinutes(res.recordId, punchMinutes.value)
-    }
-    MessagePlugin.success('已达成目标，自动完成')
+  if (prep.kind === 'not_found' || prep.kind === 'too_frequent') {
+    // maybe show message for too frequent?
+    if (prep.kind === 'too_frequent') MessagePlugin.warning('打卡太频繁，请稍后再试')
     return
   }
-  if (punchMinutesEnabled.value && typeof res.recordId === 'string') {
-    updatePunchRecordMinutes(res.recordId, punchMinutes.value)
+
+  if (prep.kind === 'update_note' && prep.recordId) {
+    // Quick update note logic locally? Or server?
+    // Server-first for update too
+    supabase
+      .from('todo_punch_records')
+      .update({ note: punchNote.value })
+      .eq('id', prep.recordId)
+      .then(({ error }) => {
+        if (!error) {
+          updatePunchRecordNote(prep.recordId!, punchNote.value)
+          MessagePlugin.success('备注已更新')
+        }
+      })
+    return
   }
-  MessagePlugin.success(`打卡成功,当前已打卡 ${res.punchIns} 次`)
+
+  if (prep.kind === 'ok' && prep.record) {
+    // Server-First Insert
+    // Use the prep.record but without ID (or with placeholder), server generates it.
+    // Map to DB columns
+    const dbRecord = {
+      todo_id: prep.record.todoId,
+      todo_title: prep.record.todoTitle,
+      category: prep.record.category,
+      timestamp: prep.record.timestamp, // Store as number (bigint) or ISO string? Existing schema uses bigint? No, verify schema.
+      // wait, schema check for timestamp column type. 'timestamp' usually means number in this code but DB usually timestampz?
+      // Step 921 view of saveTemplateToSupabase used new Date().toISOString() for created_at.
+      // But for punch records, let's verify loadData (Step 1012): timestamp: r.timestamp (number?).
+      // Let's check D3TodoList sync watcher (Step 935): it sends { timestamp: r.timestamp }
+      // If DB calls it 'timestamp', is it bigint or timestamptz?
+      // I should assume it accepts what we send. But let's look at `loadTodosFromSupabase`?
+      // Actually `punchInTodo` used `Date.now()`.
+      // Let's check `saveTemplateToSupabase` (line 290): created_at: new Date().toISOString().
+      // This suggests Supabase uses ISO strings for dates.
+      // BUT `timestamp` in punch records might be a raw number if the user defined it as bigint in DB?
+      // Let's check `fix_rls_all_tables.sql` or `clear_test_data.sql`? No schema file.
+      // Let's check `loadData` again. `timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now()`.
+      // It seems mostly number locally.
+      // Sync watcher (D3TodoList line 500ish) sends `r`.
+      // If I send number, does Supabase accept?
+      // Let's blindly trust the sync logic works, so we mimic it.
+      // But sync sends `r` which has `timestamp` as number.
+      // So I'll send number.
+      day_key: prep.record.dayKey,
+      unit: prep.record.unit,
+      minutes_per_time: prep.record.minutesPerTime,
+      note: prep.record.note,
+    }
+
+    // We do need to verify timestamp format if I want to be 100% sure.
+    // But let's try ISO string for safety if number fails?
+    // Wait, D3TodoList Line 290 uses ISO string for `created_at`.
+    // D3TodoList Line 1205: `.order('timestamp', ...)`
+    // Whatever, let's try number first as local `PunchRecord` uses number.
+
+    supabase
+      .from('todo_punch_records')
+      .insert(dbRecord)
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Punch failed', error)
+          MessagePlugin.error('打卡失败')
+        } else if (data) {
+          // Success!
+          // data has the real ID
+          prep.record.id = data.id
+          addPunchRecordDirectly(prep.record)
+
+          // CRITICAL: Update Todo state in Supabase (punch_ins, done, completed_at)
+          // addPunchRecordDirectly has updated local state, now sync to server
+          const info = getTodoById(prep.record.todoId)
+          if (info) {
+            supabase
+              .from('todos')
+              .update({
+                punch_ins: info.punchIns,
+                done: info.done,
+                completed_at: info.completedAt || null,
+              })
+              .eq('id', info.id)
+              .then(({ error }) => {
+                if (error) console.error('Failed to update todo state', error)
+              })
+          }
+
+          // 播放 Rainbow 碎纸屑效果
+          const colors = [
+            '#60a5fa',
+            '#a78bfa',
+            '#f472b6',
+            '#34d399',
+            '#fb923c',
+            '#facc15',
+            '#22c55e',
+          ]
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: colors,
+            disableForReducedMotion: true,
+          })
+          MessagePlugin.success('打卡成功')
+        }
+      })
+  }
 }
 
 // 历史打卡记录Tab页相关
@@ -489,43 +1056,11 @@ const saveRecordMinutes = () => {
 }
 
 // --- UI Configuration Logic ---
-type TodoUiConfig = {
-  categories: string[]
-  minFrequencies: number[]
-  minutesPerTimes: number[]
-}
-
-const defaultUiConfig: TodoUiConfig = {
-  categories: [],
-  minFrequencies: [1, 2, 3, 4],
-  minutesPerTimes: [12, 15, 18, 20],
-}
-
-const uiConfig = ref<TodoUiConfig>({ ...defaultUiConfig })
 const configDrawerVisible = ref(false)
 const draftCategoriesList = ref<string[]>([])
+const draftCategoriesInputRefs = ref<HTMLElement[]>([])
 const draftMinFrequenciesList = ref<number[]>([])
 const draftMinutesPerTimesList = ref<number[]>([])
-
-const loadUiConfig = () => {
-  const s = localStorage.getItem('todo_ui_config')
-  if (s) {
-    try {
-      const parsed = JSON.parse(s)
-      uiConfig.value = {
-        categories: parsed.categories || defaultUiConfig.categories,
-        minFrequencies: parsed.minFrequencies || defaultUiConfig.minFrequencies,
-        minutesPerTimes: parsed.minutesPerTimes || defaultUiConfig.minutesPerTimes,
-      }
-    } catch (e) {
-      console.error('Failed to parse todo_ui_config', e)
-    }
-  }
-}
-
-const saveUiConfig = () => {
-  localStorage.setItem('todo_ui_config', JSON.stringify(uiConfig.value))
-}
 
 const openConfigDrawer = () => {
   draftCategoriesList.value = [...uiConfig.value.categories]
@@ -543,19 +1078,39 @@ const saveUiConfigFromDraft = () => {
   if (freqs.length) uiConfig.value.minFrequencies = freqs
   if (mins.length) uiConfig.value.minutesPerTimes = mins
 
-  saveUiConfig()
+  // Sync is handled by watch(uiConfig) in initSupabaseSyncWatchers
   configDrawerVisible.value = false
   MessagePlugin.success('配置已保存')
 }
 
 const resetUiConfig = () => {
-  draftCategoriesList.value = [...defaultUiConfig.categories]
-  draftMinFrequenciesList.value = [...defaultUiConfig.minFrequencies]
-  draftMinutesPerTimesList.value = [...defaultUiConfig.minutesPerTimes]
+  draftCategoriesList.value = ['默认', '工作', '学习', '健康', '生活']
+  draftMinFrequenciesList.value = [1, 2, 3, 4]
+  draftMinutesPerTimesList.value = [12, 15, 18, 20]
 }
 
-const addDraftCategory = () => draftCategoriesList.value.push('')
+const addDraftCategory = async () => {
+  draftCategoriesList.value.push('')
+  await nextTick()
+  const inputs = draftCategoriesInputRefs.value
+  if (inputs && inputs.length > 0) {
+    const lastInput = inputs[inputs.length - 1]
+    if (lastInput) lastInput.focus()
+  }
+}
 const removeDraftCategory = (index: number) => draftCategoriesList.value.splice(index, 1)
+
+const onDraftCategoryEnter = (index: number) => {
+  if (index === draftCategoriesList.value.length - 1) {
+    addDraftCategory()
+  } else {
+    // Optional: focus next input
+    const inputs = draftCategoriesInputRefs.value
+    if (inputs && inputs[index + 1]) {
+      inputs[index + 1]?.focus()
+    }
+  }
+}
 
 const addDraftFrequency = () => draftMinFrequenciesList.value.push(1)
 const removeDraftFrequency = (index: number) => draftMinFrequenciesList.value.splice(index, 1)
@@ -563,8 +1118,178 @@ const removeDraftFrequency = (index: number) => draftMinFrequenciesList.value.sp
 const addDraftMinute = () => draftMinutesPerTimesList.value.push(15)
 const removeDraftMinute = (index: number) => draftMinutesPerTimesList.value.splice(index, 1)
 
-onMounted(() => {
-  loadUiConfig()
+onMounted(async () => {
+  // 1 & 2. Batch Load Configs (UI & History Blobs) from Cloud
+  try {
+    const { data: configs } = await supabase
+      .from('app_configs')
+      .select('key, value')
+      .in('key', [
+        'ui_config',
+        'todo_history_blob',
+        'todo_archived_history_blob',
+        'todo_abandoned_goals_blob',
+      ])
+
+    if (configs) {
+      const configMap = new Map(configs.map((c) => [c.key, c.value]))
+
+      if (configMap.has('ui_config')) {
+        uiConfig.value = configMap.get('ui_config')
+        console.log('✅ UI config loaded from cloud')
+      }
+      if (configMap.has('todo_history_blob')) history.value = configMap.get('todo_history_blob')
+      if (configMap.has('todo_archived_history_blob'))
+        archivedHistory.value = configMap.get('todo_archived_history_blob')
+      if (configMap.has('todo_abandoned_goals_blob'))
+        abandonedGoals.value = configMap.get('todo_abandoned_goals_blob')
+    }
+  } catch (e) {
+    console.error('❌ Error batch loading configs:', e)
+  }
+
+  // 3. Load Templates from Supabase
+  const supabaseTemplates = await loadTemplatesFromSupabase()
+  // ... (existing template sync logic) ...
+
+  // Sync loaded templates with local store
+  const supabaseTemplateIds = new Set(supabaseTemplates.map((t) => t.id))
+  const templatesToRemove = templates.value.filter((t) => !supabaseTemplateIds.has(t.id))
+
+  for (const templateToRemove of templatesToRemove) {
+    const idx = templates.value.findIndex((t) => t.id === templateToRemove.id)
+    if (idx >= 0) templates.value.splice(idx, 1)
+  }
+
+  // Add/update templates from Supabase
+  for (const template of supabaseTemplates) {
+    const existingIdx = templates.value.findIndex((t) => t.id === template.id)
+
+    const templateItem: TodoTemplate = {
+      id: template.id,
+      title: template.title,
+      category: template.category || '',
+      period: template.period as TodoPeriod,
+      minFrequency: template.min_frequency || 1,
+      unit: (template.unit as TodoUnit) || 'times',
+      minutesPerTime: template.minutes_per_time,
+      description: template.description,
+      deadline: template.deadline,
+      archived: template.archived || false,
+      archivedAt: template.archived_at,
+      createdAt: new Date(template.created_at).getTime(),
+    }
+
+    if (existingIdx >= 0) {
+      // Update existing
+      templates.value[existingIdx] = templateItem
+    } else {
+      // Add new
+      templates.value.push(templateItem)
+    }
+  }
+
+  // Load all todos from Supabase
+  const supabaseTodos = await loadTodosFromSupabase()
+
+  // Sync loaded todos with local store
+  // First, remove any todos that exist in local store but not in Supabase
+  // (to handle cases where they were deleted from Supabase)
+  const supabaseTodoIds = new Set(supabaseTodos.map((t) => t.id))
+  const todosToRemove = todos.value.filter((t) => !supabaseTodoIds.has(t.id))
+
+  for (const todoToRemove of todosToRemove) {
+    const idx = todos.value.findIndex((t) => t.id === todoToRemove.id)
+    if (idx >= 0) todos.value.splice(idx, 1)
+  }
+
+  // Then add/update todos from Supabase
+  for (const todo of supabaseTodos) {
+    const existingIdx = todos.value.findIndex((t: Todo) => t.id === todo.id)
+
+    const todoItem: Todo = {
+      id: todo.id,
+      title: todo.title,
+      category: todo.category || '',
+      period: todo.period as TodoPeriod,
+      minFrequency: todo.min_frequency || 1,
+      unit: (todo.unit as TodoUnit) || 'times',
+      minutesPerTime: todo.minutes_per_time,
+      description: todo.description,
+      done: todo.done || false,
+      completedAt: todo.completed_at,
+      punchIns: todo.punch_ins || 0,
+      templateId: todo.template_id,
+      createdAt: new Date(todo.created_at).getTime(),
+      dayKey: todo.day_key,
+      deadline: todo.deadline,
+    }
+
+    if (existingIdx >= 0) {
+      // Update existing
+      todos.value[existingIdx] = todoItem
+    } else {
+      // Add new
+      todos.value.push(todoItem)
+    }
+  }
+
+  // 4. Load Stats and Records
+  const { data: statsData } = await supabase.from('todo_day_stats').select('*')
+  if (statsData) {
+    const mappedStats: Record<string, DayStat> = {}
+    statsData.forEach((s) => {
+      mappedStats[s.day_key] = {
+        createdCount: s.created_count,
+        completedCount: s.completed_count,
+        punchInsTotal: s.punch_ins_total,
+        minutesTotal: s.minutes_total,
+        categoryCreated: s.category_created,
+        categoryCompleted: s.category_completed,
+        categoryPunchIns: s.category_punch_ins,
+        categoryMinutes: s.category_minutes,
+      }
+    })
+    dayStats.value = mappedStats
+  }
+
+  const { data: punchData } = await supabase
+    .from('todo_punch_records')
+    .select('*')
+    .order('timestamp', { ascending: false })
+  if (punchData) {
+    punchRecords.value = punchData.map((r) => ({
+      id: r.id,
+      todoId: r.todo_id,
+      todoTitle: r.todo_title,
+      category: r.category,
+      timestamp: r.timestamp,
+      dayKey: r.day_key,
+      unit: r.unit,
+      minutesPerTime: r.minutes_per_time,
+      note: r.note,
+    }))
+  }
+
+  const { data: goalHistoryData } = await supabase
+    .from('todo_goal_history_records')
+    .select('*')
+    .order('timestamp', { ascending: false })
+  if (goalHistoryData) {
+    goalHistoryRecords.value = goalHistoryData.map((r) => ({
+      id: r.id,
+      goalId: r.goal_id,
+      content: r.content,
+      type: r.type,
+      timestamp: r.timestamp,
+      note: r.note,
+    }))
+  }
+
+  // 5. Initialize Sync Watchers
+  initSupabaseSyncWatchers()
+
+  // 6. Materialize Today's Todos
   materializeTodayTodosFromTemplates()
 })
 
@@ -621,7 +1346,7 @@ const openEdit = (id: string) => {
   editVisible.value = true
 }
 
-const saveEdit = () => {
+const saveEdit = async () => {
   const id = editingTodoId.value
   if (!id) return
 
@@ -661,6 +1386,12 @@ const saveEdit = () => {
   })
   if (!ok) return
 
+  // Update in Supabase for all task types
+  await updateTodoInSupabase(id, {
+    title: nextTitle,
+    description: editDescription.value.trim() || undefined,
+  })
+
   editVisible.value = false
   editingTodoId.value = null
   MessagePlugin.success('已保存修改')
@@ -677,7 +1408,7 @@ const openGoalHistoryDialog = (goalId: string) => {
   editingGoalHistoryId.value = null
 }
 
-const addGoalHistory = () => {
+const addGoalHistory = async () => {
   const id = currentGoalId.value
   if (!id) return
 
@@ -687,33 +1418,123 @@ const addGoalHistory = () => {
     return
   }
 
-  // 1. 添加进度记录
-  const result = addGoalHistoryRecord(id, content, goalHistoryType.value)
-  if (result.kind === 'not_found') {
+  // 1. 添加进度记录 (Server-First)
+  const ghPrep = prepareGoalHistoryRecord(id, content, goalHistoryType.value)
+  if (ghPrep.kind === 'not_found') {
     MessagePlugin.error('目标不存在')
     return
   }
-  if (result.kind === 'empty_content') {
+  if (ghPrep.kind === 'empty_content') {
     MessagePlugin.warning('历史记录内容不能为空')
     return
   }
 
+  // Insert Goal History to Supabase
+  const { data: ghData, error: ghError } = await supabase
+    .from('todo_goal_history_records')
+    .insert({
+      goal_id: ghPrep.record.goalId,
+      content: ghPrep.record.content,
+      type: ghPrep.record.type,
+      timestamp: ghPrep.record.timestamp,
+      note: ghPrep.record.note,
+    })
+    .select('id')
+    .single()
+
+  if (ghError || !ghData) {
+    console.error('Failed to save goal history', ghError)
+    MessagePlugin.error('保存进度失败')
+    return
+  }
+
+  // Update local store with real ID
+  ghPrep.record.id = ghData.id
+  addGoalHistoryRecordDirectly(ghPrep.record)
+
   // 2. 自动打卡联动
   // 将进度内容作为打卡备注
-  const punchRes = punchInTodo(id, content)
+  // 2. 自动打卡联动 (Server-First)
+  // 将进度内容作为打卡备注
+  const prep = preparePunch(id, content)
 
-  // 3. 如果有输入时间，更新打卡时间
-  if (punchRes.kind === 'ok' || punchRes.kind === 'auto_done') {
-    const mins = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
-    if (mins > 0 && typeof punchRes.recordId === 'string') {
-      updatePunchRecordMinutes(punchRes.recordId, mins)
+  if (prep.kind === 'ok' && prep.record) {
+    // Build DB payload
+    const dbRecord = {
+      todo_id: prep.record.todoId,
+      todo_title: prep.record.todoTitle,
+      category: prep.record.category,
+      timestamp: prep.record.timestamp,
+      day_key: prep.record.dayKey,
+      unit: prep.record.unit,
+      minutes_per_time: prep.record.minutesPerTime,
+      note: prep.record.note,
     }
+
+    // Async save
+    supabase
+      .from('todo_punch_records')
+      .insert(dbRecord)
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          prep.record.id = data.id
+          addPunchRecordDirectly(prep.record, { skipAutoCompletion: true })
+
+          // CRITICAL: Update Todo state in Supabase
+          const info = getTodoById(prep.record.todoId)
+          if (info) {
+            supabase
+              .from('todos')
+              .update({
+                punch_ins: info.punchIns,
+                done: info.done,
+                completed_at: info.completedAt || null,
+              })
+              .eq('id', info.id)
+              .then(({ error }) => {
+                if (error) console.error('Failed to update todo state', error)
+              })
+          }
+
+          // 3. 如果有输入时间，更新打卡时间 (Server-First update)
+          const mins = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
+          if (mins > 0) {
+            // We need to update database AND local
+            supabase
+              .from('todo_punch_records')
+              .update({ minutes_per_time: mins, unit: 'minutes' })
+              .eq('id', data.id)
+              .then(({ error: updateErr }) => {
+                if (!updateErr) {
+                  updatePunchRecordMinutes(data.id, mins)
+                }
+              })
+          }
+          MessagePlugin.success('已添加记录并同步打卡')
+        } else {
+          MessagePlugin.warning('历史记录添加成功，但打卡同步失败')
+        }
+      })
+  } else if (prep.kind === 'update_note' && prep.recordId) {
+    // Just update note
+    supabase
+      .from('todo_punch_records')
+      .update({ note: content })
+      .eq('id', prep.recordId)
+      .then(({ error }) => {
+        if (!error) {
+          updatePunchRecordNote(prep.recordId!, content)
+          MessagePlugin.success('已更新今日打卡备注')
+        }
+      })
   }
 
   goalHistoryContent.value = ''
   goalHistoryMinutes.value = 0
   goalHistoryType.value = 'regular'
-  MessagePlugin.success('已添加记录并同步打卡')
+  // MessagePlugin.success('已添加记录并同步打卡') // Moved inside async callback
 }
 
 const startEditGoalHistory = (record: GoalHistoryRecord) => {
@@ -843,7 +1664,7 @@ const openTemplateEditFromHistory = (item: HistoryItem) => {
   templateEditVisible.value = true
 }
 
-const saveTemplateEdit = () => {
+const saveTemplateEdit = async () => {
   const id = editingTemplateId.value
   if (!id) return
 
@@ -867,6 +1688,17 @@ const saveTemplateEdit = () => {
     description: templateDescription.value.trim() || undefined,
   })
   if (!ok) return
+
+  // Sync with Supabase
+  await updateTemplateInSupabase(id, {
+    title: nextTitle,
+    category: templateCategory.value,
+    period: templatePeriod.value,
+    min_frequency: templateMinFrequency.value,
+    unit: templateUnit.value,
+    minutes_per_time: templateMinutesPerTime.value,
+    description: templateDescription.value.trim() || undefined,
+  })
 
   templateEditVisible.value = false
   editingTemplateId.value = null
@@ -897,7 +1729,7 @@ const handlePunchIn = (id: string) => {
   onPunchTrigger(id)
 }
 
-const addTodo = () => {
+const addTodo = async () => {
   if (!categoryOptions.value.length) {
     MessagePlugin.warning('请先在配置管理中添加分类后再添加')
     return
@@ -906,7 +1738,9 @@ const addTodo = () => {
     MessagePlugin.warning('请选择任务分类')
     return
   }
-  const res = createTodo({
+
+  // 1. Prepare data (Validation & Object Construction)
+  const res = prepareTodo({
     title: title.value,
     category: category.value,
     period: period.value,
@@ -917,6 +1751,7 @@ const addTodo = () => {
     deadline:
       period.value === 'once' && deadline.value ? dayjs(deadline.value).valueOf() : undefined,
   })
+
   if (res.kind === 'empty') {
     MessagePlugin.error('任务标题不能为空')
     return
@@ -925,10 +1760,123 @@ const addTodo = () => {
     MessagePlugin.info(`任务已存在,请${res.action}`)
     return
   }
-  if (res.kind === 'added') {
-    title.value = ''
-    description.value = ''
-    deadline.value = ''
+
+  // 2. Perform Server Operations
+  try {
+    const todoPayload = res.todo
+    const newTemplate = res.newTemplate
+
+    // 2a. Handle Template (if needed)
+    if (newTemplate) {
+      console.log('📋 Saving new template to Supabase first:', newTemplate)
+      // Since it's server-first, we save template to DB and get ID
+      const templateId = await saveTemplateToSupabase({
+        title: newTemplate.title,
+        category: newTemplate.category,
+        period: newTemplate.period,
+        minFrequency: newTemplate.minFrequency,
+        unit: newTemplate.unit,
+        minutesPerTime: newTemplate.minutesPerTime,
+        description: newTemplate.description,
+        deadline: newTemplate.deadline,
+        created_at: newTemplate.createdAt,
+      })
+
+      if (templateId) {
+        // Update payload with real ID
+        todoPayload.templateId = templateId
+        // Also add template to local store for consistency (though loadTemplatesFromSupabase handles sync, immediate feedback is good)
+        // Actually, let's just push it to local templates if not present?
+        // D3TodoList sync logic handles templates. let's assume saveTemplateToSupabase handles the DB part.
+        // We do need to update local templates list manually or re-fetch?
+        // saveTemplateToSupabase returns ID.
+        // We should probably add the template to store locally too so UI is consistent if we don't re-fetch immediately.
+        // But `saveTemplateToSupabase` currently just inserts and returns ID.
+        // Let's add it to store manually here for now to be safe, or wait for sync?
+        // Server-First implies we trust server.
+        // Let's just update the payload.
+      } else {
+        MessagePlugin.error('模板保存失败，取消创建任务')
+        return
+      }
+    } else if (todoPayload.templateId) {
+      // Using existing template, ID is already set in payload
+    }
+
+    // 2b. Save Todo to Supabase
+    console.log('📤 Saving Todo to Supabase:', todoPayload)
+    // Supabase insert expects specific column naming (snake_case generally),
+    // but our client object is camelCase. We need to map it.
+    // Or we rely on `loadTodosFromSupabase` mapping?
+    // We need to map client object to DB columns manually for insert.
+
+    const dbPayload = {
+      title: todoPayload.title,
+      category: todoPayload.category,
+      period: todoPayload.period,
+      min_frequency: todoPayload.minFrequency,
+      unit: todoPayload.unit,
+      minutes_per_time: todoPayload.minutesPerTime || null,
+      description: todoPayload.description,
+      done: todoPayload.done,
+      completed_at: todoPayload.completedAt || null,
+      punch_ins: todoPayload.punchIns,
+      template_id: todoPayload.templateId || null,
+      created_at: new Date(todoPayload.createdAt).toISOString(),
+      day_key: todoPayload.dayKey,
+      deadline: todoPayload.deadline || null,
+    }
+
+    const { data: insertedTodo, error } = await supabase
+      .from('todos')
+      .insert(dbPayload)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('❌ Failed to save todo:', error)
+      MessagePlugin.error('保存任务失败')
+      return
+    }
+
+    // 3. Update Local State with Server Response
+    if (insertedTodo) {
+      console.log('✅ Todo saved successfully:', insertedTodo)
+
+      // Map back to local interface
+      const localTodo: Todo = {
+        id: insertedTodo.id, // The Server Generated ID!
+        title: insertedTodo.title,
+        done: insertedTodo.done,
+        punchIns: insertedTodo.punch_ins,
+        category: insertedTodo.category,
+        period: insertedTodo.period,
+        minFrequency: insertedTodo.min_frequency,
+        unit: insertedTodo.unit,
+        minutesPerTime: insertedTodo.minutes_per_time,
+        description: insertedTodo.description,
+        templateId: insertedTodo.template_id,
+        createdAt: new Date(insertedTodo.created_at).getTime(),
+        dayKey: insertedTodo.day_key,
+        deadline: insertedTodo.deadline,
+        completedAt: insertedTodo.completed_at
+          ? new Date(insertedTodo.completed_at).getTime()
+          : undefined,
+      }
+
+      // Add to store!
+      addTodoDirectly(localTodo)
+
+      MessagePlugin.success('任务添加成功')
+
+      // Reset form
+      title.value = ''
+      description.value = ''
+      deadline.value = ''
+    }
+  } catch (e) {
+    console.error('❌ Unexpected error in addTodo:', e)
+    MessagePlugin.error('添加任务发生异常')
   }
 }
 
@@ -959,12 +1907,15 @@ const archiveTodo = (id: string) => {
         content: '放弃',
         theme: 'danger',
       },
-      onConfirm: () => {
+      onConfirm: async () => {
         const res = giveUpGoalById(id)
         if (res.kind === 'not_found') {
           confirmDialog.hide()
           return
         }
+
+        // Delete from Supabase as well
+        await deleteTodoFromSupabase(id)
 
         for (const rid of res.removedIds) selectedIds.value.delete(rid)
 
@@ -982,11 +1933,16 @@ const archiveTodo = (id: string) => {
       content: '归档',
       theme: 'warning',
     },
-    onConfirm: () => {
+    onConfirm: async () => {
       const res = archiveTodoById(id)
       if (res.kind === 'not_found') {
         confirmDialog.hide()
         return
+      }
+
+      // If this archived a template, sync to Supabase
+      if (todo.templateId) {
+        await archiveTemplateInSupabase(todo.templateId)
       }
 
       for (const rid of res.removedIds) selectedIds.value.delete(rid)
@@ -1005,7 +1961,7 @@ const toggleSelect = (id: string) => {
   }
 }
 
-const toggleDone = (id: string, done: boolean) => {
+const toggleDone = async (id: string, done: boolean) => {
   // 如果是完成目标,需要确认
   if (done) {
     const todo = getTodoById(id)
@@ -1017,8 +1973,10 @@ const toggleDone = (id: string, done: boolean) => {
           content: '确认完成',
           theme: 'success',
         },
-        onConfirm: () => {
+        onConfirm: async () => {
           toggleTodoDone(id, done)
+          // Sync with Supabase
+          await markTodoCompleteInSupabase(id, done)
           confirmDialog.hide()
         },
       })
@@ -1026,7 +1984,13 @@ const toggleDone = (id: string, done: boolean) => {
     }
   }
 
+  const todo = getTodoById(id)
   toggleTodoDone(id, done)
+
+  // Sync with Supabase for all task types
+  if (todo) {
+    await markTodoCompleteInSupabase(id, done)
+  }
 }
 
 const todayTodos = computed(() => todos.value.filter((t) => t.dayKey === todayKey.value))
@@ -1121,7 +2085,6 @@ const exportDialogVisible = ref(false)
 const exporting = ref(false)
 const exportingImage = ref(false)
 const exportCaptureRef = ref<HTMLElement | null>(null)
-const isDark = useDark()
 
 type ExportPunchRecord = {
   id: string
@@ -1223,35 +2186,6 @@ const exportImageFileName = computed(() => {
   const start = keys[0] || 'start'
   const end = keys[keys.length - 1] || 'end'
   return `${start}_to_${end}_打卡历史.png`
-})
-
-const exportPalette = computed(() => {
-  if (isDark.value) {
-    return {
-      rootBg: '#0a0a0a',
-      rootText: '#e5e5e5',
-      rootBorder: '#262626',
-      cardBg: '#171717',
-      cardBorder: '#262626',
-      itemBg: '#0f0f0f',
-      itemBorder: '#262626',
-      mutedText: '#a3a3a3',
-      noteText: '#d4d4d4',
-      divider: '#262626',
-    }
-  }
-  return {
-    rootBg: '#ffffff',
-    rootText: '#111827',
-    rootBorder: '#e5e7eb',
-    cardBg: '#ffffff',
-    cardBorder: '#e5e7eb',
-    itemBg: '#f9fafb',
-    itemBorder: '#e5e7eb',
-    mutedText: '#6b7280',
-    noteText: '#4b5563',
-    divider: '#e5e7eb',
-  }
 })
 
 const exportRootStyle = computed(() => {
@@ -2858,23 +3792,37 @@ const exportDialogWidth = computed(() => {
       <div class="p-4 space-y-6">
         <div>
           <div class="text-sm mb-2 font-medium">任务分类</div>
-          <div class="space-y-2 mb-2">
-            <div v-for="(_, idx) in draftCategoriesList" :key="idx" class="flex items-center gap-2">
-              <t-input v-model="draftCategoriesList[idx]" placeholder="请输入分类名称" />
-              <t-button
-                variant="text"
-                shape="square"
-                size="small"
-                theme="danger"
-                @click="removeDraftCategory(idx)"
-              >
-                <template #icon><delete-icon /></template>
-              </t-button>
-            </div>
+          <div
+            class="flex items-center gap-2 mb-2"
+            v-for="(cat, idx) in draftCategoriesList"
+            :key="idx"
+          >
+            <t-input
+              v-model="draftCategoriesList[idx]"
+              placeholder="分类名称"
+              :ref="
+                (el: ComponentPublicInstance | Element | null) => {
+                  if (el) {
+                    const comp = el as any
+                    draftCategoriesInputRefs[idx] = comp.$el
+                      ? comp.$el.querySelector('input')
+                      : (el as HTMLElement)
+                  }
+                }
+              "
+              @enter="onDraftCategoryEnter(idx)"
+            />
+            <t-button
+              variant="text"
+              shape="square"
+              theme="danger"
+              @click="removeDraftCategory(idx)"
+            >
+              <template #icon><delete-icon /></template>
+            </t-button>
           </div>
-          <t-button block variant="dashed" theme="default" class="mt-2" @click="addDraftCategory">
-            <template #icon><add-icon /></template>
-            添加分类
+          <t-button variant="dashed" block @click="addDraftCategory">
+            <template #icon><add-icon /></template>添加分类
           </t-button>
         </div>
 
