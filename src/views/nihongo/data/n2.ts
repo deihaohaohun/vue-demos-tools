@@ -9,19 +9,19 @@ export const n2Data: GrammarItem[] = [
     mastery: 2,
     meanings: [
       {
-        meaning: '（心理/道德上）不能...；不可以...',
-        usage: ['动词连体形 + わけにはいかない'],
+        meaning: '不能...;不能不...;',
+        tips: ['心理/道德上, 并不是能力上'],
+        usage: ['动词る・ない形 + わけにはいかない'],
         examples: ['大事な会议だから、遅れるわけにはいかない。'],
         references: [
-          { name: 'Bunpro', url: 'https://bunpro.jp/', logo: 'https://tdesign.gtimg.com/site/avatar.jpg' }
-        ]
+          {
+            name: 'Bunpro',
+            url: 'https://bunpro.jp/',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
       },
-      {
-        meaning: '（心理/道德上）必须...；不得不...',
-        usage: ['动词ない形 + わけにはいかない'],
-        examples: ['明日は試験があるので、勉強しないわけにはいかない。']
-      }
     ],
-    isRemembered: false
-  }
+    isRemembered: false,
+  },
 ]

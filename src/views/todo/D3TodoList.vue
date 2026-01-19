@@ -45,6 +45,8 @@ import {
   FileExportIcon,
   DownloadIcon,
   MinusIcon,
+  AppIcon,
+  CheckCircleIcon,
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -85,7 +87,7 @@ const {
   giveUpGoalById,
   toggleTodoDone,
   applyTodoEdit,
-  ensureTemplateFromHistory,
+
   applyTemplateEdit,
   maxConsecutivePunchDays,
   templates,
@@ -776,17 +778,6 @@ const exportSuccessBadgeStyle = computed(() => {
   } as Record<string, string>
 })
 
-const periodicHistory = computed(() => history.value.filter((h) => h.period !== 'once'))
-const periodicCategories = computed(() => {
-  const categories = [...new Set(periodicHistory.value.map((h) => h.category))]
-  return categories.filter((c): c is string => Boolean(c))
-})
-
-const unfinishedGoalTodos = computed(() =>
-  todos.value.filter((t) => t.period === 'once' && !t.done),
-)
-const completedGoalTodos = computed(() => todos.value.filter((t) => t.period === 'once' && t.done))
-
 const periodTextMap: Record<TodoPeriod, string> = {
   daily: '每天',
   weekly: '每周',
@@ -808,10 +799,6 @@ const getPeriodTheme = (p: TodoPeriod) => {
 
 const archivedHistorySorted = computed(() =>
   [...archivedHistory.value].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0)),
-)
-
-const abandonedGoalsSorted = computed(() =>
-  [...abandonedGoals.value].sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0)),
 )
 
 // 打卡弹窗相关
@@ -1649,21 +1636,6 @@ watch(templateUnit, (u) => {
   }
 })
 
-const openTemplateEditFromHistory = (item: HistoryItem) => {
-  const tpl = ensureTemplateFromHistory(item)
-
-  editingTemplateId.value = tpl.id
-  templateTitle.value = tpl.title
-  templateCategory.value = tpl.category
-  templatePeriod.value = tpl.period
-  templateMinFrequency.value = tpl.minFrequency
-  templateUnit.value = tpl.unit
-  templateMinutesPerTime.value =
-    tpl.unit === 'minutes' ? (typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15) : 15
-  templateDescription.value = tpl.description || ''
-  templateEditVisible.value = true
-}
-
 const saveTemplateEdit = async () => {
   const id = editingTemplateId.value
   if (!id) return
@@ -1705,25 +1677,10 @@ const saveTemplateEdit = async () => {
   MessagePlugin.success('任务已更新')
 }
 
-const allDisplayTodos = computed(() =>
-  [...todos.value].sort((a, b) => (a.category || '').localeCompare(b.category || 'zh')),
-)
-
-const taskDisplayTodos = computed(() => allDisplayTodos.value.filter((t) => t.period !== 'once'))
-
 const isTaskCompleted = (t: Todo) => {
-  if (t.unit === 'minutes') {
-    const punched = getPunchedMinutesForTodo(t) || 0
-    const perTime = typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15
-    const goal = (t.minFrequency || 0) * perTime
-    if (goal <= 0) return false
-    return punched >= goal
-  }
+  if (t.done) return true
   return (t.punchIns || 0) >= (t.minFrequency || 0)
 }
-
-const unfinishedTodos = computed(() => taskDisplayTodos.value.filter((t) => !isTaskCompleted(t)))
-const completedTodos = computed(() => taskDisplayTodos.value.filter((t) => isTaskCompleted(t)))
 
 const handlePunchIn = (id: string) => {
   onPunchTrigger(id)
@@ -2050,6 +2007,123 @@ const todayPunchedCount = computed(() => {
     set.add(`${r.todoTitle}@@${r.category || '未分类'}`)
   }
   return set.size
+})
+
+// --- UI Redesign: Card Layout Logic ---
+
+const categoryColors = [
+  {
+    border: 'border-l-4 border-blue-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-blue-700 dark:text-blue-400',
+    bar: 'bg-blue-500',
+    icon: 'text-blue-500',
+  },
+  {
+    border: 'border-l-4 border-green-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-green-700 dark:text-green-400',
+    bar: 'bg-green-500',
+    icon: 'text-green-500',
+  },
+  {
+    border: 'border-l-4 border-amber-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-amber-700 dark:text-amber-400',
+    bar: 'bg-amber-500',
+    icon: 'text-amber-500',
+  },
+  {
+    border: 'border-l-4 border-purple-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-purple-700 dark:text-purple-400',
+    bar: 'bg-purple-500',
+    icon: 'text-purple-500',
+  },
+  {
+    border: 'border-l-4 border-rose-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-rose-700 dark:text-rose-400',
+    bar: 'bg-rose-500',
+    icon: 'text-rose-500',
+  },
+  {
+    border: 'border-l-4 border-cyan-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-cyan-700 dark:text-cyan-400',
+    bar: 'bg-cyan-500',
+    icon: 'text-cyan-500',
+  },
+  {
+    border: 'border-l-4 border-indigo-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-indigo-700 dark:text-indigo-400',
+    bar: 'bg-indigo-500',
+    icon: 'text-indigo-500',
+  },
+  {
+    border: 'border-l-4 border-teal-500',
+    bg: 'bg-white dark:bg-neutral-800',
+    text: 'text-teal-700 dark:text-teal-400',
+    bar: 'bg-teal-500',
+    icon: 'text-teal-500',
+  },
+]
+
+const getCategoryColor = (category: string) => {
+  // Simple hash to map category name to a color index
+  let hash = 0
+  for (let i = 0; i < category.length; i++) {
+    hash = category.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % categoryColors.length
+  return categoryColors[index]
+}
+
+const boardGroups = computed(() => {
+  const groups: Array<{
+    name: string
+    color: (typeof categoryColors)[0]
+    unfinished: Todo[]
+    completed: Todo[]
+    total: number
+    progress: number
+    goalDescription?: string // Optional: derive a goal description like "Main: Stability..."
+  }> = []
+
+  // Ensure we include '未分类' if it exists in data but not in options
+  const allCategories = new Set(categoryOptions.value)
+  todayTodos.value.forEach((t) => allCategories.add(t.category || '未分类'))
+
+  // Use configured order if possible
+  const sortedCategories = [...allCategories].sort((a, b) => {
+    const idxA = categoryOptions.value.indexOf(a)
+    const idxB = categoryOptions.value.indexOf(b)
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB
+    if (idxA !== -1) return -1
+    if (idxB !== -1) return 1
+    return a.localeCompare(b)
+  })
+
+  for (const cat of sortedCategories) {
+    const todosInCat = todayTodos.value.filter((t) => (t.category || '未分类') === cat)
+    if (todosInCat.length === 0) continue
+
+    const unfinished = todosInCat.filter((t) => !isTaskCompleted(t))
+    const completed = todosInCat.filter((t) => isTaskCompleted(t))
+    const total = todosInCat.length
+    const progress = total > 0 ? Math.round((completed.length / total) * 100) : 0
+
+    groups.push({
+      name: cat,
+      color: getCategoryColor(cat),
+      unfinished,
+      completed,
+      total,
+      progress,
+    })
+  }
+  return groups
 })
 
 // 昨日数据对比
@@ -2618,477 +2692,313 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <div class="max-w-[1200px] mx-auto mt-2 px-4 flex items-center justify-between gap-2">
-      <div class="text-sm flex items-center">
-        历史添加记录
-        <span class="ml-1 text-neutral-400">({{ history.length }})</span>
-      </div>
-      <t-button
-        v-if="isMobile"
-        shape="square"
-        variant="text"
-        size="small"
-        @click="isHistoryPanelOpen = !isHistoryPanelOpen"
-      >
-        <template #icon>
-          <chevron-down-icon v-if="!isHistoryPanelOpen" />
-          <chevron-up-icon v-else />
-        </template>
-      </t-button>
-    </div>
-
-    <div v-show="!isMobile || isHistoryPanelOpen" class="max-w-[1200px] mx-auto mt-1 px-4">
-      <div v-if="!history.length" class="text-sm text-neutral-400 flex items-center">
-        暂无历史数据
-      </div>
-    </div>
-
-    <div
-      v-show="!isMobile || isHistoryPanelOpen"
-      class="max-w-[1200px] mx-auto mt-2 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2"
-    >
-      <!-- Periodic Categories -->
-      <div
-        v-for="cat in periodicCategories"
-        :key="cat"
-        :style="getCategoryCssVars(cat)"
-        class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800"
-      >
-        <div class="text-sm mb-2 font-bold flex items-center gap-2">
-          <span>{{ cat }} (任务)</span>
-          <span
-            class="px-2 py-0.5 rounded text-[11px] font-semibold border"
-            :class="getCategoryTagClass(cat)"
-            >{{ periodicHistory.filter((h) => h.category === cat).length }}</span
-          >
-        </div>
-        <div class="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
-          <span
-            v-for="item in periodicHistory.filter((h) => h.category === cat)"
-            :key="`${item.title}-${item.category}-${item.period}`"
-            class="inline-flex items-center gap-1 px-1 rounded border text-[11px] font-semibold transition-colors"
-            :class="getCategoryTagClass(cat)"
-          >
-            <span class="cursor-pointer hover:opacity-70">{{ item.title }}</span>
-            <t-button
-              variant="text"
-              size="small"
-              shape="square"
-              @click.stop="openTemplateEditFromHistory(item)"
-            >
-              <template #icon><edit-icon /></template>
-            </t-button>
-          </span>
-        </div>
-      </div>
-
-      <!-- Unfinished Goals -->
-      <div
-        class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800"
-      >
-        <div class="text-sm mb-2 font-bold flex items-center gap-2">
-          <span>未完成目标</span>
-          <t-tag size="small" variant="light" theme="warning">{{
-            unfinishedGoalTodos.length
-          }}</t-tag>
-        </div>
-        <div class="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
-          <span
-            v-for="todo in unfinishedGoalTodos"
-            :key="todo.id"
-            class="inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold transition-colors"
-            :class="getCategoryTagClass(todo.category)"
-          >
-            <span class="cursor-pointer hover:opacity-70">{{ todo.title }}</span>
-          </span>
-          <div v-if="!unfinishedGoalTodos.length" class="text-xs text-neutral-400">
-            暂无未完成目标
-          </div>
-        </div>
-      </div>
-
-      <!-- Completed Goals -->
-      <div
-        class="p-3 rounded-md bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800"
-      >
-        <div class="text-sm mb-2 font-bold flex items-center gap-2">
-          <span>已完成目标</span>
-          <t-tag size="small" variant="light" theme="success">{{
-            completedGoalTodos.length
-          }}</t-tag>
-        </div>
-        <div class="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
-          <t-tag
-            v-for="todo in completedGoalTodos"
-            :key="todo.id"
-            variant="outline"
-            theme="success"
-          >
-            <span>{{ todo.title }}</span>
-            <span v-if="todo.completedAt" class="ml-1 text-[10px] opacity-70">
-              {{ dayjs(todo.completedAt).format('MM-DD HH:mm') }}
-            </span>
-            <check-icon class="ml-1" />
-          </t-tag>
-          <div v-if="!completedGoalTodos.length" class="text-xs text-neutral-400">
-            暂无已完成目标
-          </div>
-        </div>
-      </div>
+      <h2 class="text-xl font-bold">任务/目标</h2>
     </div>
 
     <div class="max-w-[1200px] mx-auto mt-2 px-4">
-      <t-tabs
-        :default-value="1"
-        class="rounded-md overflow-hidden border border-neutral-100 dark:border-neutral-800"
+      <!-- Dashboard Grid -->
+      <div
+        v-if="boardGroups.length"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8"
       >
-        <t-tab-panel :value="1" :label="`任务列表 (${taskDisplayTodos.length})`">
-          <div class="min-h-[300px]" :class="{ 'p-1 sm:p-2': taskDisplayTodos.length }">
-            <template v-if="taskDisplayTodos.length">
-              <!-- 未完成任务 -->
-              <div v-if="unfinishedTodos.length" class="mb-2">
-                <div class="flex items-center gap-2 mb-2 px-1">
-                  <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
-                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >未完成 ({{ unfinishedTodos.length }})</span
-                  >
-                </div>
-                <TodoItem
-                  v-for="todo in unfinishedTodos"
-                  :key="todo.id"
-                  :todo="todo"
-                  :punched-minutes="getPunchedMinutesForTodo(todo)"
-                  @toggle-select="toggleSelect"
-                  @toggle-done="toggleDone"
-                  @punch-in="handlePunchIn"
-                  @edit="openEdit"
-                  @archive="archiveTodo"
-                  @view-history="openGoalHistoryDialog"
-                />
-              </div>
-
-              <!-- 已完成任务 -->
-              <div v-if="completedTodos.length">
-                <div class="flex items-center gap-2 mb-2 px-1">
-                  <div class="w-1 h-4 bg-green-500 rounded-full"></div>
-                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >已完成 ({{ completedTodos.length }})</span
-                  >
-                </div>
-                <TodoItem
-                  v-for="todo in completedTodos"
-                  :key="todo.id"
-                  :todo="todo"
-                  :punched-minutes="getPunchedMinutesForTodo(todo)"
-                  @toggle-select="toggleSelect"
-                  @toggle-done="toggleDone"
-                  @punch-in="handlePunchIn"
-                  @edit="openEdit"
-                  @archive="archiveTodo"
-                  @view-history="openGoalHistoryDialog"
-                />
-              </div>
-            </template>
-            <template v-else>
-              <div class="w-full h-[300px] flex flex-col items-center justify-center">
-                <t-empty />
-              </div>
-            </template>
-          </div>
-        </t-tab-panel>
-        <t-tab-panel
-          :value="2"
-          :label="`目标 (${unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length})`"
+        <div
+          v-for="group in boardGroups"
+          :key="group.name"
+          :class="[
+            'rounded-xl border bg-white dark:bg-neutral-800 shadow-sm flex flex-col overflow-hidden transition-all duration-300 hover:shadow-md',
+            group.color.border,
+          ]"
         >
+          <!-- Header -->
           <div
-            class="min-h-[300px]"
-            :class="{
-              'p-1 sm:p-2':
-                unfinishedGoalTodos.length +
-                completedGoalTodos.length +
-                abandonedGoalsSorted.length,
-            }"
+            class="p-4 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between"
           >
-            <template
-              v-if="
-                unfinishedGoalTodos.length + completedGoalTodos.length + abandonedGoalsSorted.length
-              "
-            >
-              <div v-if="unfinishedGoalTodos.length" class="mb-2">
-                <div class="flex items-center gap-2 mb-2 px-1">
-                  <div class="w-1 h-4 bg-yellow-500 rounded-full"></div>
-                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >未完成 ({{ unfinishedGoalTodos.length }})</span
-                  >
-                </div>
-                <TodoItem
-                  v-for="todo in unfinishedGoalTodos"
-                  :key="todo.id"
-                  :todo="todo"
-                  :show-meta-tags="false"
-                  :punched-minutes="getPunchedMinutesForTodo(todo)"
-                  @toggle-select="toggleSelect"
-                  @toggle-done="toggleDone"
-                  @punch-in="handlePunchIn"
-                  @edit="openEdit"
-                  @archive="archiveTodo"
-                  @view-history="openGoalHistoryDialog"
-                />
+            <div class="flex items-center gap-2">
+              <div :class="group.color.icon">
+                <app-icon size="18" />
               </div>
-
-              <div v-if="completedGoalTodos.length">
-                <div class="flex items-center gap-2 mb-2 px-1">
-                  <div class="w-1 h-4 bg-green-500 rounded-full"></div>
-                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >已完成 ({{ completedGoalTodos.length }})</span
-                  >
-                </div>
-                <TodoItem
-                  v-for="todo in completedGoalTodos"
-                  :key="todo.id"
-                  :todo="todo"
-                  :show-meta-tags="false"
-                  :punched-minutes="getPunchedMinutesForTodo(todo)"
-                  @toggle-select="toggleSelect"
-                  @toggle-done="toggleDone"
-                  @punch-in="handlePunchIn"
-                  @edit="openEdit"
-                  @archive="archiveTodo"
-                  @view-history="openGoalHistoryDialog"
-                />
-              </div>
-
-              <div v-if="abandonedGoalsSorted.length">
-                <div class="flex items-center gap-2 my-2 px-1">
-                  <div class="w-1 h-4 bg-red-500 rounded-full"></div>
-                  <span class="text-sm font-bold text-neutral-600 dark:text-neutral-300"
-                    >已放弃 ({{ abandonedGoalsSorted.length }})</span
-                  >
-                </div>
-                <div class="flex flex-col gap-2">
-                  <div
-                    v-for="g in abandonedGoalsSorted"
-                    :key="g.id"
-                    class="p-3 rounded bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800"
-                  >
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-medium">{{ g.title }}</span>
-                      <span
-                        v-if="g.category"
-                        class="px-2 py-0.5 rounded text-[11px] font-semibold border"
-                        :style="getCategoryCssVars(g.category)"
-                        :class="getCategoryTagClass(g.category)"
-                      >
-                        {{ g.category }}
-                      </span>
-                      <t-tag size="small" variant="light" theme="danger">已放弃</t-tag>
-                      <span class="text-xs text-neutral-400"
-                        >放弃于 {{ dayjs(g.abandonedAt).format('YYYY-MM-DD HH:mm') }}</span
-                      >
-                      <span v-if="g.deadline" class="text-xs text-neutral-400"
-                        >截止 {{ dayjs(g.deadline).format('YYYY-MM-DD') }}</span
-                      >
-                    </div>
-                    <div
-                      v-if="g.description"
-                      class="mt-2 text-sm text-neutral-600 dark:text-neutral-400"
-                    >
-                      {{ g.description }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="w-full h-[300px] flex flex-col items-center justify-center">
-                <t-empty description="暂无目标" />
-              </div>
-            </template>
+              <span class="font-bold text-lg text-neutral-800 dark:text-neutral-100">{{
+                group.name
+              }}</span>
+            </div>
+            <div class="text-xs text-neutral-400 font-mono">
+              {{ group.completed.length }}/{{ group.total }}
+            </div>
           </div>
-        </t-tab-panel>
-        <t-tab-panel :value="3" :label="`打卡记录 (${currentHistoryRecords.length})`">
-          <div class="min-h-[300px] p-2">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2">
-              <div class="flex items-center gap-2">
-                <t-button variant="text" shape="square" @click="prevDay">
-                  <template #icon><chevron-left-icon /></template>
-                </t-button>
-                <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
-                <div class="text-sm shrink-0" v-if="isToday">(今天)</div>
-                <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
-                  <template #icon><chevron-right-icon /></template>
-                </t-button>
+
+          <!-- Body -->
+          <div class="p-4 flex-1 flex flex-col gap-3 min-h-[200px]">
+            <!-- Unfinished -->
+            <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
+              <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
+                <TodoItem
+                  :todo="todo"
+                  :punched-minutes="getPunchedMinutesForTodo(todo)"
+                  :show-meta-tags="false"
+                  compact
+                  @toggle-select="toggleSelect"
+                  @toggle-done="toggleDone"
+                  @punch-in="handlePunchIn"
+                  @edit="openEdit"
+                  @archive="archiveTodo"
+                  @view-history="openGoalHistoryDialog"
+                />
               </div>
-              <div class="text-sm">当日打卡: {{ currentHistoryRecords.length }} 次</div>
             </div>
 
-            <template v-if="currentHistoryRecords.length">
-              <div class="flex flex-col gap-2">
-                <div
-                  v-for="record in currentHistoryRecords"
-                  :key="record.id"
-                  class="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div class="flex flex-col gap-1">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-medium">{{ record.todoTitle }}</span>
-                      <span
-                        v-if="record.category"
-                        class="px-1 rounded text-[11px] font-semibold border"
-                        :style="getCategoryCssVars(record.category)"
-                        :class="getCategoryTagClass(record.category)"
-                        >{{ record.category }}</span
-                      >
-                      <span class="text-xs text-neutral-400">{{
-                        dayjs(record.timestamp).format('HH:mm:ss')
-                      }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <div
-                        v-if="editingRecordId === record.id"
-                        class="flex flex-wrap items-center gap-2"
-                      >
-                        <t-input
-                          v-model="editingRecordNote"
-                          size="small"
-                          placeholder="输入备注..."
-                          auto-width
-                        />
-                        <div class="flex gap-1">
-                          <t-button
-                            size="small"
-                            theme="primary"
-                            variant="text"
-                            @click="saveRecordNote"
-                            >保存</t-button
-                          >
-                          <t-button
-                            size="small"
-                            theme="default"
-                            variant="text"
-                            @click="editingRecordId = null"
-                            >取消</t-button
-                          >
-                        </div>
-                      </div>
-                      <div
-                        v-else
-                        class="flex items-center gap-2 group cursor-pointer"
-                        @click="startEditRecord(record)"
-                      >
-                        <span class="text-sm text-neutral-600 dark:text-neutral-400">
-                          {{ record.note || '无备注 (点击添加)' }}
-                        </span>
-                      </div>
-                    </div>
+            <!-- Completed -->
+            <div v-if="group.completed.length > 0" class="flex flex-col gap-2">
+              <!-- Divider if needed, or just append -->
+              <div
+                v-if="group.unfinished.length > 0"
+                class="h-px bg-neutral-100 dark:bg-neutral-700 my-1"
+              ></div>
+              <div v-for="todo in group.completed" :key="todo.id" class="opacity-60">
+                <TodoItem
+                  :todo="todo"
+                  :punched-minutes="getPunchedMinutesForTodo(todo)"
+                  :show-meta-tags="false"
+                  compact
+                  @toggle-select="toggleSelect"
+                  @toggle-done="toggleDone"
+                  @punch-in="handlePunchIn"
+                  @edit="openEdit"
+                  @archive="archiveTodo"
+                  @view-history="openGoalHistoryDialog"
+                />
+              </div>
+            </div>
 
-                    <div class="flex items-center gap-2">
-                      <div
-                        v-if="editingRecordMinutesId === record.id"
-                        class="flex flex-wrap items-center gap-2"
-                      >
-                        <t-input-number
-                          v-model="editingRecordMinutes"
-                          :min="0"
-                          :step="5"
-                          size="small"
-                          class="w-[120px]"
-                        />
-                        <div class="flex gap-1">
-                          <t-button
+            <div
+              v-if="group.total === 0"
+              class="flex-1 flex flex-col items-center justify-center text-neutral-400 text-sm italic gap-2 min-h-[100px]"
+            >
+              <div class="opacity-30"><app-icon size="24" /></div>
+              暂无任务
+            </div>
+          </div>
+
+          <!-- Footer Progress -->
+          <div
+            class="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-700"
+          >
+            <div class="flex items-center justify-between text-xs mb-1 text-neutral-500">
+              <span>当前进度</span>
+              <span class="font-mono">{{ group.progress }}%</span>
+            </div>
+            <div
+              class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden"
+            >
+              <div
+                class="h-full transition-all duration-500 rounded-full"
+                :class="group.color.bar"
+                :style="{ width: `${group.progress}%` }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-else class="flex flex-col items-center justify-center py-12 text-neutral-400">
+        <t-empty description="暂无分类任务，请先添加任务" />
+      </div>
+
+      <!-- History & Archive Section -->
+      <div class="mt-8">
+        <div class="flex items-center justify-between mb-4 px-1">
+          <h2 class="text-xl font-bold flex items-center gap-2">历史/归档</h2>
+        </div>
+
+        <t-tabs
+          :default-value="1"
+          class="rounded-md overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900"
+        >
+          <t-tab-panel :value="1" :label="`打卡记录 (${currentHistoryRecords.length})`">
+            <div class="min-h-[300px] p-2">
+              <div
+                class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2"
+              >
+                <div class="flex items-center gap-2">
+                  <t-button variant="text" shape="square" @click="prevDay">
+                    <template #icon><chevron-left-icon /></template>
+                  </t-button>
+                  <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
+                  <div class="text-sm shrink-0" v-if="isToday">(今天)</div>
+                  <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
+                    <template #icon><chevron-right-icon /></template>
+                  </t-button>
+                </div>
+                <div class="text-sm">当日打卡: {{ currentHistoryRecords.length }} 次</div>
+              </div>
+
+              <template v-if="currentHistoryRecords.length">
+                <div class="flex flex-col gap-2">
+                  <div
+                    v-for="record in currentHistoryRecords"
+                    :key="record.id"
+                    class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div class="flex flex-col gap-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium">{{ record.todoTitle }}</span>
+                        <span
+                          v-if="record.category"
+                          class="px-1 rounded text-[11px] font-semibold border"
+                          :style="getCategoryCssVars(record.category)"
+                          :class="getCategoryTagClass(record.category)"
+                          >{{ record.category }}</span
+                        >
+                        <span class="text-xs text-neutral-400">{{
+                          dayjs(record.timestamp).format('HH:mm:ss')
+                        }}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div
+                          v-if="editingRecordId === record.id"
+                          class="flex flex-wrap items-center gap-2"
+                        >
+                          <t-input
+                            v-model="editingRecordNote"
                             size="small"
-                            theme="primary"
-                            variant="text"
-                            @click="saveRecordMinutes"
-                            >保存</t-button
-                          >
-                          <t-button
-                            size="small"
-                            theme="default"
-                            variant="text"
-                            @click="editingRecordMinutesId = null"
-                            >取消</t-button
-                          >
+                            placeholder="输入备注..."
+                            auto-width
+                          />
+                          <div class="flex gap-1">
+                            <t-button
+                              size="small"
+                              theme="primary"
+                              variant="text"
+                              @click="saveRecordNote"
+                              >保存</t-button
+                            >
+                            <t-button
+                              size="small"
+                              theme="default"
+                              variant="text"
+                              @click="editingRecordId = null"
+                              >取消</t-button
+                            >
+                          </div>
+                        </div>
+                        <div
+                          v-else
+                          class="flex items-center gap-2 group cursor-pointer"
+                          @click="startEditRecord(record)"
+                        >
+                          <span class="text-sm text-neutral-600 dark:text-neutral-400">
+                            {{ record.note || '无备注 (点击添加)' }}
+                          </span>
                         </div>
                       </div>
-                      <div
-                        v-else
-                        class="flex items-center gap-2 group cursor-pointer"
-                        @click="startEditRecordMinutes(record)"
-                      >
-                        <span class="text-sm text-neutral-600 dark:text-neutral-400">
-                          <template v-if="getRecordMinutes(record) > 0">
-                            {{ getRecordMinutes(record) }} 分钟 (点击修改)
-                          </template>
-                          <template v-else> 分钟未记录 (点击补充) </template>
-                        </span>
+
+                      <div class="flex items-center gap-2">
+                        <div
+                          v-if="editingRecordMinutesId === record.id"
+                          class="flex flex-wrap items-center gap-2"
+                        >
+                          <t-input-number
+                            v-model="editingRecordMinutes"
+                            :min="0"
+                            :step="5"
+                            size="small"
+                            class="w-[120px]"
+                          />
+                          <div class="flex gap-1">
+                            <t-button
+                              size="small"
+                              theme="primary"
+                              variant="text"
+                              @click="saveRecordMinutes"
+                              >保存</t-button
+                            >
+                            <t-button
+                              size="small"
+                              theme="default"
+                              variant="text"
+                              @click="editingRecordMinutesId = null"
+                              >取消</t-button
+                            >
+                          </div>
+                        </div>
+                        <div
+                          v-else
+                          class="flex items-center gap-2 group cursor-pointer"
+                          @click="startEditRecordMinutes(record)"
+                        >
+                          <span class="text-sm text-neutral-600 dark:text-neutral-400">
+                            <template v-if="getRecordMinutes(record) > 0">
+                              {{ getRecordMinutes(record) }} 分钟 (点击修改)
+                            </template>
+                            <template v-else> 分钟未记录 (点击补充) </template>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </template>
-            <template v-else>
-              <div
-                class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
-              >
-                <t-empty description="该日暂无打卡记录" />
-              </div>
-            </template>
-          </div>
-        </t-tab-panel>
-        <t-tab-panel :value="4" :label="`已归档 (${archivedHistorySorted.length})`">
-          <div class="min-h-[300px] p-2">
-            <template v-if="archivedHistorySorted.length">
-              <div class="flex flex-col gap-2">
+              </template>
+              <template v-else>
                 <div
-                  v-for="item in archivedHistorySorted"
-                  :key="`${item.title}@@${item.category}@@${item.period}@@${item.archivedAt}`"
-                  class="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
+                  class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
                 >
-                  <div class="flex flex-col gap-2">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-medium">{{ item.title }}</span>
-                      <span
-                        v-if="item.category"
-                        class="px-2 py-0.5 rounded text-[11px] font-semibold border"
-                        :style="getCategoryCssVars(item.category)"
-                        :class="getCategoryTagClass(item.category)"
+                  <t-empty description="该日暂无打卡记录" />
+                </div>
+              </template>
+            </div>
+          </t-tab-panel>
+          <t-tab-panel :value="2" :label="`已归档 (${archivedHistorySorted.length})`">
+            <div class="min-h-[300px] p-2">
+              <template v-if="archivedHistorySorted.length">
+                <div class="flex flex-col gap-2">
+                  <div
+                    v-for="item in archivedHistorySorted"
+                    :key="`${item.title}@@${item.category}@@${item.period}@@${item.archivedAt}`"
+                    class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
+                  >
+                    <div class="flex flex-col gap-2">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium">{{ item.title }}</span>
+                        <span
+                          v-if="item.category"
+                          class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+                          :style="getCategoryCssVars(item.category)"
+                          :class="getCategoryTagClass(item.category)"
+                        >
+                          {{ item.category }}
+                        </span>
+                        <t-tag size="small" variant="dark" :theme="getPeriodTheme(item.period)">{{
+                          periodTextMap[item.period]
+                        }}</t-tag>
+                        <t-tag size="small" variant="light" theme="default">
+                          <template v-if="item.unit === 'minutes'">
+                            目标 {{ item.minFrequency }} 次 × {{ item.minutesPerTime || 0 }} 分钟
+                          </template>
+                          <template v-else>目标 {{ item.minFrequency }} 次</template>
+                        </t-tag>
+                        <span class="text-xs text-neutral-400"
+                          >归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm') }}</span
+                        >
+                      </div>
+                      <div
+                        v-if="item.description"
+                        class="text-sm text-neutral-600 dark:text-neutral-400"
                       >
-                        {{ item.category }}
-                      </span>
-                      <t-tag size="small" variant="dark" :theme="getPeriodTheme(item.period)">{{
-                        periodTextMap[item.period]
-                      }}</t-tag>
-                      <t-tag size="small" variant="light" theme="default">
-                        <template v-if="item.unit === 'minutes'">
-                          目标 {{ item.minFrequency }} 次 × {{ item.minutesPerTime || 0 }} 分钟
-                        </template>
-                        <template v-else>目标 {{ item.minFrequency }} 次</template>
-                      </t-tag>
-                      <span class="text-xs text-neutral-400"
-                        >归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm') }}</span
-                      >
-                    </div>
-                    <div
-                      v-if="item.description"
-                      class="text-sm text-neutral-600 dark:text-neutral-400"
-                    >
-                      {{ item.description }}
+                        {{ item.description }}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </template>
-            <template v-else>
-              <div
-                class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
-              >
-                <t-empty description="暂无已归档记录" />
-              </div>
-            </template>
-          </div>
-        </t-tab-panel>
-      </t-tabs>
+              </template>
+              <template v-else>
+                <div
+                  class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
+                >
+                  <t-empty description="暂无归档数据" />
+                </div>
+              </template>
+            </div>
+          </t-tab-panel>
+        </t-tabs>
+      </div>
 
       <div
         class="p-2 sm:p-2 bg-white dark:bg-neutral-950 srounded-md mt-2 border border-neutral-100 dark:border-neutral-800 rounded-md"

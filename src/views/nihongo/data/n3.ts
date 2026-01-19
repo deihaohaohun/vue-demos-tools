@@ -291,4 +291,29 @@ export const n3Data: GrammarItem[] = [
     ],
     isRemembered: false,
   },
+  {
+    id: 21,
+    title: '～というより',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '与其说A，不如说B更合适',
+        usage: ['PI([だ]・[だ]) + というより'],
+        examples: [
+          '現在の気温はマイナス10度です。屋外に出ると、寒いと言うより痛いです。',
+          '私は健康のためというよりストレス発散のためにジョギングをしている。',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=38',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
 ]

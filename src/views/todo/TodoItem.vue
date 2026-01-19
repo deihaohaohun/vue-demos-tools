@@ -154,22 +154,82 @@ const getPeriodTheme = (period: string) => {
     :style="getCategoryCssVars(todo.category)"
     @click.stop="emit('toggle-select', todo.id)"
   >
-    <div
-      class="pointer-events-none flex flex-col sm:flex-row sm:items-center gap-y-2 gap-x-3 flex-1"
-    >
-      <!-- 任务名称行 -->
-      <div class="text-base font-medium text-neutral-800 dark:text-neutral-200 shrink-0">
-        {{ todo.title }}
+    <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
+      <!-- 第一行：任务名称 + 操作按钮 -->
+      <div class="flex items-start justify-between gap-1">
+        <span class="text-base font-medium text-neutral-800 dark:text-neutral-200 pt-1">
+          {{ todo.title }}
+        </span>
+
+        <!-- 操作按钮组 (移到第一行) -->
+        <div class="flex gap-1 items-center shrink-0 pointer-events-auto">
+          <t-button
+            v-if="todo.period !== 'once'"
+            shape="square"
+            theme="primary"
+            size="small"
+            variant="text"
+            @click.stop="emit('punch-in', todo.id)"
+          >
+            <template #icon>
+              <refresh-icon v-if="todo.punchIns > 0" size="14" />
+              <check-icon v-if="todo.punchIns <= 0" size="14" />
+            </template>
+          </t-button>
+
+          <t-button
+            shape="square"
+            v-if="todo.period === 'once' && !todo.done"
+            theme="success"
+            size="small"
+            variant="text"
+            @click.stop="emit('toggle-done', todo.id, true)"
+          >
+            <template #icon>
+              <check-circle-icon size="14" />
+            </template>
+          </t-button>
+
+          <t-button shape="square" variant="text" size="small" @click.stop="emit('edit', todo.id)">
+            <template v-slot:icon>
+              <edit-icon size="14" />
+            </template>
+          </t-button>
+
+          <!-- 目标历史按钮 (仅目标显示) -->
+          <t-button
+            v-if="todo.period === 'once'"
+            shape="square"
+            variant="text"
+            theme="primary"
+            size="small"
+            title="查看进度记录"
+            @click.stop="emit('view-history', todo.id)"
+          >
+            <template #icon>
+              <time-icon size="14" />
+            </template>
+          </t-button>
+
+          <t-button
+            v-if="!(todo.period === 'once' && todo.done)"
+            :title="todo.period === 'once' ? '放弃目标' : '归档'"
+            :theme="todo.period === 'once' ? 'danger' : 'warning'"
+            variant="text"
+            size="small"
+            shape="square"
+            @click.stop="emit('archive', todo.id)"
+          >
+            <template #icon>
+              <close-icon />
+            </template>
+          </t-button>
+        </div>
       </div>
 
-      <!-- 任务分类, 周期, 频率行 -->
+      <!-- 第二行：Meta信息 + 描述 -->
       <div class="flex flex-wrap items-center gap-2">
-        <span
-          v-if="todo.category"
-          class="px-2 rounded text-[11px] font-semibold border bg-(--cat-tag-bg) border-(--cat-tag-border) text-(--cat-tag-text) dark:bg-(--cat-tag-bg-dark) dark:border-(--cat-tag-border-dark) dark:text-(--cat-tag-text-dark)"
-        >
-          {{ todo.category }}
-        </span>
+        <!-- Meta 标签 -->
         <template v-if="showMetaTags">
           <t-tag size="small" variant="dark" :theme="getPeriodTheme(todo.period)">{{
             periodTextMap[todo.period]
@@ -181,21 +241,19 @@ const getPeriodTheme = (period: string) => {
             <template v-else>目标 {{ todo.minFrequency }} 次</template>
           </t-tag>
         </template>
-      </div>
-      <!-- 其他信息行 (描述, 打卡进度, 剩余时间) -->
-      <div class="flex flex-wrap items-center gap-2">
-        <template v-if="todo.description">
-          <t-tag size="small" variant="outline" theme="default" class="max-w-[200px] truncate">
-            {{ todo.description }}
-          </t-tag>
-        </template>
-        <t-tag v-if="todo.punchIns > 0" size="small" variant="light" theme="primary">
-          <template v-if="todo.unit === 'minutes'"> 已打卡 {{ minutesDone }} 分 </template>
-          <template v-else>已打卡 {{ todo.punchIns }} 次</template>
+
+        <!-- 描述 -->
+        <t-tag
+          v-if="todo.description"
+          size="small"
+          variant="outline"
+          theme="default"
+          class="max-w-[150px] truncate"
+        >
+          {{ todo.description }}
         </t-tag>
-        <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
-          {{ remainingTime }}
-        </t-tag>
+
+        <!-- 完成时间 (仅一次性任务) -->
         <t-tag
           v-if="todo.period === 'once' && todo.done && todo.completedAt"
           size="small"
@@ -205,68 +263,27 @@ const getPeriodTheme = (period: string) => {
           完成于 {{ dayjs(todo.completedAt).format('YYYY-MM-DD HH:mm') }}
         </t-tag>
       </div>
-    </div>
 
-    <div class="flex gap-2 items-center mt-3 sm:mt-0 justify-end shrink-0">
-      <t-button
-        v-if="todo.period !== 'once'"
-        shape="square"
-        theme="primary"
-        size="small"
-        @click.stop="emit('punch-in', todo.id)"
+      <!-- 第三行：打卡进度与剩余时间 -->
+      <div
+        class="flex flex-wrap items-center gap-2"
+        v-if="todo.punchIns > 0 || todo.unit === 'minutes' || remainingTime"
       >
-        <template #icon>
-          <refresh-icon v-if="todo.punchIns > 0" size="12" />
-          <check-icon v-if="todo.punchIns <= 0" size="12" />
-        </template>
-      </t-button>
-
-      <t-button
-        shape="square"
-        v-if="todo.period === 'once' && !todo.done"
-        theme="success"
-        size="small"
-        @click.stop="emit('toggle-done', todo.id, true)"
-      >
-        <template #icon>
-          <check-circle-icon size="12" />
-        </template>
-      </t-button>
-
-      <t-button shape="square" variant="outline" size="small" @click.stop="emit('edit', todo.id)">
-        <template v-slot:icon>
-          <edit-icon size="12" />
-        </template>
-      </t-button>
-
-      <!-- 目标历史按钮 (仅目标显示) -->
-      <t-button
-        v-if="todo.period === 'once'"
-        shape="square"
-        variant="outline"
-        theme="primary"
-        size="small"
-        title="查看进度记录"
-        @click.stop="emit('view-history', todo.id)"
-      >
-        <template #icon>
-          <time-icon size="12" />
-        </template>
-      </t-button>
-
-      <t-button
-        v-if="!(todo.period === 'once' && todo.done)"
-        :title="todo.period === 'once' ? '放弃目标' : '归档'"
-        :theme="todo.period === 'once' ? 'danger' : 'warning'"
-        variant="text"
-        size="small"
-        shape="square"
-        @click.stop="emit('archive', todo.id)"
-      >
-        <template #icon>
-          <close-icon />
-        </template>
-      </t-button>
+        <t-tag
+          v-if="todo.punchIns > 0 || todo.unit === 'minutes'"
+          size="small"
+          variant="light"
+          theme="primary"
+        >
+          <template v-if="todo.unit === 'minutes'">
+            {{ minutesDone }}/{{ todo.minFrequency * (todo.minutesPerTime || 0) }} 分钟
+          </template>
+          <template v-else> {{ todo.punchIns }}/{{ todo.minFrequency }} 次 </template>
+        </t-tag>
+        <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
+          {{ remainingTime }}
+        </t-tag>
+      </div>
     </div>
   </div>
 </template>
