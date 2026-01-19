@@ -145,7 +145,7 @@ const getPeriodTheme = (period: string) => {
 
 <template>
   <div
-    class="p-3 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0"
+    class="p-2 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0"
     :class="
       todo.category
         ? 'bg-(--cat-bg) hover:bg-(--cat-bg-hover) border-(--cat-border) dark:bg-(--cat-bg-dark) dark:hover:bg-(--cat-bg-hover-dark) dark:[border-color:var(--cat-border-dark)]'
@@ -156,8 +156,8 @@ const getPeriodTheme = (period: string) => {
   >
     <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
       <!-- 第一行：任务名称 + 操作按钮 -->
-      <div class="flex items-start justify-between gap-1">
-        <span class="text-base font-medium text-neutral-800 dark:text-neutral-200 pt-1">
+      <div class="flex items-center justify-between gap-1">
+        <span class="text-base font-medium text-neutral-800 dark:text-neutral-200">
           {{ todo.title }}
         </span>
 
@@ -227,44 +227,7 @@ const getPeriodTheme = (period: string) => {
         </div>
       </div>
 
-      <!-- 第二行：Meta信息 + 描述 -->
-      <div class="flex flex-wrap items-center gap-2">
-        <!-- Meta 标签 -->
-        <template v-if="showMetaTags">
-          <t-tag size="small" variant="dark" :theme="getPeriodTheme(todo.period)">{{
-            periodTextMap[todo.period]
-          }}</t-tag>
-          <t-tag size="small" variant="light" theme="default">
-            <template v-if="todo.unit === 'minutes'">
-              目标 {{ todo.minFrequency * (todo.minutesPerTime || 0) }} 分钟
-            </template>
-            <template v-else>目标 {{ todo.minFrequency }} 次</template>
-          </t-tag>
-        </template>
-
-        <!-- 描述 -->
-        <t-tag
-          v-if="todo.description"
-          size="small"
-          variant="outline"
-          theme="default"
-          class="max-w-[150px] truncate"
-        >
-          {{ todo.description }}
-        </t-tag>
-
-        <!-- 完成时间 (仅一次性任务) -->
-        <t-tag
-          v-if="todo.period === 'once' && todo.done && todo.completedAt"
-          size="small"
-          variant="light"
-          theme="success"
-        >
-          完成于 {{ dayjs(todo.completedAt).format('YYYY-MM-DD HH:mm') }}
-        </t-tag>
-      </div>
-
-      <!-- 第三行：打卡进度与剩余时间 -->
+      <!-- 第二行：打卡进度与剩余时间 -->
       <div
         class="flex flex-wrap items-center gap-2"
         v-if="todo.punchIns > 0 || todo.unit === 'minutes' || remainingTime"
@@ -282,6 +245,9 @@ const getPeriodTheme = (period: string) => {
         </t-tag>
         <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
           {{ remainingTime }}
+        </t-tag>
+        <t-tag size="small" variant="light" :theme="getPeriodTheme(todo.period)">
+          {{ periodTextMap[todo.period] }}
         </t-tag>
       </div>
     </div>

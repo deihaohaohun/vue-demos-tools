@@ -46,7 +46,6 @@ import {
   DownloadIcon,
   MinusIcon,
   AppIcon,
-  CheckCircleIcon,
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -99,6 +98,8 @@ const {
   getGoalHistoryRecords,
   goalHistoryRecords,
   uiConfig,
+  frequencyOptions: minFrequencyOptions,
+  minutesPerTimeOptions,
   consecutivePunchDays,
 } = useTodoStore()
 
@@ -1048,11 +1049,13 @@ const draftCategoriesList = ref<string[]>([])
 const draftCategoriesInputRefs = ref<HTMLElement[]>([])
 const draftMinFrequenciesList = ref<number[]>([])
 const draftMinutesPerTimesList = ref<number[]>([])
+const draftCategoryColorsMap = ref<Record<string, string>>({})
 
 const openConfigDrawer = () => {
   draftCategoriesList.value = [...uiConfig.value.categories]
-  draftMinFrequenciesList.value = [...uiConfig.value.minFrequencies]
-  draftMinutesPerTimesList.value = [...uiConfig.value.minutesPerTimes]
+  draftMinFrequenciesList.value = [...minFrequencyOptions.value]
+  draftMinutesPerTimesList.value = [...minutesPerTimeOptions.value]
+  draftCategoryColorsMap.value = { ...uiConfig.value.categoryColors }
   configDrawerVisible.value = true
 }
 
@@ -1064,6 +1067,7 @@ const saveUiConfigFromDraft = () => {
   if (cats.length) uiConfig.value.categories = cats
   if (freqs.length) uiConfig.value.minFrequencies = freqs
   if (mins.length) uiConfig.value.minutesPerTimes = mins
+  uiConfig.value.categoryColors = { ...draftCategoryColorsMap.value }
 
   // Sync is handled by watch(uiConfig) in initSupabaseSyncWatchers
   configDrawerVisible.value = false
@@ -1281,8 +1285,7 @@ onMounted(async () => {
 })
 
 const categoryOptions = computed(() => uiConfig.value.categories)
-const minFrequencyOptions = computed(() => uiConfig.value.minFrequencies)
-const minutesPerTimeOptions = computed(() => uiConfig.value.minutesPerTimes)
+// Config options are now imported from store as computed props
 
 const selectedIds = ref<Set<string>>(new Set())
 
@@ -1678,7 +1681,19 @@ const saveTemplateEdit = async () => {
 }
 
 const isTaskCompleted = (t: Todo) => {
-  if (t.done) return true
+  // STRICT LOGIC:
+  // If unit is 'minutes', check minutesPerTime
+  // If unit is 'times', check minFrequency
+  // Ignore t.done (manual toggle) unless you want manual override to COUNT as achieved?
+  // User request: "calculate strictly based on min minutes"
+  // So we ignore t.done for the calculation of "Achieved/Not Achieved" stats.
+
+  if (t.unit === 'minutes') {
+    const currentMins = getPunchedMinutesForTodo(t) || 0
+    return currentMins >= (t.minutesPerTime || 0)
+  }
+
+  // Default to times
   return (t.punchIns || 0) >= (t.minFrequency || 0)
 }
 
@@ -1742,16 +1757,6 @@ const addTodo = async () => {
       if (templateId) {
         // Update payload with real ID
         todoPayload.templateId = templateId
-        // Also add template to local store for consistency (though loadTemplatesFromSupabase handles sync, immediate feedback is good)
-        // Actually, let's just push it to local templates if not present?
-        // D3TodoList sync logic handles templates. let's assume saveTemplateToSupabase handles the DB part.
-        // We do need to update local templates list manually or re-fetch?
-        // saveTemplateToSupabase returns ID.
-        // We should probably add the template to store locally too so UI is consistent if we don't re-fetch immediately.
-        // But `saveTemplateToSupabase` currently just inserts and returns ID.
-        // Let's add it to store manually here for now to be safe, or wait for sync?
-        // Server-First implies we trust server.
-        // Let's just update the payload.
       } else {
         MessagePlugin.error('模板保存失败，取消创建任务')
         return
@@ -1759,13 +1764,6 @@ const addTodo = async () => {
     } else if (todoPayload.templateId) {
       // Using existing template, ID is already set in payload
     }
-
-    // 2b. Save Todo to Supabase
-    console.log('📤 Saving Todo to Supabase:', todoPayload)
-    // Supabase insert expects specific column naming (snake_case generally),
-    // but our client object is camelCase. We need to map it.
-    // Or we rely on `loadTodosFromSupabase` mapping?
-    // We need to map client object to DB columns manually for insert.
 
     const dbPayload = {
       title: todoPayload.title,
@@ -2011,83 +2009,30 @@ const todayPunchedCount = computed(() => {
 
 // --- UI Redesign: Card Layout Logic ---
 
-const categoryColors = [
-  {
-    border: 'border-l-4 border-blue-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-blue-700 dark:text-blue-400',
-    bar: 'bg-blue-500',
-    icon: 'text-blue-500',
-  },
-  {
-    border: 'border-l-4 border-green-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-green-700 dark:text-green-400',
-    bar: 'bg-green-500',
-    icon: 'text-green-500',
-  },
-  {
-    border: 'border-l-4 border-amber-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-amber-700 dark:text-amber-400',
-    bar: 'bg-amber-500',
-    icon: 'text-amber-500',
-  },
-  {
-    border: 'border-l-4 border-purple-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-purple-700 dark:text-purple-400',
-    bar: 'bg-purple-500',
-    icon: 'text-purple-500',
-  },
-  {
-    border: 'border-l-4 border-rose-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-rose-700 dark:text-rose-400',
-    bar: 'bg-rose-500',
-    icon: 'text-rose-500',
-  },
-  {
-    border: 'border-l-4 border-cyan-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-cyan-700 dark:text-cyan-400',
-    bar: 'bg-cyan-500',
-    icon: 'text-cyan-500',
-  },
-  {
-    border: 'border-l-4 border-indigo-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-indigo-700 dark:text-indigo-400',
-    bar: 'bg-indigo-500',
-    icon: 'text-indigo-500',
-  },
-  {
-    border: 'border-l-4 border-teal-500',
-    bg: 'bg-white dark:bg-neutral-800',
-    text: 'text-teal-700 dark:text-teal-400',
-    bar: 'bg-teal-500',
-    icon: 'text-teal-500',
-  },
-]
-
-const getCategoryColor = (category: string) => {
-  // Simple hash to map category name to a color index
+// --- Color Logic ---
+const generateHexColor = (str: string) => {
   let hash = 0
-  for (let i = 0; i < category.length; i++) {
-    hash = category.charCodeAt(i) + ((hash << 5) - hash)
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
-  const index = Math.abs(hash) % categoryColors.length
-  return categoryColors[index]
+  const h = Math.abs(hash) % 360
+  return `hsl(${h}, 70%, 50%)`
+}
+
+const getCategoryColor = (category: string): string => {
+  const custom = uiConfig.value.categoryColors?.[category]
+  if (custom) return custom
+  return generateHexColor(category)
 }
 
 const boardGroups = computed(() => {
   const groups: Array<{
     name: string
-    color: (typeof categoryColors)[0]
+    color: string
     unfinished: Todo[]
     completed: Todo[]
     total: number
-    progress: number
+    progress: string
     goalDescription?: string // Optional: derive a goal description like "Main: Stability..."
   }> = []
 
@@ -2112,7 +2057,10 @@ const boardGroups = computed(() => {
     const unfinished = todosInCat.filter((t) => !isTaskCompleted(t))
     const completed = todosInCat.filter((t) => isTaskCompleted(t))
     const total = todosInCat.length
-    const progress = total > 0 ? Math.round((completed.length / total) * 100) : 0
+
+    // Calculate punch progress: tasks with punchIns > 0 / total tasks
+    const punchedCount = todosInCat.filter((t) => (t.punchIns || 0) > 0).length
+    const progress = total > 0 ? ((punchedCount / total) * 100).toFixed(1) : '0.0'
 
     groups.push({
       name: cat,
@@ -2675,12 +2623,12 @@ const exportDialogWidth = computed(() => {
         </div>
       </div>
 
-      <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
+      <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm sm:w-[72px] shrink-0">任务描述</div>
         <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
       </div>
 
-      <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
+      <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
         <div class="text-sm sm:w-[72px] shrink-0">截止日期</div>
         <t-date-picker
           :disabled="period !== 'once'"
@@ -2705,16 +2653,16 @@ const exportDialogWidth = computed(() => {
           v-for="group in boardGroups"
           :key="group.name"
           :class="[
-            'rounded-xl border bg-white dark:bg-neutral-800 shadow-sm flex flex-col overflow-hidden transition-all duration-300 hover:shadow-md',
-            group.color.border,
+            'rounded-xl border border-t-0 border-r-0 border-b-0 bg-white dark:bg-neutral-800 shadow-sm flex flex-col overflow-hidden transition-all duration-300 hover:shadow-md',
           ]"
+          :style="{ borderLeftColor: group.color, borderLeftWidth: '4px' }"
         >
           <!-- Header -->
           <div
-            class="p-4 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between"
+            class="p-2 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between"
           >
             <div class="flex items-center gap-2">
-              <div :class="group.color.icon">
+              <div :style="{ color: group.color }">
                 <app-icon size="18" />
               </div>
               <span class="font-bold text-lg text-neutral-800 dark:text-neutral-100">{{
@@ -2722,12 +2670,12 @@ const exportDialogWidth = computed(() => {
               }}</span>
             </div>
             <div class="text-xs text-neutral-400 font-mono">
-              {{ group.completed.length }}/{{ group.total }}
+              已达成 {{ group.completed.length }} / 未达成 {{ group.unfinished.length }}
             </div>
           </div>
 
           <!-- Body -->
-          <div class="p-4 flex-1 flex flex-col gap-3 min-h-[200px]">
+          <div class="p-2 flex-1 flex flex-col gap-3 min-h-[200px]">
             <!-- Unfinished -->
             <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
               <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
@@ -2783,7 +2731,7 @@ const exportDialogWidth = computed(() => {
             class="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-700"
           >
             <div class="flex items-center justify-between text-xs mb-1 text-neutral-500">
-              <span>当前进度</span>
+              <span>打卡进度</span>
               <span class="font-mono">{{ group.progress }}%</span>
             </div>
             <div
@@ -2791,8 +2739,7 @@ const exportDialogWidth = computed(() => {
             >
               <div
                 class="h-full transition-all duration-500 rounded-full"
-                :class="group.color.bar"
-                :style="{ width: `${group.progress}%` }"
+                :style="{ backgroundColor: group.color, width: `${group.progress}%` }"
               ></div>
             </div>
           </div>
@@ -3721,6 +3668,13 @@ const exportDialogWidth = computed(() => {
                 }
               "
               @enter="onDraftCategoryEnter(idx)"
+            />
+            <t-color-picker
+              v-model="draftCategoryColorsMap[draftCategoriesList[idx] || '']"
+              format="HEX"
+              size="small"
+              class="shrink-0"
+              :show-primary-color-preview="false"
             />
             <t-button
               variant="text"

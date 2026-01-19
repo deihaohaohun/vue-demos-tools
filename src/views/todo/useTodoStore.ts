@@ -1308,5 +1308,7 @@ export const useTodoStore = () => {
 
     // Config
     uiConfig,
+    frequencyOptions: computed(() => uiConfig.value.minFrequencies || [1, 2, 3, 4]),
+    minutesPerTimeOptions: computed(() => uiConfig.value.minutesPerTimes || [12, 15, 18, 20]),
   }
 }
