@@ -15,25 +15,6 @@ type DayStatLike = {
   categoryMinutes?: Record<string, number>
 }
 
-type LineSeriesLike = {
-  name: string
-  type: 'line'
-  data: number[]
-  smooth: boolean
-  symbolSize: number
-  itemStyle: { color: string }
-  areaStyle: { color: string }
-}
-
-const toRgba = (hex: string, alpha: number) => {
-  const h = hex.replace('#', '')
-  if (h.length !== 6) return `rgba(0,0,0,${alpha})`
-  const r = parseInt(h.slice(0, 2), 16)
-  const g = parseInt(h.slice(2, 4), 16)
-  const b = parseInt(h.slice(4, 6), 16)
-  return `rgba(${r},${g},${b},${alpha})`
-}
-
 export const useTodoCharts = (args: {
   todos: Ref<TodoLike[]>
   dayStats?: Ref<Record<string, DayStatLike>>
@@ -54,6 +35,7 @@ export const useTodoCharts = (args: {
         splitLine: '#27272a',
         tooltipBg: 'rgba(10,10,10,0.92)',
         tooltipBorder: '#27272a',
+        barBorder: '#171717', // neutral-900
       }
     }
     return {
@@ -63,6 +45,7 @@ export const useTodoCharts = (args: {
       splitLine: '#f3f4f6',
       tooltipBg: 'rgba(255,255,255,0.95)',
       tooltipBorder: '#e5e7eb',
+      barBorder: '#fafafa', // neutral-50
     }
   })
 
@@ -76,54 +59,75 @@ export const useTodoCharts = (args: {
     }
   })
 
-  const punchInsByCategory = computed((): { categories: string[]; series: LineSeriesLike[] } => {
-    const dayKeys = args.rangeDayKeys.value
-    const byDay: Record<string, Record<string, number>> = {}
-    const categorySet = new Set<string>()
+  const punchInsByCategory = computed(
+    (): {
+      categories: string[]
+      series: Array<{
+        name: string
+        type: string
+        data: number[]
+        stack: string
+        itemStyle: {
+          color: string
+          borderRadius: number | number[]
+          borderColor: string
+          borderWidth: number
+        }
+      }>
+    } => {
+      const dayKeys = args.rangeDayKeys.value
+      const byDay: Record<string, Record<string, number>> = {}
+      const categorySet = new Set<string>()
 
-    for (const dk of dayKeys) byDay[dk] = {}
+      for (const dk of dayKeys) byDay[dk] = {}
 
-    if (args.dayStats) {
-      for (const dk of dayKeys) {
-        const stat = args.dayStats.value?.[dk]
-        const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
-        for (const [c, v] of entries) {
-          if (!v) continue
+      if (args.dayStats) {
+        for (const dk of dayKeys) {
+          const stat = args.dayStats.value?.[dk]
+          const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
+          for (const [c, v] of entries) {
+            if (!v) continue
+            categorySet.add(c)
+            const bucket = byDay[dk] || (byDay[dk] = {})
+            bucket[c] = (bucket[c] || 0) + (v || 0)
+          }
+        }
+      } else {
+        for (const t of args.todos.value) {
+          const dk = t.dayKey
+          if (!byDay[dk]) continue
+          const c = t.category || '未分类'
           categorySet.add(c)
           const bucket = byDay[dk] || (byDay[dk] = {})
-          bucket[c] = (bucket[c] || 0) + (v || 0)
+          bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
         }
       }
-    } else {
-      for (const t of args.todos.value) {
-        const dk = t.dayKey
-        if (!byDay[dk]) continue
-        const c = t.category || '未分类'
-        categorySet.add(c)
-        const bucket = byDay[dk] || (byDay[dk] = {})
-        bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
-      }
-    }
 
-    const categories = Array.from(categorySet)
-    categories.sort((a, b) => a.localeCompare(b, 'zh'))
+      const categories = Array.from(categorySet)
+      categories.sort((a, b) => a.localeCompare(b, 'zh'))
 
-    const series = categories.map((c, idx) => {
-      const color = palette[idx % palette.length] ?? '#60a5fa'
-      return {
-        name: c,
-        type: 'bar',
-        data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
-        stack: 'punchIns',
-        itemStyle: { color },
-      }
-    })
+      const series = categories.map((c, idx) => {
+        const color = palette[idx % palette.length] ?? '#60a5fa'
+        return {
+          name: c,
+          type: 'bar',
+          data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
+          stack: 'punchIns',
+          itemStyle: {
+            color,
+            borderRadius: 4, // 全圆角
+            borderColor: chartTheme.value.barBorder,
+            borderWidth: 2,
+          },
+        }
+      })
 
-    return { categories, series }
-  })
+      return { categories, series }
+    },
+  )
 
   const punchInsByCategoryOption = computed((): EChartsOption => {
-    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v) => v > 0))
+    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v: number) => v > 0))
     if (!hasData) {
       const t = chartTheme.value
       return {
@@ -144,7 +148,7 @@ export const useTodoCharts = (args: {
     }
     const t = chartTheme.value
     const a = axisCommon.value
-    
+
     // Calculate totals for "Total" series
     const dayKeys = args.rangeDayKeys.value
     const seriesData = punchInsByCategory.value.series
@@ -370,7 +374,12 @@ export const useTodoCharts = (args: {
         type: 'bar',
         data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
         stack: 'minutes',
-        itemStyle: { color },
+        itemStyle: {
+          color,
+          borderRadius: 4, // 全圆角
+          borderColor: chartTheme.value.barBorder,
+          borderWidth: 2,
+        },
       }
     })
 
@@ -526,7 +535,10 @@ export const useTodoCharts = (args: {
           type: 'bar',
           data: data.map((d) => d[1] || 0),
           barWidth: 16,
-          itemStyle: { color: '#60a5fa' },
+          itemStyle: {
+            color: '#60a5fa',
+            borderRadius: 4, // 全圆角
+          },
         },
       ],
     }

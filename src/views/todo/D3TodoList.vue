@@ -104,6 +104,19 @@ const {
   consecutivePunchDays,
 } = useTodoStore()
 
+// Loading state for page initialization
+const pageLoading = ref(true)
+const loadingProgress = ref(0)
+const loadingMessage = ref('正在初始化...')
+
+// Authentication state
+const isAuthenticated = ref(false)
+const authDialogVisible = ref(false)
+const authPassword = ref('')
+const authSetupDialogVisible = ref(false)
+const setupPassword = ref('')
+const setupPasswordConfirm = ref('')
+
 const exportPalette = computed(() => {
   if (isDark.value) {
     return {
@@ -1111,179 +1124,268 @@ const addDraftMinute = () => draftMinutesPerTimesList.value.push(15)
 const removeDraftMinute = (index: number) => draftMinutesPerTimesList.value.splice(index, 1)
 
 onMounted(async () => {
-  // 1 & 2. Batch Load Configs (UI & History Blobs) from Cloud
   try {
-    const { data: configs } = await supabase
-      .from('app_configs')
-      .select('key, value')
-      .in('key', [
-        'ui_config',
-        'todo_history_blob',
-        'todo_archived_history_blob',
-        'todo_abandoned_goals_blob',
-      ])
+    // Step 1: Batch Load Configs (0% -> 20%)
+    loadingMessage.value = '加载配置...'
+    try {
+      const { data: configs } = await supabase
+        .from('app_configs')
+        .select('key, value')
+        .in('key', [
+          'ui_config',
+          'todo_history_blob',
+          'todo_archived_history_blob',
+          'todo_abandoned_goals_blob',
+        ])
 
-    if (configs) {
-      const configMap = new Map(configs.map((c) => [c.key, c.value]))
+      if (configs) {
+        const configMap = new Map(configs.map((c) => [c.key, c.value]))
 
-      if (configMap.has('ui_config')) {
-        uiConfig.value = configMap.get('ui_config')
-        console.log('✅ UI config loaded from cloud')
+        if (configMap.has('ui_config')) {
+          uiConfig.value = configMap.get('ui_config')
+          console.log('✅ UI config loaded from cloud')
+        }
+        if (configMap.has('todo_history_blob')) history.value = configMap.get('todo_history_blob')
+        if (configMap.has('todo_archived_history_blob'))
+          archivedHistory.value = configMap.get('todo_archived_history_blob')
+        if (configMap.has('todo_abandoned_goals_blob'))
+          abandonedGoals.value = configMap.get('todo_abandoned_goals_blob')
       }
-      if (configMap.has('todo_history_blob')) history.value = configMap.get('todo_history_blob')
-      if (configMap.has('todo_archived_history_blob'))
-        archivedHistory.value = configMap.get('todo_archived_history_blob')
-      if (configMap.has('todo_abandoned_goals_blob'))
-        abandonedGoals.value = configMap.get('todo_abandoned_goals_blob')
+    } catch (e) {
+      console.error('❌ Error batch loading configs:', e)
     }
-  } catch (e) {
-    console.error('❌ Error batch loading configs:', e)
-  }
+    loadingProgress.value = 20
 
-  // 3. Load Templates from Supabase
-  const supabaseTemplates = await loadTemplatesFromSupabase()
-  // ... (existing template sync logic) ...
+    // Step 2: Load Templates (20% -> 40%)
+    loadingMessage.value = '加载模板...'
+    const supabaseTemplates = await loadTemplatesFromSupabase()
+    // ... (existing template sync logic) ...
 
-  // Sync loaded templates with local store
-  const supabaseTemplateIds = new Set(supabaseTemplates.map((t) => t.id))
-  const templatesToRemove = templates.value.filter((t) => !supabaseTemplateIds.has(t.id))
+    // Sync loaded templates with local store
+    const supabaseTemplateIds = new Set(supabaseTemplates.map((t) => t.id))
+    const templatesToRemove = templates.value.filter((t) => !supabaseTemplateIds.has(t.id))
 
-  for (const templateToRemove of templatesToRemove) {
-    const idx = templates.value.findIndex((t) => t.id === templateToRemove.id)
-    if (idx >= 0) templates.value.splice(idx, 1)
-  }
-
-  // Add/update templates from Supabase
-  for (const template of supabaseTemplates) {
-    const existingIdx = templates.value.findIndex((t) => t.id === template.id)
-
-    const templateItem: TodoTemplate = {
-      id: template.id,
-      title: template.title,
-      category: template.category || '',
-      period: template.period as TodoPeriod,
-      minFrequency: template.min_frequency || 1,
-      unit: (template.unit as TodoUnit) || 'times',
-      minutesPerTime: template.minutes_per_time,
-      description: template.description,
-      deadline: template.deadline,
-      archived: template.archived || false,
-      archivedAt: template.archived_at,
-      createdAt: new Date(template.created_at).getTime(),
+    for (const templateToRemove of templatesToRemove) {
+      const idx = templates.value.findIndex((t) => t.id === templateToRemove.id)
+      if (idx >= 0) templates.value.splice(idx, 1)
     }
 
-    if (existingIdx >= 0) {
-      // Update existing
-      templates.value[existingIdx] = templateItem
-    } else {
-      // Add new
-      templates.value.push(templateItem)
-    }
-  }
+    // Add/update templates from Supabase
+    for (const template of supabaseTemplates) {
+      const existingIdx = templates.value.findIndex((t) => t.id === template.id)
 
-  // Load all todos from Supabase
-  const supabaseTodos = await loadTodosFromSupabase()
-
-  // Sync loaded todos with local store
-  // First, remove any todos that exist in local store but not in Supabase
-  // (to handle cases where they were deleted from Supabase)
-  const supabaseTodoIds = new Set(supabaseTodos.map((t) => t.id))
-  const todosToRemove = todos.value.filter((t) => !supabaseTodoIds.has(t.id))
-
-  for (const todoToRemove of todosToRemove) {
-    const idx = todos.value.findIndex((t) => t.id === todoToRemove.id)
-    if (idx >= 0) todos.value.splice(idx, 1)
-  }
-
-  // Then add/update todos from Supabase
-  for (const todo of supabaseTodos) {
-    const existingIdx = todos.value.findIndex((t: Todo) => t.id === todo.id)
-
-    const todoItem: Todo = {
-      id: todo.id,
-      title: todo.title,
-      category: todo.category || '',
-      period: todo.period as TodoPeriod,
-      minFrequency: todo.min_frequency || 1,
-      unit: (todo.unit as TodoUnit) || 'times',
-      minutesPerTime: todo.minutes_per_time,
-      description: todo.description,
-      done: todo.done || false,
-      completedAt: todo.completed_at,
-      punchIns: todo.punch_ins || 0,
-      templateId: todo.template_id,
-      createdAt: new Date(todo.created_at).getTime(),
-      dayKey: todo.day_key,
-      deadline: todo.deadline,
-    }
-
-    if (existingIdx >= 0) {
-      // Update existing
-      todos.value[existingIdx] = todoItem
-    } else {
-      // Add new
-      todos.value.push(todoItem)
-    }
-  }
-
-  // 4. Load Stats and Records
-  const { data: statsData } = await supabase.from('todo_day_stats').select('*')
-  if (statsData) {
-    const mappedStats: Record<string, DayStat> = {}
-    statsData.forEach((s) => {
-      mappedStats[s.day_key] = {
-        createdCount: s.created_count,
-        completedCount: s.completed_count,
-        punchInsTotal: s.punch_ins_total,
-        minutesTotal: s.minutes_total,
-        categoryCreated: s.category_created,
-        categoryCompleted: s.category_completed,
-        categoryPunchIns: s.category_punch_ins,
-        categoryMinutes: s.category_minutes,
+      const templateItem: TodoTemplate = {
+        id: template.id,
+        title: template.title,
+        category: template.category || '',
+        period: template.period as TodoPeriod,
+        minFrequency: template.min_frequency || 1,
+        unit: (template.unit as TodoUnit) || 'times',
+        minutesPerTime: template.minutes_per_time,
+        description: template.description,
+        deadline: template.deadline,
+        archived: template.archived || false,
+        archivedAt: template.archived_at,
+        createdAt: new Date(template.created_at).getTime(),
       }
-    })
-    dayStats.value = mappedStats
+
+      if (existingIdx >= 0) {
+        // Update existing
+        templates.value[existingIdx] = templateItem
+      } else {
+        // Add new
+        templates.value.push(templateItem)
+      }
+    }
+    loadingProgress.value = 40
+
+    // Step 3: Load Todos (40% -> 60%)
+    loadingMessage.value = '加载任务...'
+    // Load all todos from Supabase
+    const supabaseTodos = await loadTodosFromSupabase()
+
+    // Sync loaded todos with local store
+    // First, remove any todos that exist in local store but not in Supabase
+    // (to handle cases where they were deleted from Supabase)
+    const supabaseTodoIds = new Set(supabaseTodos.map((t) => t.id))
+    const todosToRemove = todos.value.filter((t) => !supabaseTodoIds.has(t.id))
+
+    for (const todoToRemove of todosToRemove) {
+      const idx = todos.value.findIndex((t) => t.id === todoToRemove.id)
+      if (idx >= 0) todos.value.splice(idx, 1)
+    }
+
+    // Then add/update todos from Supabase
+    for (const todo of supabaseTodos) {
+      const existingIdx = todos.value.findIndex((t: Todo) => t.id === todo.id)
+
+      const todoItem: Todo = {
+        id: todo.id,
+        title: todo.title,
+        category: todo.category || '',
+        period: todo.period as TodoPeriod,
+        minFrequency: todo.min_frequency || 1,
+        unit: (todo.unit as TodoUnit) || 'times',
+        minutesPerTime: todo.minutes_per_time,
+        description: todo.description,
+        done: todo.done || false,
+        completedAt: todo.completed_at,
+        punchIns: todo.punch_ins || 0,
+        templateId: todo.template_id,
+        createdAt: new Date(todo.created_at).getTime(),
+        dayKey: todo.day_key,
+        deadline: todo.deadline,
+      }
+
+      if (existingIdx >= 0) {
+        // Update existing
+        todos.value[existingIdx] = todoItem
+      } else {
+        // Add new
+        todos.value.push(todoItem)
+      }
+    }
+    loadingProgress.value = 60
+
+    // Step 4: Load Punch Records & Day Stats (60% -> 100%)
+    loadingMessage.value = '加载打卡记录...'
+    // 4. Load Stats and Records
+    const { data: statsData } = await supabase.from('todo_day_stats').select('*')
+    if (statsData) {
+      const mappedStats: Record<string, DayStat> = {}
+      statsData.forEach((s) => {
+        mappedStats[s.day_key] = {
+          createdCount: s.created_count,
+          completedCount: s.completed_count,
+          punchInsTotal: s.punch_ins_total,
+          minutesTotal: s.minutes_total,
+          categoryCreated: s.category_created,
+          categoryCompleted: s.category_completed,
+          categoryPunchIns: s.category_punch_ins,
+          categoryMinutes: s.category_minutes,
+        }
+      })
+      dayStats.value = mappedStats
+    }
+
+    const { data: punchData } = await supabase
+      .from('todo_punch_records')
+      .select('*')
+      .order('timestamp', { ascending: false })
+    if (punchData) {
+      punchRecords.value = punchData.map((r) => ({
+        id: r.id,
+        todoId: r.todo_id,
+        todoTitle: r.todo_title,
+        category: r.category,
+        timestamp: r.timestamp,
+        dayKey: r.day_key,
+        unit: r.unit,
+        minutesPerTime: r.minutes_per_time,
+        note: r.note,
+      }))
+    }
+
+    const { data: goalHistoryData } = await supabase
+      .from('todo_goal_history_records')
+      .select('*')
+      .order('timestamp', { ascending: false })
+    if (goalHistoryData) {
+      goalHistoryRecords.value = goalHistoryData.map((r) => ({
+        id: r.id,
+        goalId: r.goal_id,
+        content: r.content,
+        type: r.type,
+        timestamp: r.timestamp,
+        note: r.note,
+      }))
+    }
+    loadingProgress.value = 100
+
+    // 5. Initialize Sync Watchers
+    initSupabaseSyncWatchers()
+
+    // 6. Materialize Today's Todos
+    materializeTodayTodosFromTemplates()
+  } catch (error) {
+    console.error('❌ Error during page initialization:', error)
+    loadingProgress.value = 100
+  } finally {
+    // Hide loading overlay after short delay
+    setTimeout(() => {
+      pageLoading.value = false
+
+      // Check authentication setup
+      const storedHash = localStorage.getItem('todo_auth_hash')
+      if (storedHash) {
+        // Auth is set up, show verification dialog
+        authDialogVisible.value = true
+      } else {
+        // First time, show setup dialog
+        authSetupDialogVisible.value = true
+      }
+    }, 300)
   }
-
-  const { data: punchData } = await supabase
-    .from('todo_punch_records')
-    .select('*')
-    .order('timestamp', { ascending: false })
-  if (punchData) {
-    punchRecords.value = punchData.map((r) => ({
-      id: r.id,
-      todoId: r.todo_id,
-      todoTitle: r.todo_title,
-      category: r.category,
-      timestamp: r.timestamp,
-      dayKey: r.day_key,
-      unit: r.unit,
-      minutesPerTime: r.minutes_per_time,
-      note: r.note,
-    }))
-  }
-
-  const { data: goalHistoryData } = await supabase
-    .from('todo_goal_history_records')
-    .select('*')
-    .order('timestamp', { ascending: false })
-  if (goalHistoryData) {
-    goalHistoryRecords.value = goalHistoryData.map((r) => ({
-      id: r.id,
-      goalId: r.goal_id,
-      content: r.content,
-      type: r.type,
-      timestamp: r.timestamp,
-      note: r.note,
-    }))
-  }
-
-  // 5. Initialize Sync Watchers
-  initSupabaseSyncWatchers()
-
-  // 6. Materialize Today's Todos
-  materializeTodayTodosFromTemplates()
 })
+
+// Authentication functions
+const hashPassword = async (password: string): Promise<string> => {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+const verifyAuth = async () => {
+  if (!authPassword.value.trim()) {
+    MessagePlugin.warning({ content: '请输入密码' })
+    return
+  }
+
+  const storedHash = localStorage.getItem('todo_auth_hash')
+  if (!storedHash) {
+    MessagePlugin.error({ content: '未找到认证信息' })
+    return
+  }
+
+  const inputHash = await hashPassword(authPassword.value)
+  if (inputHash === storedHash) {
+    isAuthenticated.value = true
+    authDialogVisible.value = false
+    authPassword.value = ''
+    MessagePlugin.success({ content: '验证成功' })
+  } else {
+    MessagePlugin.error({ content: '密码错误' })
+    authPassword.value = ''
+  }
+}
+
+const setupAuth = async () => {
+  if (!setupPassword.value.trim()) {
+    MessagePlugin.warning({ content: '请输入密码' })
+    return
+  }
+
+  if (setupPassword.value.length < 4) {
+    MessagePlugin.warning({ content: '密码至少需要4个字符' })
+    return
+  }
+
+  if (setupPassword.value !== setupPasswordConfirm.value) {
+    MessagePlugin.warning({ content: '两次输入的密码不一致' })
+    return
+  }
+
+  const hash = await hashPassword(setupPassword.value)
+  localStorage.setItem('todo_auth_hash', hash)
+
+  isAuthenticated.value = true
+  authSetupDialogVisible.value = false
+  setupPassword.value = ''
+  setupPasswordConfirm.value = ''
+  MessagePlugin.success({ content: '密码设置成功' })
+}
 
 const categoryOptions = computed(() => uiConfig.value.categories)
 // Config options are now imported from store as computed props
@@ -2535,7 +2637,102 @@ const exportDialogWidth = computed(() => {
 </script>
 
 <template>
-  <div class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4">
+  <!-- Full-Screen Loading Overlay -->
+  <div
+    v-if="pageLoading"
+    class="fixed inset-0 z-50 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm flex items-center justify-center"
+  >
+    <div class="w-full max-w-md px-8">
+      <!-- Loading Message -->
+      <div class="text-center mb-6">
+        <div
+          class="text-2xl font-bold mb-2"
+          style="font-family: 'Fira Sans', sans-serif; color: #0d9488"
+        >
+          {{ loadingMessage }}
+        </div>
+        <div class="text-sm text-neutral-500" style="font-family: 'Fira Code', monospace">
+          {{ loadingProgress }}%
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div
+        class="w-full h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden shadow-inner"
+      >
+        <div
+          class="h-full bg-linear-to-r from-teal-500 to-teal-600 transition-all duration-500 ease-out rounded-full shadow-sm"
+          :style="{ width: `${loadingProgress}%` }"
+        ></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authentication Setup Dialog (First Time) -->
+  <t-dialog
+    v-model:visible="authSetupDialogVisible"
+    header="设置访问密码"
+    :close-on-overlay-click="false"
+    :close-btn="false"
+    width="400px"
+    :confirm-btn="{ content: '确认', theme: 'primary' }"
+    :cancel-btn="null"
+    @confirm="() => setupAuth()"
+  >
+    <div class="p-4">
+      <div class="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+        首次使用需要设置密码以保护您的待办事项
+      </div>
+
+      <div class="space-y-3">
+        <t-input
+          v-model="setupPassword"
+          type="password"
+          placeholder="输入密码(至少4个字符)"
+          @enter="() => setupAuth()"
+          autofocus
+        />
+        <t-input
+          v-model="setupPasswordConfirm"
+          type="password"
+          placeholder="确认密码"
+          @enter="() => setupAuth()"
+        />
+      </div>
+    </div>
+  </t-dialog>
+
+  <!-- Authentication Verification Dialog -->
+  <t-dialog
+    v-model:visible="authDialogVisible"
+    header="身份验证"
+    :close-on-overlay-click="false"
+    :close-btn="false"
+    width="400px"
+    :confirm-btn="{ content: '验证', theme: 'primary' }"
+    :cancel-btn="null"
+    @confirm="() => verifyAuth()"
+  >
+    <div class="p-4">
+      <div class="text-center mb-4">
+        <div class="text-4xl mb-2">🔒</div>
+        <div class="text-sm text-neutral-600 dark:text-neutral-400">请输入密码以访问待办事项</div>
+      </div>
+
+      <t-input
+        v-model="authPassword"
+        type="password"
+        placeholder="输入密码"
+        @enter="() => verifyAuth()"
+        autofocus
+      />
+    </div>
+  </t-dialog>
+
+  <div
+    v-if="isAuthenticated"
+    class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4"
+  >
     <div class="max-w-[1200px] mx-auto px-4 pt-4">
       <div class="text-lg md:text-2xl mb-4">今天是: {{ todayDisplay }}</div>
       <div v-if="isMobile" class="flex items-center justify-between mb-2">
@@ -2797,7 +2994,7 @@ const exportDialogWidth = computed(() => {
 
           <!-- Footer Progress -->
           <div
-            class="px-5 py-4 bg-gradient-to-r from-teal-50/50 to-transparent dark:from-teal-900/10 dark:to-transparent border-t border-neutral-100 dark:border-neutral-700"
+            class="px-5 py-4 bg-linear-to-r from-teal-50/50 to-transparent dark:from-teal-900/10 dark:to-transparent border-t border-neutral-100 dark:border-neutral-700"
           >
             <div
               class="flex items-center justify-between text-xs mb-2"
@@ -2816,7 +3013,7 @@ const exportDialogWidth = computed(() => {
               <div
                 class="h-full transition-all duration-700 ease-out rounded-full shadow-sm"
                 :style="{
-                  background: `linear-gradient(90deg, ${group.color}, ${group.color}dd)`,
+                  background: `linear-gradient(to right, ${group.color}, ${group.color.replace('50%', '40%')})`,
                   width: `${group.progress}%`,
                 }"
               ></div>
@@ -3692,7 +3889,7 @@ const exportDialogWidth = computed(() => {
             class="p-3 rounded-lg border transition-all"
             :class="
               record.type === 'milestone'
-                ? 'bg-linear-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
+                ? 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
                 : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
             "
           >
@@ -3880,6 +4077,23 @@ const exportDialogWidth = computed(() => {
         </div>
       </div>
     </t-drawer>
+  </div>
+
+  <!-- Unauthenticated State -->
+  <div
+    v-else
+    class="w-full min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900"
+  >
+    <div class="text-center">
+      <div class="text-6xl mb-4">🔒</div>
+      <div
+        class="text-xl font-bold mb-2"
+        style="font-family: 'Fira Sans', sans-serif; color: #0d9488"
+      >
+        等待身份验证
+      </div>
+      <div class="text-sm text-neutral-500">请完成身份验证以访问待办事项</div>
+    </div>
   </div>
 </template>
 
