@@ -46,6 +46,7 @@ import {
   DownloadIcon,
   MinusIcon,
   AppIcon,
+  CopyIcon,
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -2036,9 +2037,13 @@ const boardGroups = computed(() => {
     goalDescription?: string // Optional: derive a goal description like "Main: Stability..."
   }> = []
 
+  // Separate goals (period === 'once') from periodic tasks
+  const periodicTasks = todayTodos.value.filter((t) => t.period !== 'once')
+  const goalTasks = todayTodos.value.filter((t) => t.period === 'once')
+
   // Ensure we include '未分类' if it exists in data but not in options
   const allCategories = new Set(categoryOptions.value)
-  todayTodos.value.forEach((t) => allCategories.add(t.category || '未分类'))
+  periodicTasks.forEach((t) => allCategories.add(t.category || '未分类'))
 
   // Use configured order if possible
   const sortedCategories = [...allCategories].sort((a, b) => {
@@ -2050,8 +2055,9 @@ const boardGroups = computed(() => {
     return a.localeCompare(b)
   })
 
+  // Add periodic task groups
   for (const cat of sortedCategories) {
-    const todosInCat = todayTodos.value.filter((t) => (t.category || '未分类') === cat)
+    const todosInCat = periodicTasks.filter((t) => (t.category || '未分类') === cat)
     if (todosInCat.length === 0) continue
 
     const unfinished = todosInCat.filter((t) => !isTaskCompleted(t))
@@ -2071,6 +2077,25 @@ const boardGroups = computed(() => {
       progress,
     })
   }
+
+  // Add dedicated "目标" card for all goals
+  if (goalTasks.length > 0) {
+    const unfinished = goalTasks.filter((t) => !isTaskCompleted(t))
+    const completed = goalTasks.filter((t) => isTaskCompleted(t))
+    const total = goalTasks.length
+    const punchedCount = goalTasks.filter((t) => (t.punchIns || 0) > 0).length
+    const progress = total > 0 ? ((punchedCount / total) * 100).toFixed(1) : '0.0'
+
+    groups.push({
+      name: '目标',
+      color: getCategoryColor('目标'),
+      unfinished,
+      completed,
+      total,
+      progress,
+    })
+  }
+
   return groups
 })
 
@@ -2158,6 +2183,38 @@ const exportChart = (chartRef: unknown, title: string) => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+}
+
+const copyChart = async (chartRef: unknown, title: string) => {
+  if (!chartRef) return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const instance = (chartRef as any).chart
+  if (!instance) return
+
+  try {
+    const url = instance.getDataURL({
+      type: 'png',
+      pixelRatio: 2,
+      backgroundColor: isDark.value ? '#171717' : '#ffffff',
+      excludeComponents: ['toolbox'],
+    })
+
+    // Convert data URL to blob
+    const response = await fetch(url)
+    const blob = await response.blob()
+
+    // Copy to clipboard
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'image/png': blob,
+      }),
+    ])
+
+    MessagePlugin.success(`${title} 已复制到剪贴板`)
+  } catch (error) {
+    console.error('Copy chart failed:', error)
+    MessagePlugin.error('复制失败,请重试')
+  }
 }
 
 const exportWeekOffset = ref(0)
@@ -2639,43 +2696,55 @@ const exportDialogWidth = computed(() => {
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-2 px-4 flex items-center justify-between gap-2">
-      <h2 class="text-xl font-bold">任务/目标</h2>
+    <div class="max-w-[1200px] mx-auto mt-6 px-4 flex items-center justify-between gap-2">
+      <h2 class="text-2xl font-bold" style="font-family: 'Fira Sans', sans-serif; color: #134e4a">
+        任务/目标
+      </h2>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-2 px-4">
+    <div class="max-w-[1200px] mx-auto mt-4 px-4">
       <!-- Dashboard Grid -->
       <div
         v-if="boardGroups.length"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"
       >
         <div
           v-for="group in boardGroups"
           :key="group.name"
-          :class="[
-            'rounded-xl border border-t-0 border-r-0 border-b-0 bg-white dark:bg-neutral-800 shadow-sm flex flex-col overflow-hidden transition-all duration-300 hover:shadow-md',
-          ]"
-          :style="{ borderLeftColor: group.color, borderLeftWidth: '4px' }"
+          class="group rounded-2xl border border-t-0 border-r-0 border-b-0 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm shadow-lg flex flex-col overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl cursor-pointer"
+          :style="{
+            borderLeftColor: group.color,
+            borderLeftWidth: '5px',
+            fontFamily: 'Fira Sans, sans-serif',
+          }"
         >
           <!-- Header -->
           <div
-            class="p-2 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between"
+            class="p-4 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between bg-linear-to-r from-transparent to-teal-50/30 dark:to-teal-900/10"
           >
-            <div class="flex items-center gap-2">
-              <div :style="{ color: group.color }">
-                <app-icon size="18" />
+            <div class="flex items-center gap-3">
+              <div
+                class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 group-hover:scale-110"
+                :style="{ backgroundColor: group.color + '20', color: group.color }"
+              >
+                <app-icon size="20" />
               </div>
-              <span class="font-bold text-lg text-neutral-800 dark:text-neutral-100">{{
-                group.name
-              }}</span>
+              <span
+                class="font-bold text-xl"
+                style="color: #134e4a; font-family: 'Fira Sans', sans-serif"
+                >{{ group.name }}</span
+              >
             </div>
-            <div class="text-xs text-neutral-400 font-mono">
+            <div
+              class="text-xs font-mono"
+              style="color: #0d9488; font-family: 'Fira Code', monospace"
+            >
               已达成 {{ group.completed.length }} / 未达成 {{ group.unfinished.length }}
             </div>
           </div>
 
           <!-- Body -->
-          <div class="p-2 flex-1 flex flex-col gap-3 min-h-[200px]">
+          <div class="p-5 flex-1 flex flex-col gap-3 min-h-[200px]">
             <!-- Unfinished -->
             <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
               <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
@@ -2728,18 +2797,28 @@ const exportDialogWidth = computed(() => {
 
           <!-- Footer Progress -->
           <div
-            class="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-700"
+            class="px-5 py-4 bg-gradient-to-r from-teal-50/50 to-transparent dark:from-teal-900/10 dark:to-transparent border-t border-neutral-100 dark:border-neutral-700"
           >
-            <div class="flex items-center justify-between text-xs mb-1 text-neutral-500">
-              <span>打卡进度</span>
-              <span class="font-mono">{{ group.progress }}%</span>
+            <div
+              class="flex items-center justify-between text-xs mb-2"
+              style="color: #134e4a; font-family: 'Fira Sans', sans-serif"
+            >
+              <span class="font-medium">打卡进度</span>
+              <span
+                class="font-mono font-semibold"
+                style="font-family: 'Fira Code', monospace; color: #0d9488"
+                >{{ group.progress }}%</span
+              >
             </div>
             <div
-              class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden"
+              class="w-full h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden shadow-inner"
             >
               <div
-                class="h-full transition-all duration-500 rounded-full"
-                :style="{ backgroundColor: group.color, width: `${group.progress}%` }"
+                class="h-full transition-all duration-700 ease-out rounded-full shadow-sm"
+                :style="{
+                  background: `linear-gradient(90deg, ${group.color}, ${group.color}dd)`,
+                  width: `${group.progress}%`,
+                }"
               ></div>
             </div>
           </div>
@@ -3100,14 +3179,24 @@ const exportDialogWidth = computed(() => {
               <div class="text-xs font-bold text-blue-600 dark:text-blue-400">
                 各任务类型的打卡趋势
               </div>
-              <t-button
-                size="small"
-                variant="text"
-                shape="square"
-                @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
-              >
-                <template #icon><download-icon /></template>
-              </t-button>
+              <div class="flex items-center gap-1">
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="copyChart(chart1Ref, '各任务类型的打卡趋势')"
+                >
+                  <template #icon><copy-icon /></template>
+                </t-button>
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
+                >
+                  <template #icon><download-icon /></template>
+                </t-button>
+              </div>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
@@ -3123,14 +3212,24 @@ const exportDialogWidth = computed(() => {
               class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center"
             >
               <div class="text-xs font-bold text-purple-600 dark:text-purple-400">任务分类</div>
-              <t-button
-                size="small"
-                variant="text"
-                shape="square"
-                @click="exportChart(chart2Ref, '任务分类')"
-              >
-                <template #icon><download-icon /></template>
-              </t-button>
+              <div class="flex items-center gap-1">
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="copyChart(chart2Ref, '任务分类')"
+                >
+                  <template #icon><copy-icon /></template>
+                </t-button>
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="exportChart(chart2Ref, '任务分类')"
+                >
+                  <template #icon><download-icon /></template>
+                </t-button>
+              </div>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
@@ -3148,14 +3247,24 @@ const exportDialogWidth = computed(() => {
               <div class="text-xs font-bold text-green-600 dark:text-green-400">
                 每日打卡次数趋势
               </div>
-              <t-button
-                size="small"
-                variant="text"
-                shape="square"
-                @click="exportChart(chart3Ref, '每日打卡次数趋势')"
-              >
-                <template #icon><download-icon /></template>
-              </t-button>
+              <div class="flex items-center gap-1">
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="copyChart(chart3Ref, '每日打卡次数趋势')"
+                >
+                  <template #icon><copy-icon /></template>
+                </t-button>
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="exportChart(chart3Ref, '每日打卡次数趋势')"
+                >
+                  <template #icon><download-icon /></template>
+                </t-button>
+              </div>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
@@ -3173,14 +3282,24 @@ const exportDialogWidth = computed(() => {
               <div class="text-xs font-bold text-orange-600 dark:text-orange-400">
                 每日打卡分钟数趋势
               </div>
-              <t-button
-                size="small"
-                variant="text"
-                shape="square"
-                @click="exportChart(chart4Ref, '每日打卡分钟数趋势')"
-              >
-                <template #icon><download-icon /></template>
-              </t-button>
+              <div class="flex items-center gap-1">
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="copyChart(chart4Ref, '每日打卡分钟数趋势')"
+                >
+                  <template #icon><copy-icon /></template>
+                </t-button>
+                <t-button
+                  size="small"
+                  variant="text"
+                  shape="square"
+                  @click="exportChart(chart4Ref, '每日打卡分钟数趋势')"
+                >
+                  <template #icon><download-icon /></template>
+                </t-button>
+              </div>
             </div>
             <div class="p-2">
               <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
@@ -3768,5 +3887,14 @@ const exportDialogWidth = computed(() => {
 #todo-cal-heatmap {
   display: flex;
   justify-content: center;
+}
+
+/* Respect user's motion preferences for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 </style>
