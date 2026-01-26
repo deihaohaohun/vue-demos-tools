@@ -148,7 +148,7 @@ const getPeriodTheme = (period: string) => {
     class="p-2 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0"
     :class="
       todo.category
-        ? 'bg-(--cat-bg) hover:bg-(--cat-bg-hover) border-(--cat-border) dark:bg-(--cat-bg-dark) dark:hover:bg-(--cat-bg-hover-dark) dark:[border-color:var(--cat-border-dark)]'
+        ? 'bg-(--cat-bg) hover:bg-(--cat-bg-hover) border-(--cat-border) dark:bg-(--cat-bg-dark) dark:hover:bg-(--cat-bg-hover-dark) dark:border-(--cat-border-dark)'
         : 'bg-white dark:bg-neutral-900 border-transparent'
     "
     :style="getCategoryCssVars(todo.category)"
@@ -157,9 +157,17 @@ const getPeriodTheme = (period: string) => {
     <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
       <!-- 第一行：任务名称 + 操作按钮 -->
       <div class="flex items-center justify-between gap-1">
-        <span class="text-base font-medium text-neutral-800 dark:text-neutral-200">
-          {{ todo.title }}
-        </span>
+        <t-tooltip
+          :content="todo.title"
+          placement="top-left"
+          show-arrow
+          :mouse-enter-delay="300"
+          class="flex-1 min-w-0 pointer-events-auto"
+        >
+          <div class="text-base font-medium text-neutral-800 dark:text-neutral-200 truncate">
+            {{ todo.title }}
+          </div>
+        </t-tooltip>
 
         <!-- 操作按钮组 (移到第一行) -->
         <div class="flex gap-1 items-center shrink-0 pointer-events-auto">
@@ -230,8 +238,21 @@ const getPeriodTheme = (period: string) => {
       <!-- 第二行：打卡进度与剩余时间 -->
       <div
         class="flex flex-wrap items-center gap-2"
-        v-if="todo.punchIns > 0 || todo.unit === 'minutes' || remainingTime"
+        v-if="
+          todo.punchIns > 0 ||
+          todo.unit === 'minutes' ||
+          remainingTime ||
+          (todo.category && todo.period === 'once')
+        "
       >
+        <t-tag
+          v-if="todo.category && todo.period === 'once'"
+          size="small"
+          variant="outline"
+          class="bg-(--cat-tag-bg) text-(--cat-tag-text) border-(--cat-tag-border) dark:bg-(--cat-tag-bg-dark) dark:text-(--cat-tag-text-dark) dark:border-(--cat-tag-border-dark)"
+        >
+          {{ todo.category }}
+        </t-tag>
         <t-tag
           v-if="todo.punchIns > 0 || todo.unit === 'minutes'"
           size="small"
@@ -246,7 +267,12 @@ const getPeriodTheme = (period: string) => {
         <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
           {{ remainingTime }}
         </t-tag>
-        <t-tag size="small" variant="light" :theme="getPeriodTheme(todo.period)">
+        <t-tag
+          v-if="todo.period !== 'once'"
+          size="small"
+          variant="light"
+          :theme="getPeriodTheme(todo.period)"
+        >
           {{ periodTextMap[todo.period] }}
         </t-tag>
       </div>

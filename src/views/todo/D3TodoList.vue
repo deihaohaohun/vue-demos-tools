@@ -7,6 +7,7 @@ import {
   onUnmounted,
   nextTick,
   type ComponentPublicInstance,
+  type Component,
 } from 'vue'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import VChart from 'vue-echarts'
@@ -32,6 +33,7 @@ import {
   type GoalHistoryRecord,
   type TodoTemplate,
   type DayStat,
+  type UiConfig,
 } from './useTodoStore'
 import {
   AddIcon,
@@ -47,6 +49,15 @@ import {
   MinusIcon,
   AppIcon,
   CopyIcon,
+  BookIcon,
+  CalendarIcon,
+  ChartIcon,
+  MoneyIcon,
+  UserIcon,
+  HeartIcon,
+  StarIcon,
+  RootListIcon,
+  TaskIcon,
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -116,7 +127,30 @@ const authPassword = ref('')
 const authSetupDialogVisible = ref(false)
 const setupPassword = ref('')
 const setupPasswordConfirm = ref('')
+const authPasswordRef = ref()
+const setupPasswordRef = ref()
 
+watch(
+  () => authDialogVisible.value,
+  (val) => {
+    if (val) {
+      nextTick(() => {
+        authPasswordRef.value?.focus()
+      })
+    }
+  },
+)
+
+watch(
+  () => authSetupDialogVisible.value,
+  (val) => {
+    if (val) {
+      nextTick(() => {
+        setupPasswordRef.value?.focus()
+      })
+    }
+  },
+)
 const exportPalette = computed(() => {
   if (isDark.value) {
     return {
@@ -1064,6 +1098,60 @@ const draftCategoriesInputRefs = ref<HTMLElement[]>([])
 const draftMinFrequenciesList = ref<number[]>([])
 const draftMinutesPerTimesList = ref<number[]>([])
 const draftCategoryColorsMap = ref<Record<string, string>>({})
+const iconMap: Record<string, Component> = {
+  'app-icon': AppIcon,
+  'calendar-icon': CalendarIcon,
+  'chart-icon': ChartIcon,
+  'money-icon': MoneyIcon,
+  'user-icon': UserIcon,
+  'book-icon': BookIcon,
+  'heart-icon': HeartIcon,
+  'star-icon': StarIcon,
+  'root-list-icon': RootListIcon,
+  'task-icon': TaskIcon,
+}
+
+const availableIcons = [
+  { name: '应用', icon: 'app-icon' },
+  { name: '日历', icon: 'calendar-icon' },
+  { name: '图表', icon: 'chart-icon' },
+  { name: '金钱', icon: 'money-icon' },
+  { name: '用户', icon: 'user-icon' },
+  { name: '书籍', icon: 'book-icon' },
+  { name: '心形', icon: 'heart-icon' },
+  { name: '星形', icon: 'star-icon' },
+  { name: '列表', icon: 'root-list-icon' },
+  { name: '任务', icon: 'task-icon' },
+]
+
+const categoryEditDialogVisible = ref(false)
+const editingCategory = ref({
+  name: '',
+  color: '#0d9488',
+  icon: 'app-icon',
+})
+
+const openCategoryEdit = (group: { name: string; color: string; icon: string }) => {
+  editingCategory.value = {
+    name: group.name,
+    color: group.color || '#0d9488',
+    icon: group.icon || 'app-icon',
+  }
+  categoryEditDialogVisible.value = true
+}
+
+const saveCategoryConfig = async () => {
+  const name = editingCategory.value.name
+  // 防御性：确保嵌套对象存在
+  if (!uiConfig.value.categoryColors) uiConfig.value.categoryColors = {}
+  if (!uiConfig.value.categoryIcons) uiConfig.value.categoryIcons = {}
+
+  uiConfig.value.categoryColors[name] = editingCategory.value.color
+  uiConfig.value.categoryIcons[name] = editingCategory.value.icon
+
+  categoryEditDialogVisible.value = false
+  MessagePlugin.success(`分类 "${name}" 配置已更新`)
+}
 
 const openConfigDrawer = () => {
   draftCategoriesList.value = [...uiConfig.value.categories]
@@ -1142,7 +1230,11 @@ onMounted(async () => {
         const configMap = new Map(configs.map((c) => [c.key, c.value]))
 
         if (configMap.has('ui_config')) {
-          uiConfig.value = configMap.get('ui_config')
+          const loaded = configMap.get('ui_config') as UiConfig
+          // 确保嵌套对象存在，防止旧数据导致报错
+          if (!loaded.categoryColors) loaded.categoryColors = {}
+          if (!loaded.categoryIcons) loaded.categoryIcons = {}
+          uiConfig.value = { ...uiConfig.value, ...loaded }
           console.log('✅ UI config loaded from cloud')
         }
         if (configMap.has('todo_history_blob')) history.value = configMap.get('todo_history_blob')
@@ -2132,6 +2224,7 @@ const boardGroups = computed(() => {
   const groups: Array<{
     name: string
     color: string
+    icon: string
     unfinished: Todo[]
     completed: Todo[]
     total: number
@@ -2167,16 +2260,14 @@ const boardGroups = computed(() => {
     const total = todosInCat.length
 
     // Calculate punch progress: tasks with punchIns > 0 / total tasks
-    const punchedCount = todosInCat.filter((t) => (t.punchIns || 0) > 0).length
-    const progress = total > 0 ? ((punchedCount / total) * 100).toFixed(1) : '0.0'
-
     groups.push({
       name: cat,
       color: getCategoryColor(cat),
+      icon: uiConfig.value.categoryIcons?.[cat] || 'app-icon',
       unfinished,
       completed,
       total,
-      progress,
+      progress: total === 0 ? '0' : ((completed.length / total) * 100).toFixed(0),
     })
   }
 
@@ -2191,6 +2282,7 @@ const boardGroups = computed(() => {
     groups.push({
       name: '目标',
       color: getCategoryColor('目标'),
+      icon: uiConfig.value.categoryIcons?.['目标'] || 'calendar-icon',
       unfinished,
       completed,
       total,
@@ -2220,6 +2312,7 @@ const animatedPunchIns = useNumberAnimation(todayPunchInsTotal)
 const animatedMinutes = useNumberAnimation(todayMinutesTotal)
 const animatedConsecutive = useNumberAnimation(consecutivePunchDays)
 const animatedMaxConsecutive = useNumberAnimation(maxConsecutivePunchDays)
+const heatmapContainerRef = ref<HTMLElement | null>(null)
 
 const { heatmapLoading } = useTodoHeatmap({
   todayKey,
@@ -2227,6 +2320,7 @@ const { heatmapLoading } = useTodoHeatmap({
   todayMinutesTotal,
   todayCompletedCount,
   dayStats,
+  heatmapRef: heatmapContainerRef,
 })
 
 const statsRange = ref<'7d' | '30d'>('7d')
@@ -2689,6 +2783,7 @@ const exportDialogWidth = computed(() => {
           v-model="setupPassword"
           type="password"
           placeholder="输入密码(至少4个字符)"
+          ref="setupPasswordRef"
           @enter="() => setupAuth()"
           autofocus
         />
@@ -2723,6 +2818,7 @@ const exportDialogWidth = computed(() => {
         v-model="authPassword"
         type="password"
         placeholder="输入密码"
+        ref="authPasswordRef"
         @enter="() => verifyAuth()"
         autofocus
       />
@@ -2893,17 +2989,15 @@ const exportDialogWidth = computed(() => {
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-6 px-4 flex items-center justify-between gap-2">
-      <h2 class="text-2xl font-bold" style="font-family: 'Fira Sans', sans-serif; color: #134e4a">
-        任务/目标
-      </h2>
+    <div class="max-w-[1200px] mx-auto mt-2 px-4 flex items-center justify-between gap-2">
+      <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">任务/目标</h2>
     </div>
 
     <div class="max-w-[1200px] mx-auto mt-4 px-4">
       <!-- Dashboard Grid -->
       <div
         v-if="boardGroups.length"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mb-4"
       >
         <div
           v-for="group in boardGroups"
@@ -2912,36 +3006,43 @@ const exportDialogWidth = computed(() => {
           :style="{
             borderLeftColor: group.color,
             borderLeftWidth: '5px',
-            fontFamily: 'Fira Sans, sans-serif',
           }"
         >
           <!-- Header -->
           <div
-            class="p-4 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between bg-linear-to-r from-transparent to-teal-50/30 dark:to-teal-900/10"
+            class="p-2 border-b border-neutral-100 dark:border-neutral-700 flex items-center justify-between bg-linear-to-r from-transparent to-teal-50/30 dark:to-teal-900/10"
           >
-            <div class="flex items-center gap-3">
+            <div
+              class="flex items-center gap-2 cursor-pointer group/icon"
+              @click.stop="openCategoryEdit(group)"
+            >
               <div
-                class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 group-hover:scale-110"
+                class="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 group-hover/icon:scale-110"
                 :style="{ backgroundColor: group.color + '20', color: group.color }"
               >
-                <app-icon size="20" />
+                <component :is="iconMap[group.icon] || AppIcon" size="16" />
               </div>
-              <span
-                class="font-bold text-xl"
-                style="color: #134e4a; font-family: 'Fira Sans', sans-serif"
-                >{{ group.name }}</span
-              >
+              <span class="font-bold text-base text-neutral-900 dark:text-neutral-100">{{
+                group.name
+              }}</span>
             </div>
-            <div
-              class="text-xs font-mono"
-              style="color: #0d9488; font-family: 'Fira Code', monospace"
-            >
-              已达成 {{ group.completed.length }} / 未达成 {{ group.unfinished.length }}
+            <div class="flex items-center gap-2">
+              <div class="text-xs font-mono text-teal-600 dark:text-teal-400">
+                已达成 {{ group.completed.length }} / 未达成 {{ group.unfinished.length }}
+              </div>
+              <t-button
+                variant="text"
+                shape="square"
+                size="small"
+                @click.stop="openCategoryEdit(group)"
+              >
+                <template #icon><edit-icon size="14" /></template>
+              </t-button>
             </div>
           </div>
 
           <!-- Body -->
-          <div class="p-5 flex-1 flex flex-col gap-3 min-h-[200px]">
+          <div class="p-2 flex-1 flex flex-col gap-2 min-h-[200px]">
             <!-- Unfinished -->
             <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
               <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
@@ -3026,7 +3127,7 @@ const exportDialogWidth = computed(() => {
       </div>
 
       <!-- History & Archive Section -->
-      <div class="mt-8">
+      <div>
         <div class="flex items-center justify-between mb-4 px-1">
           <h2 class="text-xl font-bold flex items-center gap-2">历史/归档</h2>
         </div>
@@ -3354,7 +3455,11 @@ const exportDialogWidth = computed(() => {
           <div class="p-2">
             <div class="w-full overflow-x-auto">
               <div class="w-fit mx-auto">
-                <div id="todo-cal-heatmap" class="min-w-[980px]"></div>
+                <div
+                  id="todo-cal-heatmap"
+                  ref="heatmapContainerRef"
+                  class="min-w-[980px] min-h-[140px] overflow-x-auto"
+                ></div>
               </div>
             </div>
           </div>
@@ -3985,13 +4090,7 @@ const exportDialogWidth = computed(() => {
               "
               @enter="onDraftCategoryEnter(idx)"
             />
-            <t-color-picker
-              v-model="draftCategoryColorsMap[draftCategoriesList[idx] || '']"
-              format="HEX"
-              size="small"
-              class="shrink-0"
-              :show-primary-color-preview="false"
-            />
+
             <t-button
               variant="text"
               shape="square"
@@ -4077,6 +4176,43 @@ const exportDialogWidth = computed(() => {
         </div>
       </div>
     </t-drawer>
+
+    <!-- Category Edit Dialog -->
+    <t-dialog
+      v-model:visible="categoryEditDialogVisible"
+      :header="`编辑分类: ${editingCategory.name}`"
+      @confirm="saveCategoryConfig"
+    >
+      <div class="space-y-4 pt-4">
+        <div>
+          <div class="text-sm font-medium mb-2">卡片颜色</div>
+          <t-color-picker
+            v-model="editingCategory.color"
+            format="HEX"
+            :show-primary-color-preview="false"
+            class="w-full"
+          />
+        </div>
+        <div>
+          <div class="text-sm font-medium mb-2">分类图标</div>
+          <div class="grid grid-cols-5 gap-2">
+            <div
+              v-for="item in availableIcons"
+              :key="item.icon"
+              class="flex items-center justify-center p-2 rounded-lg border cursor-pointer transition-all"
+              :class="[
+                editingCategory.icon === item.icon
+                  ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 text-teal-600'
+                  : 'border-neutral-100 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-500',
+              ]"
+              @click="editingCategory.icon = item.icon"
+            >
+              <component :is="iconMap[item.icon] || AppIcon" size="20" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </t-dialog>
   </div>
 
   <!-- Unauthenticated State -->

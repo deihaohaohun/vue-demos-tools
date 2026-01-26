@@ -47,6 +47,7 @@ export const useTodoHeatmap = (args: {
   todayMinutesTotal: ComputedRef<number>
   todayCompletedCount: ComputedRef<number>
   dayStats: Ref<Record<string, DayStatLike>>
+  heatmapRef: Ref<HTMLElement | null>
 }) => {
   let calHeatmap: CalHeatmapLike | null = null
   const heatmapLoading = ref(false)
@@ -87,88 +88,91 @@ export const useTodoHeatmap = (args: {
   })
 
   const renderCalHeatmap = async () => {
-    heatmapLoading.value = true
-    const root = document.getElementById('todo-cal-heatmap')
-    const legend = document.getElementById('todo-cal-heatmap-legend')
+    // heatmapLoading.value = true // Loading 可能会导致 DOM 重新渲染从而使 root 失效
+    const root = args.heatmapRef.value
+    // const legend = document.getElementById('todo-cal-heatmap-legend') // Legend 没用到?
     if (!root) {
-      heatmapLoading.value = false
       return
     }
 
+    // 销毁旧实例
     if (calHeatmap) {
-      await calHeatmap.destroy()
+      try {
+        await calHeatmap.destroy()
+      } catch (e) {
+        console.error('Heatmap destroy error', e)
+      }
       calHeatmap = null
-    }
-
-    // 清空 DOM 容器
-    root.innerHTML = ''
-
-    if (legend) {
-      legend.innerHTML = ''
     }
 
     dayjs.locale('zh-cn')
     const start = getHeatmapStartDate()
 
-    calHeatmap = new CalHeatmap() as unknown as CalHeatmapLike
-    calHeatmap.paint(
-      {
-        itemSelector: '#todo-cal-heatmap',
-        date: { start },
-        data: {
-          source: calendarData.value.records,
-          x: (d: CalendarRecord) => d.ts,
-          y: 'value',
-          defaultValue: 0,
-        },
-        scale: {
-          color: {
-            type: 'threshold',
-            domain: [1, 5, 8, 10],
-            range: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
+    try {
+      calHeatmap = new CalHeatmap() as unknown as CalHeatmapLike
+      await calHeatmap.paint(
+        {
+          itemSelector: root,
+          date: { start },
+          data: {
+            source: calendarData.value.records,
+            x: (d: CalendarRecord) => +d.ts,
+            y: 'value',
+            defaultValue: 0,
           },
-        },
-        domain: {
-          type: 'month',
-          range: 12,
-          gutter: 4,
-          dynamicDimension: false,
-        },
-        subDomain: {
-          type: 'day',
-          radius: 2,
-          width: 12,
-          height: 12,
-          gutter: 2,
-        },
-      },
-      [
-        [
-          Tooltip,
-          {
-            text: function (
-              date: unknown,
-              value: unknown,
-              dayjsDate: { format?: (fmt: string) => string } | undefined,
-            ) {
-              const ts = typeof date === 'number' ? date : date instanceof Date ? date.getTime() : 0
-              const punches = typeof value === 'number' ? value : 0
-              const minutes = calendarData.value.minutesByTs[ts] || 0
-              const dateText =
-                dayjsDate?.format?.('YYYY年MM月DD日') || dayjs(ts).format('YYYY年MM月DD日')
-              return `<p class="text-lg">${dateText}</p>
-                <p class="text-base">打卡次数: ${punches} 次</p>
-                <p class="text-base">分钟: ${minutes} 分钟</p>`
+          scale: {
+            color: {
+              type: 'threshold',
+              domain: [1, 5, 8, 10],
+              range: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
             },
           },
+          domain: {
+            type: 'month',
+            range: 12,
+            gutter: 4,
+            label: { position: 'top' }, // 确保显示月份标签
+          },
+          subDomain: {
+            type: 'day',
+            radius: 2,
+            width: 12,
+            height: 12,
+            gutter: 2,
+          },
+        },
+        [
+          [
+            Tooltip,
+            {
+              text: function (
+                date: unknown,
+                value: unknown,
+                dayjsDate: { format?: (fmt: string) => string } | undefined,
+              ) {
+                const ts =
+                  typeof date === 'number' ? date : date instanceof Date ? date.getTime() : 0
+                const punches = typeof value === 'number' ? value : 0
+                const minutes = calendarData.value.minutesByTs[ts] || 0
+                const dateText =
+                  dayjsDate?.format?.('YYYY年MM月DD日') || dayjs(ts).format('YYYY年MM月DD日')
+                return `<p class="text-lg">${dateText}</p>
+                  <p class="text-base">打卡次数: ${punches} 次</p>
+                  <p class="text-base">分钟: ${minutes} 分钟</p>`
+              },
+            },
+          ],
         ],
-      ],
-    )
-    heatmapLoading.value = false
+      )
+    } catch (e) {
+      console.error('Heatmap render error:', e)
+    }
   }
 
   onMounted(() => {
-    renderCalHeatmap()
+    if (args.heatmapRef.value) {
+      renderCalHeatmap()
+    }
   })
 
   watch(
@@ -178,6 +182,7 @@ export const useTodoHeatmap = (args: {
       args.todayMinutesTotal.value,
       args.todayCompletedCount.value,
       Object.keys(args.dayStats.value).length,
+      args.heatmapRef.value, // Watch Ref change
     ],
     () => {
       renderCalHeatmap()

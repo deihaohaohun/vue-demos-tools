@@ -98,6 +98,7 @@ interface GoalHistoryRecord {
 interface UiConfig {
   categories: string[]
   categoryColors: Record<string, string>
+  categoryIcons: Record<string, string>
   showTime: boolean
   showDate: boolean
   backgroundImage?: string
@@ -132,6 +133,7 @@ export const useTodoStore = () => {
   const uiConfig = ref<UiConfig>({
     categories: ['默认', '工作', '学习', '健康', '生活'],
     categoryColors: {},
+    categoryIcons: {},
     showTime: true,
     showDate: true,
     minFrequencies: [1, 2, 3, 4],
