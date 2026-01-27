@@ -254,7 +254,7 @@ const getPeriodTheme = (period: string) => {
           {{ todo.category }}
         </t-tag>
         <t-tag
-          v-if="todo.punchIns > 0 || todo.unit === 'minutes'"
+          v-if="todo.period !== 'once' && (todo.punchIns > 0 || todo.unit === 'minutes')"
           size="small"
           variant="light"
           theme="primary"

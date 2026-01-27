@@ -390,31 +390,6 @@ export const useTodoStore = () => {
       }
     })
 
-    for (const tpl of templates.value) {
-      if (tpl.archived) continue
-      // 如果本周期已经有任务了（无论完成与否，或者是rolled over过来的），就不再生成
-      if (coveredTemplateIds.has(tpl.id)) continue
-
-      // 生成新任务
-      const now = Date.now()
-      instances.push({
-        title: tpl.title,
-        id: nanoid(),
-        done: false,
-        punchIns: 0,
-        category: tpl.category,
-        period: tpl.period,
-        minFrequency: tpl.minFrequency,
-        unit: tpl.unit,
-        minutesPerTime: tpl.unit === 'minutes' ? tpl.minutesPerTime : undefined,
-        templateId: tpl.id,
-        createdAt: now,
-        dayKey: tk,
-      })
-      ensureDayStat(tk).createdCount += 1
-      incCategory(ensureDayStat(tk).categoryCreated, tpl.category || '未分类', 1)
-    }
-
     todos.value = instances
   }
 
@@ -480,6 +455,18 @@ export const useTodoStore = () => {
     const now = Date.now()
     const punchDayKey = formatDayKey(now)
 
+    // If user explicitly provides minutes, use those and set unit to 'minutes'
+    // Otherwise, use the todo's unit and minutesPerTime
+    const hasExplicitMinutes = typeof minutes === 'number' && minutes > 0
+    const recordUnit = hasExplicitMinutes ? 'minutes' : todo.unit
+    const recordMinutesPerTime = hasExplicitMinutes
+      ? minutes
+      : todo.unit === 'minutes'
+        ? typeof todo.minutesPerTime === 'number'
+          ? todo.minutesPerTime
+          : 15
+        : undefined
+
     const record: PunchRecord = {
       id: '', // Placeholder, will be set by server
       todoId: todo.id,
@@ -487,15 +474,8 @@ export const useTodoStore = () => {
       category: todo.category || '未分类',
       timestamp: now,
       dayKey: punchDayKey,
-      unit: todo.unit,
-      minutesPerTime:
-        todo.unit === 'minutes'
-          ? typeof minutes === 'number'
-            ? minutes
-            : typeof todo.minutesPerTime === 'number'
-              ? todo.minutesPerTime
-              : 15
-          : undefined,
+      unit: recordUnit,
+      minutesPerTime: recordMinutesPerTime,
       note,
     }
 
@@ -524,7 +504,8 @@ export const useTodoStore = () => {
     stat.punchInsTotal += 1
     incCategory(stat.categoryPunchIns, record.category || '未分类', 1)
 
-    if (record.unit === 'minutes' && typeof record.minutesPerTime === 'number') {
+    // Update minutes stats if minutesPerTime is set (regardless of unit)
+    if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
       const mins = record.minutesPerTime
       stat.minutesTotal += mins
       incCategory(stat.categoryMinutes, record.category || '未分类', mins)

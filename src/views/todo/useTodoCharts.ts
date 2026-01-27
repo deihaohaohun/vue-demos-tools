@@ -195,7 +195,14 @@ export const useTodoCharts = (args: {
           return html
         },
       },
-      legend: { data: punchInsByCategory.value.categories, top: 0, textStyle: { color: t.text } },
+      legend: {
+        type: 'scroll',
+        data: punchInsByCategory.value.categories,
+        top: 0,
+        textStyle: { color: t.text },
+        pageButtonItemGap: 5,
+        pageIconSize: 12,
+      },
       grid: { left: 24, right: 24, top: 46, bottom: 0, containLabel: true },
       xAxis: {
         type: 'category',
@@ -271,7 +278,14 @@ export const useTodoCharts = (args: {
         borderColor: t.tooltipBorder,
         textStyle: { color: t.text },
       },
-      legend: { data: ['打卡次数'], top: 0, textStyle: { color: t.text } },
+      legend: {
+        type: 'scroll',
+        data: ['打卡次数'],
+        top: 0,
+        textStyle: { color: t.text },
+        pageButtonItemGap: 5,
+        pageIconSize: 12,
+      },
       grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
       xAxis: {
         type: 'category',
@@ -423,7 +437,14 @@ export const useTodoCharts = (args: {
           return html
         },
       },
-      legend: { data: categories, top: 0, textStyle: { color: t.text } },
+      legend: {
+        type: 'scroll',
+        data: categories,
+        top: 0,
+        textStyle: { color: t.text },
+        pageButtonItemGap: 5,
+        pageIconSize: 12,
+      },
       grid: { left: 24, right: 24, top: 46, bottom: 0, containLabel: true },
       xAxis: {
         type: 'category',

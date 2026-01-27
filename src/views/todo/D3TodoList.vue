@@ -39,8 +39,6 @@ import {
   AddIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   SettingIcon,
   DeleteIcon,
   EditIcon,
@@ -124,11 +122,7 @@ const loadingMessage = ref('正在初始化...')
 const isAuthenticated = ref(false)
 const authDialogVisible = ref(false)
 const authPassword = ref('')
-const authSetupDialogVisible = ref(false)
-const setupPassword = ref('')
-const setupPasswordConfirm = ref('')
 const authPasswordRef = ref()
-const setupPasswordRef = ref()
 
 watch(
   () => authDialogVisible.value,
@@ -136,17 +130,6 @@ watch(
     if (val) {
       nextTick(() => {
         authPasswordRef.value?.focus()
-      })
-    }
-  },
-)
-
-watch(
-  () => authSetupDialogVisible.value,
-  (val) => {
-    if (val) {
-      nextTick(() => {
-        setupPasswordRef.value?.focus()
       })
     }
   },
@@ -429,6 +412,68 @@ const archiveTemplateInSupabase = async (id: string) => {
     console.error('Error archiving template:', err)
     MessagePlugin.error('归档模板时发生错误')
     return false
+  }
+}
+
+/**
+ * Generate a todo from a template using server-first approach
+ * This ensures all auto-generated todos have proper UUIDs from the database
+ */
+const generateTodoFromTemplate = async (
+  template: TodoTemplate,
+  dayKey: string,
+): Promise<Todo | null> => {
+  try {
+    const now = Date.now()
+
+    const dbPayload = {
+      title: template.title,
+      category: template.category,
+      period: template.period,
+      min_frequency: template.minFrequency,
+      unit: template.unit,
+      minutes_per_time: template.minutesPerTime || null,
+      description: template.description,
+      done: false,
+      completed_at: null,
+      punch_ins: 0,
+      template_id: template.id,
+      created_at: new Date(now).toISOString(),
+      day_key: dayKey,
+      deadline: null,
+    }
+
+    console.log('📋 Generating todo from template:', template.title, 'for', dayKey)
+
+    const { data, error } = await supabase.from('todos').insert(dbPayload).select().single()
+
+    if (error || !data) {
+      console.error('❌ Failed to generate todo from template:', error)
+      return null
+    }
+
+    console.log('✅ Todo generated successfully:', data)
+
+    // Map back to local interface
+    return {
+      id: data.id,
+      title: data.title,
+      done: data.done,
+      punchIns: data.punch_ins,
+      category: data.category,
+      period: data.period as TodoPeriod,
+      minFrequency: data.min_frequency,
+      unit: data.unit as TodoUnit,
+      minutesPerTime: data.minutes_per_time,
+      description: data.description,
+      templateId: data.template_id,
+      createdAt: new Date(data.created_at).getTime(),
+      dayKey: data.day_key,
+      deadline: data.deadline,
+    }
+  } catch (err) {
+    console.error('❌ Error generating todo from template:', err)
+    return null
   }
 }
 
@@ -933,43 +978,16 @@ const confirmPunch = () => {
   }
 
   if (prep.kind === 'ok' && prep.record) {
-    // Server-First Insert
-    // Use the prep.record but without ID (or with placeholder), server generates it.
-    // Map to DB columns
     const dbRecord = {
       todo_id: prep.record.todoId,
       todo_title: prep.record.todoTitle,
       category: prep.record.category,
-      timestamp: prep.record.timestamp, // Store as number (bigint) or ISO string? Existing schema uses bigint? No, verify schema.
-      // wait, schema check for timestamp column type. 'timestamp' usually means number in this code but DB usually timestampz?
-      // Step 921 view of saveTemplateToSupabase used new Date().toISOString() for created_at.
-      // But for punch records, let's verify loadData (Step 1012): timestamp: r.timestamp (number?).
-      // Let's check D3TodoList sync watcher (Step 935): it sends { timestamp: r.timestamp }
-      // If DB calls it 'timestamp', is it bigint or timestamptz?
-      // I should assume it accepts what we send. But let's look at `loadTodosFromSupabase`?
-      // Actually `punchInTodo` used `Date.now()`.
-      // Let's check `saveTemplateToSupabase` (line 290): created_at: new Date().toISOString().
-      // This suggests Supabase uses ISO strings for dates.
-      // BUT `timestamp` in punch records might be a raw number if the user defined it as bigint in DB?
-      // Let's check `fix_rls_all_tables.sql` or `clear_test_data.sql`? No schema file.
-      // Let's check `loadData` again. `timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now()`.
-      // It seems mostly number locally.
-      // Sync watcher (D3TodoList line 500ish) sends `r`.
-      // If I send number, does Supabase accept?
-      // Let's blindly trust the sync logic works, so we mimic it.
-      // But sync sends `r` which has `timestamp` as number.
-      // So I'll send number.
+      timestamp: prep.record.timestamp,
       day_key: prep.record.dayKey,
       unit: prep.record.unit,
       minutes_per_time: prep.record.minutesPerTime,
       note: prep.record.note,
     }
-
-    // We do need to verify timestamp format if I want to be 100% sure.
-    // But let's try ISO string for safety if number fails?
-    // Wait, D3TodoList Line 290 uses ISO string for `created_at`.
-    // D3TodoList Line 1205: `.order('timestamp', ...)`
-    // Whatever, let's try number first as local `PunchRecord` uses number.
 
     supabase
       .from('todo_punch_records')
@@ -1061,10 +1079,12 @@ const saveRecordNote = () => {
 }
 
 const getRecordMinutes = (record: PunchRecord) => {
-  if (record.unit === 'minutes') {
-    return typeof record.minutesPerTime === 'number' ? record.minutesPerTime : 15
+  // Prioritize the actual minutesPerTime value from the record
+  if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
+    return record.minutesPerTime
   }
 
+  // Fallback to template settings if record has no minutesPerTime
   const tpl = templates.value.find(
     (t) =>
       t.title === record.todoTitle && (t.category || '未分类') === (record.category || '未分类'),
@@ -1339,7 +1359,61 @@ onMounted(async () => {
     }
     loadingProgress.value = 60
 
-    // Step 4: Load Punch Records & Day Stats (60% -> 100%)
+    // Step 3.5: Generate missing template instances (60% -> 65%)
+    loadingMessage.value = '检查模板任务...'
+    const todayDate = new Date()
+    const todayKey = dayjs().format('YYYY-MM-DD')
+
+    // Helper to calculate cycle start based on period
+    const getCycleStartKey = (period: TodoPeriod): string => {
+      if (period === 'daily') return todayKey
+      if (period === 'weekly') {
+        const dayOfWeek = todayDate.getDay()
+        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+        const weekStart = new Date(todayDate)
+        weekStart.setDate(todayDate.getDate() - diff)
+        return dayjs(weekStart).format('YYYY-MM-DD')
+      }
+      if (period === 'monthly') {
+        return dayjs(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)).format(
+          'YYYY-MM-DD',
+        )
+      }
+      if (period === 'yearly') {
+        return dayjs(new Date(todayDate.getFullYear(), 0, 1)).format('YYYY-MM-DD')
+      }
+      return todayKey
+    }
+
+    // Check each template to see if it needs a todo for the current cycle
+    for (const template of templates.value) {
+      if (template.archived || template.period === 'once') continue
+
+      const cycleStartKey = getCycleStartKey(template.period)
+
+      // Check if there's already a todo for this template in the current cycle
+      const existingTodo = todos.value.find((t) => {
+        if (t.templateId !== template.id) return false
+
+        // For the current cycle, check if the todo was created on or after the cycle start
+        const todoCreatedKey = dayjs(t.createdAt).format('YYYY-MM-DD')
+        return todoCreatedKey >= cycleStartKey
+      })
+
+      if (!existingTodo) {
+        console.log(
+          `📋 Template "${template.title}" needs a todo for cycle starting ${cycleStartKey}`,
+        )
+        const generated = await generateTodoFromTemplate(template, cycleStartKey)
+        if (generated) {
+          addTodoDirectly(generated)
+          console.log(`✅ Generated todo for template: ${template.title}`)
+        }
+      }
+    }
+    loadingProgress.value = 65
+
+    // Step 4: Load Punch Records & Day Stats (65% -> 100%)
     loadingMessage.value = '加载打卡记录...'
     // 4. Load Stats and Records
     const { data: statsData } = await supabase.from('todo_day_stats').select('*')
@@ -1406,43 +1480,26 @@ onMounted(async () => {
     // Hide loading overlay after short delay
     setTimeout(() => {
       pageLoading.value = false
-
-      // Check authentication setup
-      const storedHash = localStorage.getItem('todo_auth_hash')
-      if (storedHash) {
-        // Auth is set up, show verification dialog
-        authDialogVisible.value = true
-      } else {
-        // First time, show setup dialog
-        authSetupDialogVisible.value = true
-      }
+      // Show authentication dialog
+      authDialogVisible.value = true
     }, 300)
   }
 })
 
 // Authentication functions
-const hashPassword = async (password: string): Promise<string> => {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-const verifyAuth = async () => {
+const verifyAuth = () => {
   if (!authPassword.value.trim()) {
     MessagePlugin.warning({ content: '请输入密码' })
     return
   }
 
-  const storedHash = localStorage.getItem('todo_auth_hash')
-  if (!storedHash) {
-    MessagePlugin.error({ content: '未找到认证信息' })
+  const envPassword = import.meta.env.VITE_TODO_PASSWORD
+  if (!envPassword) {
+    MessagePlugin.error({ content: '未配置环境变量 VITE_TODO_PASSWORD' })
     return
   }
 
-  const inputHash = await hashPassword(authPassword.value)
-  if (inputHash === storedHash) {
+  if (authPassword.value === envPassword) {
     isAuthenticated.value = true
     authDialogVisible.value = false
     authPassword.value = ''
@@ -1451,32 +1508,6 @@ const verifyAuth = async () => {
     MessagePlugin.error({ content: '密码错误' })
     authPassword.value = ''
   }
-}
-
-const setupAuth = async () => {
-  if (!setupPassword.value.trim()) {
-    MessagePlugin.warning({ content: '请输入密码' })
-    return
-  }
-
-  if (setupPassword.value.length < 4) {
-    MessagePlugin.warning({ content: '密码至少需要4个字符' })
-    return
-  }
-
-  if (setupPassword.value !== setupPasswordConfirm.value) {
-    MessagePlugin.warning({ content: '两次输入的密码不一致' })
-    return
-  }
-
-  const hash = await hashPassword(setupPassword.value)
-  localStorage.setItem('todo_auth_hash', hash)
-
-  isAuthenticated.value = true
-  authSetupDialogVisible.value = false
-  setupPassword.value = ''
-  setupPasswordConfirm.value = ''
-  MessagePlugin.success({ content: '密码设置成功' })
 }
 
 const categoryOptions = computed(() => uiConfig.value.categories)
@@ -1577,6 +1608,21 @@ const saveEdit = async () => {
     description: editDescription.value.trim() || undefined,
   })
 
+  // Update punch records in Supabase
+  const { error: punchUpdateError } = await supabase
+    .from('todo_punch_records')
+    .update({ todo_title: nextTitle })
+    .eq('todo_id', id)
+    .select()
+
+  if (punchUpdateError) {
+    console.error('Failed to update punch record titles:', punchUpdateError)
+  } else {
+    punchRecords.value = punchRecords.value.map((record) =>
+      record.todoId === id ? { ...record, todoTitle: nextTitle } : record,
+    )
+  }
+
   editVisible.value = false
   editingTodoId.value = null
   MessagePlugin.success('已保存修改')
@@ -1644,6 +1690,13 @@ const addGoalHistory = async () => {
   const prep = preparePunch(id, content)
 
   if (prep.kind === 'ok' && prep.record) {
+    // Include time investment if specified
+    const mins = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
+    if (mins > 0) {
+      prep.record.minutesPerTime = mins
+      prep.record.unit = 'minutes'
+    }
+
     // Build DB payload
     const dbRecord = {
       todo_id: prep.record.todoId,
@@ -1683,20 +1736,6 @@ const addGoalHistory = async () => {
               })
           }
 
-          // 3. 如果有输入时间，更新打卡时间 (Server-First update)
-          const mins = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
-          if (mins > 0) {
-            // We need to update database AND local
-            supabase
-              .from('todo_punch_records')
-              .update({ minutes_per_time: mins, unit: 'minutes' })
-              .eq('id', data.id)
-              .then(({ error: updateErr }) => {
-                if (!updateErr) {
-                  updatePunchRecordMinutes(data.id, mins)
-                }
-              })
-          }
           MessagePlugin.success('已添加记录并同步打卡')
         } else {
           MessagePlugin.warning('历史记录添加成功，但打卡同步失败')
@@ -2150,21 +2189,7 @@ const todayPunchRecords = computed(() =>
 )
 const todayPunchInsTotal = computed(() => todayPunchRecords.value.length)
 const todayMinutesTotal = computed(() => {
-  return todayPunchRecords.value.reduce((sum, r) => {
-    if (r.unit === 'minutes') {
-      const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
-      return sum + mins
-    }
-    // 兼容旧记录或次数类型的打卡（如果后来改成了分钟单位）
-    const tpl = templates.value.find(
-      (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
-    )
-    if (tpl && tpl.unit === 'minutes') {
-      const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
-      return sum + mins
-    }
-    return sum
-  }, 0)
+  return todayPunchRecords.value.reduce((sum, r) => sum + getRecordMinutes(r), 0)
 })
 
 // 当天可以打卡的总任务数 (所有今天显示的任务，排除目标)
@@ -2763,40 +2788,6 @@ const exportDialogWidth = computed(() => {
   </div>
 
   <!-- Authentication Setup Dialog (First Time) -->
-  <t-dialog
-    v-model:visible="authSetupDialogVisible"
-    header="设置访问密码"
-    :close-on-overlay-click="false"
-    :close-btn="false"
-    width="400px"
-    :confirm-btn="{ content: '确认', theme: 'primary' }"
-    :cancel-btn="null"
-    @confirm="() => setupAuth()"
-  >
-    <div class="p-4">
-      <div class="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-        首次使用需要设置密码以保护您的待办事项
-      </div>
-
-      <div class="space-y-3">
-        <t-input
-          v-model="setupPassword"
-          type="password"
-          placeholder="输入密码(至少4个字符)"
-          ref="setupPasswordRef"
-          @enter="() => setupAuth()"
-          autofocus
-        />
-        <t-input
-          v-model="setupPasswordConfirm"
-          type="password"
-          placeholder="确认密码"
-          @enter="() => setupAuth()"
-        />
-      </div>
-    </div>
-  </t-dialog>
-
   <!-- Authentication Verification Dialog -->
   <t-dialog
     v-model:visible="authDialogVisible"
@@ -2829,168 +2820,179 @@ const exportDialogWidth = computed(() => {
     v-if="isAuthenticated"
     class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4"
   >
-    <div class="max-w-[1200px] mx-auto px-4 pt-4">
-      <div class="text-lg md:text-2xl mb-4">今天是: {{ todayDisplay }}</div>
-      <div v-if="isMobile" class="flex items-center justify-between mb-2">
-        <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">添加任务/目标</div>
-        <t-button
-          shape="square"
-          variant="text"
-          size="small"
-          @click="isAddPanelOpen = !isAddPanelOpen"
-        >
-          <template #icon>
-            <chevron-down-icon v-if="!isAddPanelOpen" />
-            <chevron-up-icon v-else />
-          </template>
-        </t-button>
+    <div class="max-w-[1200px] mx-auto pt-4 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+        <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
+        <div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+          {{ todayDisplay }}
+        </div>
       </div>
+    </div>
 
+    <!-- Add Task/Goal Section (Desktop only) -->
+    <div v-if="!isMobile" class="max-w-[1200px] mx-auto mt-4 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+          <t-input
+            autofocus
+            v-model="title"
+            :onEnter="addTodo"
+            :placeholder="
+              !categoryOptions.length
+                ? '请先在配置管理中添加分类'
+                : period === 'once'
+                  ? '添加目标'
+                  : '添加任务'
+            "
+            class="flex-1"
+          ></t-input>
+          <t-button
+            @click="addTodo"
+            class="w-full sm:w-auto"
+            :disabled="!categoryOptions.length || !category"
+          >
+            <template #icon>
+              <add-icon size="20" />
+            </template>
+            {{ period === 'once' ? '新建目标' : '新建任务' }}
+          </t-button>
+        </div>
+
+        <div class="grid grid-cols-12 gap-x-4 gap-y-3 mt-4">
+          <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
+            <div class="flex items-center gap-2 flex-1">
+              <t-radio-group
+                v-if="categoryOptions.length"
+                v-model="category"
+                variant="default-filled"
+                size="small"
+                class="flex flex-wrap"
+              >
+                <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
+                  c
+                }}</t-radio-button>
+              </t-radio-group>
+              <div v-else class="text-sm text-neutral-400">暂无分类，请先添加</div>
+              <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
+                <template #icon><setting-icon /></template>
+              </t-button>
+            </div>
+          </div>
+
+          <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">任务周期</div>
+            <t-radio-group
+              v-model="period"
+              variant="default-filled"
+              size="small"
+              class="flex flex-wrap"
+            >
+              <t-radio-button value="daily" :disabled="!categoryOptions.length"
+                >每天</t-radio-button
+              >
+              <t-radio-button value="weekly" :disabled="!categoryOptions.length"
+                >每周</t-radio-button
+              >
+              <t-radio-button value="monthly" :disabled="!categoryOptions.length"
+                >每月</t-radio-button
+              >
+              <t-radio-button value="yearly" :disabled="!categoryOptions.length"
+                >每年</t-radio-button
+              >
+              <t-radio-button value="once" :disabled="!categoryOptions.length">目标</t-radio-button>
+            </t-radio-group>
+          </div>
+
+          <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">最小频率</div>
+            <div class="flex items-center gap-2">
+              <t-radio-group
+                v-model="minFrequency"
+                variant="default-filled"
+                size="small"
+                :disabled="period === 'once'"
+                class="flex flex-wrap"
+              >
+                <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{
+                  freq
+                }}</t-radio-button>
+              </t-radio-group>
+              <div class="text-sm text-neutral-400">次</div>
+              <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
+                <template #icon><setting-icon /></template>
+              </t-button>
+            </div>
+          </div>
+
+          <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">任务单位</div>
+            <t-radio-group
+              v-model="unit"
+              variant="default-filled"
+              size="small"
+              :disabled="period === 'once'"
+              class="flex flex-wrap"
+            >
+              <t-radio-button value="times">次数</t-radio-button>
+              <t-radio-button value="minutes">分钟</t-radio-button>
+            </t-radio-group>
+          </div>
+
+          <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">每次分钟</div>
+            <div class="flex items-center gap-2 flex-1">
+              <t-radio-group
+                v-model="minutesPerTime"
+                variant="default-filled"
+                size="small"
+                :disabled="period === 'once' || unit !== 'minutes'"
+                class="flex flex-wrap"
+              >
+                <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{
+                  mins
+                }}</t-radio-button>
+              </t-radio-group>
+              <div class="text-sm text-neutral-400">分钟</div>
+              <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
+                <template #icon><setting-icon /></template>
+              </t-button>
+            </div>
+          </div>
+
+          <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">任务描述</div>
+            <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
+          </div>
+
+          <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="text-sm sm:w-[72px] shrink-0">截止日期</div>
+            <t-date-picker
+              :disabled="period !== 'once'"
+              v-model="deadline"
+              placeholder="可选：选择截止日期"
+              class="flex-1 w-full"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="max-w-[1200px] mx-auto mt-4 px-4">
       <div
-        v-show="!isMobile || isAddPanelOpen"
-        class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+        class="bg-white/50 dark:bg-neutral-800/50 rounded-lg p-6 border border-dashed border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center text-neutral-400"
       >
-        <t-input
-          autofocus
-          v-model="title"
-          :onEnter="addTodo"
-          :placeholder="
-            !categoryOptions.length
-              ? '请先在配置管理中添加分类'
-              : period === 'once'
-                ? '添加目标'
-                : '添加任务'
-          "
-          class="flex-1"
-        ></t-input>
-        <t-button
-          @click="addTodo"
-          class="w-full sm:w-auto"
-          :disabled="!categoryOptions.length || !category"
-        >
-          <template #icon>
-            <add-icon size="20" />
-          </template>
-          {{ period === 'once' ? '新建目标' : '新建任务' }}
-        </t-button>
+        <div class="text-2xl mb-2">💻</div>
+        <div class="text-sm font-medium">移动端暂不支持添加数据</div>
+        <div class="text-xs mt-1">请前往电脑端进行管理</div>
       </div>
     </div>
 
-    <div
-      v-show="!isMobile || isAddPanelOpen"
-      class="max-w-[1200px] mx-auto mt-4 px-4 grid grid-cols-12 gap-x-4 gap-y-3"
-    >
-      <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
-        <div class="flex items-center gap-2 flex-1">
-          <t-radio-group
-            v-if="categoryOptions.length"
-            v-model="category"
-            variant="default-filled"
-            size="small"
-            class="flex flex-wrap"
-          >
-            <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
-              c
-            }}</t-radio-button>
-          </t-radio-group>
-          <div v-else class="text-sm text-neutral-400">暂无分类，请先添加</div>
-          <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
-            <template #icon><setting-icon /></template>
-          </t-button>
-        </div>
+    <!-- Section Title: Tasks/Goals -->
+    <div class="max-w-[1200px] mx-auto mt-4 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+        <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
+        <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">任务/目标</h2>
       </div>
-
-      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">任务周期</div>
-        <t-radio-group
-          v-model="period"
-          variant="default-filled"
-          size="small"
-          class="flex flex-wrap"
-        >
-          <t-radio-button value="daily" :disabled="!categoryOptions.length">每天</t-radio-button>
-          <t-radio-button value="weekly" :disabled="!categoryOptions.length">每周</t-radio-button>
-          <t-radio-button value="monthly" :disabled="!categoryOptions.length">每月</t-radio-button>
-          <t-radio-button value="yearly" :disabled="!categoryOptions.length">每年</t-radio-button>
-          <t-radio-button value="once" :disabled="!categoryOptions.length">目标</t-radio-button>
-        </t-radio-group>
-      </div>
-
-      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">最小频率</div>
-        <div class="flex items-center gap-2">
-          <t-radio-group
-            v-model="minFrequency"
-            variant="default-filled"
-            size="small"
-            :disabled="period === 'once'"
-            class="flex flex-wrap"
-          >
-            <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{
-              freq
-            }}</t-radio-button>
-          </t-radio-group>
-          <div class="text-sm text-neutral-400">次</div>
-          <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
-            <template #icon><setting-icon /></template>
-          </t-button>
-        </div>
-      </div>
-
-      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">任务单位</div>
-        <t-radio-group
-          v-model="unit"
-          variant="default-filled"
-          size="small"
-          :disabled="period === 'once'"
-          class="flex flex-wrap"
-        >
-          <t-radio-button value="times">次数</t-radio-button>
-          <t-radio-button value="minutes">分钟</t-radio-button>
-        </t-radio-group>
-      </div>
-
-      <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">每次分钟</div>
-        <div class="flex items-center gap-2 flex-1">
-          <t-radio-group
-            v-model="minutesPerTime"
-            variant="default-filled"
-            size="small"
-            :disabled="period === 'once' || unit !== 'minutes'"
-            class="flex flex-wrap"
-          >
-            <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{
-              mins
-            }}</t-radio-button>
-          </t-radio-group>
-          <div class="text-sm text-neutral-400">分钟</div>
-          <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
-            <template #icon><setting-icon /></template>
-          </t-button>
-        </div>
-      </div>
-
-      <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">任务描述</div>
-        <t-input v-model="description" placeholder="可选：添加任务的详细描述" class="flex-1" />
-      </div>
-
-      <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div class="text-sm sm:w-[72px] shrink-0">截止日期</div>
-        <t-date-picker
-          :disabled="period !== 'once'"
-          v-model="deadline"
-          placeholder="可选：选择截止日期"
-          class="flex-1 w-full"
-        />
-      </div>
-    </div>
-
-    <div class="max-w-[1200px] mx-auto mt-2 px-4 flex items-center justify-between gap-2">
-      <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">任务/目标</h2>
     </div>
 
     <div class="max-w-[1200px] mx-auto mt-4 px-4">
@@ -3002,7 +3004,7 @@ const exportDialogWidth = computed(() => {
         <div
           v-for="group in boardGroups"
           :key="group.name"
-          class="group rounded-2xl border border-t-0 border-r-0 border-b-0 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm shadow-lg flex flex-col overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl cursor-pointer"
+          class="group rounded-lg border border-t-0 border-r-0 border-b-0 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm shadow-lg flex flex-col overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl cursor-pointer"
           :style="{
             borderLeftColor: group.color,
             borderLeftWidth: '5px',
@@ -3095,7 +3097,7 @@ const exportDialogWidth = computed(() => {
 
           <!-- Footer Progress -->
           <div
-            class="px-5 py-4 bg-linear-to-r from-teal-50/50 to-transparent dark:from-teal-900/10 dark:to-transparent border-t border-neutral-100 dark:border-neutral-700"
+            class="p-2 bg-linear-to-r from-teal-50/50 to-transparent dark:from-teal-900/10 dark:to-transparent border-t border-neutral-100 dark:border-neutral-700"
           >
             <div
               class="flex items-center justify-between text-xs mb-2"
@@ -3122,490 +3124,513 @@ const exportDialogWidth = computed(() => {
           </div>
         </div>
       </div>
-      <div v-else class="flex flex-col items-center justify-center py-12 text-neutral-400">
+      <div
+        v-else
+        class="flex flex-col items-center justify-center py-12 text-neutral-400 bg-white dark:bg-neutral-800 rounded-lg shadow-sm"
+      >
         <t-empty description="暂无分类任务，请先添加任务" />
       </div>
+    </div>
 
-      <!-- History & Archive Section -->
-      <div>
-        <div class="flex items-center justify-between mb-4 px-1">
-          <h2 class="text-xl font-bold flex items-center gap-2">历史/归档</h2>
-        </div>
+    <!-- Section Title: History/Archive -->
+    <div class="max-w-[1200px] mx-auto mt-4 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+        <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
+        <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">历史/归档</h2>
+      </div>
+    </div>
 
-        <t-tabs
-          :default-value="1"
-          class="rounded-md overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900"
-        >
-          <t-tab-panel :value="1" :label="`打卡记录 (${currentHistoryRecords.length})`">
-            <div class="min-h-[300px] p-2">
-              <div
-                class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2"
-              >
-                <div class="flex items-center gap-2">
-                  <t-button variant="text" shape="square" @click="prevDay">
-                    <template #icon><chevron-left-icon /></template>
-                  </t-button>
-                  <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
-                  <div class="text-sm shrink-0" v-if="isToday">(今天)</div>
-                  <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
-                    <template #icon><chevron-right-icon /></template>
-                  </t-button>
-                </div>
-                <div class="text-sm">当日打卡: {{ currentHistoryRecords.length }} 次</div>
+    <!-- History & Archive Content -->
+    <div class="max-w-[1200px] mx-auto mt-4 px-4">
+      <t-tabs
+        :default-value="1"
+        class="rounded-lg overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm"
+      >
+        <t-tab-panel :value="1" :label="`打卡记录 (${currentHistoryRecords.length})`">
+          <div class="min-h-[300px] p-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2">
+              <div class="flex items-center gap-2">
+                <t-button variant="text" shape="square" @click="prevDay">
+                  <template #icon><chevron-left-icon /></template>
+                </t-button>
+                <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
+                <div class="text-sm shrink-0" v-if="isToday">(今天)</div>
+                <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
+                  <template #icon><chevron-right-icon /></template>
+                </t-button>
               </div>
-
-              <template v-if="currentHistoryRecords.length">
-                <div class="flex flex-col gap-2">
-                  <div
-                    v-for="record in currentHistoryRecords"
-                    :key="record.id"
-                    class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div class="flex flex-col gap-1">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span class="font-medium">{{ record.todoTitle }}</span>
-                        <span
-                          v-if="record.category"
-                          class="px-1 rounded text-[11px] font-semibold border"
-                          :style="getCategoryCssVars(record.category)"
-                          :class="getCategoryTagClass(record.category)"
-                          >{{ record.category }}</span
-                        >
-                        <span class="text-xs text-neutral-400">{{
-                          dayjs(record.timestamp).format('HH:mm:ss')
-                        }}</span>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <div
-                          v-if="editingRecordId === record.id"
-                          class="flex flex-wrap items-center gap-2"
-                        >
-                          <t-input
-                            v-model="editingRecordNote"
-                            size="small"
-                            placeholder="输入备注..."
-                            auto-width
-                          />
-                          <div class="flex gap-1">
-                            <t-button
-                              size="small"
-                              theme="primary"
-                              variant="text"
-                              @click="saveRecordNote"
-                              >保存</t-button
-                            >
-                            <t-button
-                              size="small"
-                              theme="default"
-                              variant="text"
-                              @click="editingRecordId = null"
-                              >取消</t-button
-                            >
-                          </div>
-                        </div>
-                        <div
-                          v-else
-                          class="flex items-center gap-2 group cursor-pointer"
-                          @click="startEditRecord(record)"
-                        >
-                          <span class="text-sm text-neutral-600 dark:text-neutral-400">
-                            {{ record.note || '无备注 (点击添加)' }}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div class="flex items-center gap-2">
-                        <div
-                          v-if="editingRecordMinutesId === record.id"
-                          class="flex flex-wrap items-center gap-2"
-                        >
-                          <t-input-number
-                            v-model="editingRecordMinutes"
-                            :min="0"
-                            :step="5"
-                            size="small"
-                            class="w-[120px]"
-                          />
-                          <div class="flex gap-1">
-                            <t-button
-                              size="small"
-                              theme="primary"
-                              variant="text"
-                              @click="saveRecordMinutes"
-                              >保存</t-button
-                            >
-                            <t-button
-                              size="small"
-                              theme="default"
-                              variant="text"
-                              @click="editingRecordMinutesId = null"
-                              >取消</t-button
-                            >
-                          </div>
-                        </div>
-                        <div
-                          v-else
-                          class="flex items-center gap-2 group cursor-pointer"
-                          @click="startEditRecordMinutes(record)"
-                        >
-                          <span class="text-sm text-neutral-600 dark:text-neutral-400">
-                            <template v-if="getRecordMinutes(record) > 0">
-                              {{ getRecordMinutes(record) }} 分钟 (点击修改)
-                            </template>
-                            <template v-else> 分钟未记录 (点击补充) </template>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div
-                  class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
-                >
-                  <t-empty description="该日暂无打卡记录" />
-                </div>
-              </template>
+              <div class="text-sm">当日打卡: {{ currentHistoryRecords.length }} 次</div>
             </div>
-          </t-tab-panel>
-          <t-tab-panel :value="2" :label="`已归档 (${archivedHistorySorted.length})`">
-            <div class="min-h-[300px] p-2">
-              <template v-if="archivedHistorySorted.length">
-                <div class="flex flex-col gap-2">
-                  <div
-                    v-for="item in archivedHistorySorted"
-                    :key="`${item.title}@@${item.category}@@${item.period}@@${item.archivedAt}`"
-                    class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
-                  >
-                    <div class="flex flex-col gap-2">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span class="font-medium">{{ item.title }}</span>
-                        <span
-                          v-if="item.category"
-                          class="px-2 py-0.5 rounded text-[11px] font-semibold border"
-                          :style="getCategoryCssVars(item.category)"
-                          :class="getCategoryTagClass(item.category)"
-                        >
-                          {{ item.category }}
-                        </span>
-                        <t-tag size="small" variant="dark" :theme="getPeriodTheme(item.period)">{{
-                          periodTextMap[item.period]
-                        }}</t-tag>
-                        <t-tag size="small" variant="light" theme="default">
-                          <template v-if="item.unit === 'minutes'">
-                            目标 {{ item.minFrequency }} 次 × {{ item.minutesPerTime || 0 }} 分钟
-                          </template>
-                          <template v-else>目标 {{ item.minFrequency }} 次</template>
-                        </t-tag>
-                        <span class="text-xs text-neutral-400"
-                          >归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm') }}</span
-                        >
+
+            <template v-if="currentHistoryRecords.length">
+              <div class="flex flex-col gap-2">
+                <div
+                  v-for="record in currentHistoryRecords"
+                  :key="record.id"
+                  class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div class="flex flex-col gap-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium">{{ record.todoTitle }}</span>
+                      <span
+                        v-if="record.category"
+                        class="px-1 rounded text-[11px] font-semibold border"
+                        :style="getCategoryCssVars(record.category)"
+                        :class="getCategoryTagClass(record.category)"
+                        >{{ record.category }}</span
+                      >
+                      <span class="text-xs text-neutral-400">{{
+                        dayjs(record.timestamp).format('HH:mm:ss')
+                      }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <div
+                        v-if="editingRecordId === record.id"
+                        class="flex flex-wrap items-center gap-2"
+                      >
+                        <t-input
+                          v-model="editingRecordNote"
+                          size="small"
+                          placeholder="输入备注..."
+                          auto-width
+                        />
+                        <div class="flex gap-1">
+                          <t-button
+                            size="small"
+                            theme="primary"
+                            variant="text"
+                            @click="saveRecordNote"
+                            >保存</t-button
+                          >
+                          <t-button
+                            size="small"
+                            theme="default"
+                            variant="text"
+                            @click="editingRecordId = null"
+                            >取消</t-button
+                          >
+                        </div>
                       </div>
                       <div
-                        v-if="item.description"
-                        class="text-sm text-neutral-600 dark:text-neutral-400"
+                        v-else
+                        class="flex items-center gap-2 group cursor-pointer"
+                        @click="startEditRecord(record)"
                       >
-                        {{ item.description }}
+                        <span class="text-sm text-neutral-600 dark:text-neutral-400">
+                          {{ record.note || '无备注 (点击添加)' }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <div
+                        v-if="editingRecordMinutesId === record.id"
+                        class="flex flex-wrap items-center gap-2"
+                      >
+                        <t-input-number
+                          v-model="editingRecordMinutes"
+                          :min="0"
+                          :step="5"
+                          size="small"
+                          class="w-[120px]"
+                        />
+                        <div class="flex gap-1">
+                          <t-button
+                            size="small"
+                            theme="primary"
+                            variant="text"
+                            @click="saveRecordMinutes"
+                            >保存</t-button
+                          >
+                          <t-button
+                            size="small"
+                            theme="default"
+                            variant="text"
+                            @click="editingRecordMinutesId = null"
+                            >取消</t-button
+                          >
+                        </div>
+                      </div>
+                      <div
+                        v-else
+                        class="flex items-center gap-2 group cursor-pointer"
+                        @click="startEditRecordMinutes(record)"
+                      >
+                        <span class="text-sm text-neutral-600 dark:text-neutral-400">
+                          <template v-if="getRecordMinutes(record) > 0">
+                            {{ getRecordMinutes(record) }} 分钟 (点击修改)
+                          </template>
+                          <template v-else> 分钟未记录 (点击补充) </template>
+                        </span>
                       </div>
                     </div>
                   </div>
                 </div>
-              </template>
-              <template v-else>
+              </div>
+            </template>
+            <template v-else>
+              <div
+                class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
+              >
+                <t-empty description="该日暂无打卡记录" />
+              </div>
+            </template>
+          </div>
+        </t-tab-panel>
+        <t-tab-panel :value="2" :label="`已归档 (${archivedHistorySorted.length})`">
+          <div class="min-h-[300px] p-2">
+            <template v-if="archivedHistorySorted.length">
+              <div class="flex flex-col gap-2">
                 <div
-                  class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
+                  v-for="item in archivedHistorySorted"
+                  :key="`${item.title}@@${item.category}@@${item.period}@@${item.archivedAt}`"
+                  class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
                 >
-                  <t-empty description="暂无归档数据" />
+                  <div class="flex flex-col gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium">{{ item.title }}</span>
+                      <span
+                        v-if="item.category"
+                        class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+                        :style="getCategoryCssVars(item.category)"
+                        :class="getCategoryTagClass(item.category)"
+                      >
+                        {{ item.category }}
+                      </span>
+                      <t-tag size="small" variant="dark" :theme="getPeriodTheme(item.period)">{{
+                        periodTextMap[item.period]
+                      }}</t-tag>
+                      <t-tag size="small" variant="light" theme="default">
+                        <template v-if="item.unit === 'minutes'">
+                          目标 {{ item.minFrequency }} 次 × {{ item.minutesPerTime || 0 }} 分钟
+                        </template>
+                        <template v-else>目标 {{ item.minFrequency }} 次</template>
+                      </t-tag>
+                      <span class="text-xs text-neutral-400"
+                        >归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm') }}</span
+                      >
+                    </div>
+                    <div
+                      v-if="item.description"
+                      class="text-sm text-neutral-600 dark:text-neutral-400"
+                    >
+                      {{ item.description }}
+                    </div>
+                  </div>
                 </div>
-              </template>
-            </div>
-          </t-tab-panel>
-        </t-tabs>
+              </div>
+            </template>
+            <template v-else>
+              <div
+                class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
+              >
+                <t-empty description="暂无归档数据" />
+              </div>
+            </template>
+          </div>
+        </t-tab-panel>
+      </t-tabs>
+    </div>
+
+    <!-- Section Title: Data Statistics -->
+    <div class="max-w-[1200px] mx-auto mt-4 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+        <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
+        <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">数据统计</h2>
       </div>
+    </div>
 
-      <div
-        class="p-2 sm:p-2 bg-white dark:bg-neutral-950 srounded-md mt-2 border border-neutral-100 dark:border-neutral-800 rounded-md"
-      >
-        <div
-          class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2"
-        >
-          <div class="text-sm">数据统计</div>
-          <div class="flex items-center gap-2">
-            <t-radio-group v-model="statsRange" variant="default-filled" size="small">
-              <t-radio-button value="7d">7天</t-radio-button>
-              <t-radio-button value="30d">30天</t-radio-button>
-            </t-radio-group>
-            <t-button
-              shape="square"
-              size="small"
-              theme="primary"
-              variant="outline"
-              :disabled="exporting"
-              @click="openExportDialog"
+    <!-- Data Statistics Content -->
+    <div class="max-w-[1200px] mx-auto mt-4 px-4 pb-2">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm overflow-hidden">
+        <div class="p-4">
+          <div
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4"
+          >
+            <div class="flex items-center gap-2">
+              <t-radio-group v-model="statsRange" variant="default-filled" size="small">
+                <t-radio-button value="7d">7天</t-radio-button>
+                <t-radio-button value="30d">30天</t-radio-button>
+              </t-radio-group>
+              <t-button
+                shape="square"
+                size="small"
+                theme="primary"
+                variant="outline"
+                :disabled="exporting"
+                @click="openExportDialog"
+              >
+                <template v-slot:icon>
+                  <file-export-icon />
+                </template>
+              </t-button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+            <div
+              class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
             >
-              <template v-slot:icon>
-                <file-export-icon />
-              </template>
-            </t-button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
-          <div
-            class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
-          >
-            <div class="text-xs text-center mb-1">可打卡任务</div>
-            <div class="flex flex-col items-center justify-center gap-1">
-              <div
-                class="text-2xl sm:text-3xl font-bold text-center text-green-600 dark:text-green-400"
-              >
-                {{ animatedScheduled }}
-              </div>
-              <t-tag size="small" variant="light" theme="success"
-                >已打卡: {{ todayPunchedCount }}</t-tag
-              >
-            </div>
-          </div>
-          <div
-            class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
-          >
-            <div class="text-xs text-center mb-1">未开始任务</div>
-            <div class="flex flex-col items-center justify-center gap-1">
-              <div
-                class="text-2xl sm:text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400"
-              >
-                {{ animatedUnstarted }}
-              </div>
-              <t-tag size="small" variant="light" theme="warning"
-                >占比: {{ unstartedTaskRatio }}%</t-tag
-              >
-            </div>
-          </div>
-          <div
-            class="p-2 rounded bg-linear-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
-          >
-            <div class="text-xs text-center mb-1">未完成目标</div>
-            <div class="flex flex-col items-center justify-center gap-1">
-              <div
-                class="text-2xl sm:text-3xl font-bold text-center text-red-600 dark:text-red-400"
-              >
-                {{ animatedUnfinishedGoals }}
-              </div>
-              <t-tag size="small" variant="light" theme="danger"
-                >占比: {{ unfinishedGoalRatio }}%</t-tag
-              >
-            </div>
-          </div>
-          <div
-            class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
-          >
-            <div class="text-xs text-center mb-1">今日打卡次数</div>
-            <div class="flex flex-col items-center justify-center gap-1">
-              <div
-                class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400"
-              >
-                {{ animatedPunchIns }}
-              </div>
-              <t-tag size="small" variant="light" :theme="punchInsDiff >= 0 ? 'success' : 'danger'">
-                较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
-              </t-tag>
-            </div>
-          </div>
-          <div
-            class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
-          >
-            <div class="text-xs text-center mb-1">今日累计分钟</div>
-            <div class="flex flex-col items-center justify-center gap-1">
-              <div
-                class="text-2xl sm:text-3xl font-bold text-center text-purple-600 dark:text-purple-400"
-              >
-                {{ animatedMinutes }}
-              </div>
-              <t-tag size="small" variant="light" :theme="minutesDiff >= 0 ? 'success' : 'danger'">
-                较昨日{{ minutesDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(minutesDiff) }} 分钟
-              </t-tag>
-            </div>
-          </div>
-          <div
-            class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
-          >
-            <div class="text-xs text-center mb-1">连续打卡天数</div>
-            <div class="flex flex-col items-center justify-center gap-1">
-              <div
-                class="text-2xl sm:text-3xl font-bold text-center text-orange-600 dark:text-orange-400"
-              >
-                {{ animatedConsecutive }}
-              </div>
-              <t-tag size="small" variant="light" theme="warning">
-                最大连续: {{ animatedMaxConsecutive }} 天
-              </t-tag>
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden mb-2 relative">
-          <div
-            class="px-2 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700"
-          >
-            <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">
-              最近一年活跃热力图（打卡次数/分钟数）
-            </div>
-          </div>
-          <div class="p-2">
-            <div class="w-full overflow-x-auto">
-              <div class="w-fit mx-auto">
+              <div class="text-xs text-center mb-1">可打卡任务</div>
+              <div class="flex flex-col items-center justify-center gap-1">
                 <div
-                  id="todo-cal-heatmap"
-                  ref="heatmapContainerRef"
-                  class="min-w-[980px] min-h-[140px] overflow-x-auto"
-                ></div>
+                  class="text-2xl sm:text-3xl font-bold text-center text-green-600 dark:text-green-400"
+                >
+                  {{ animatedScheduled }}
+                </div>
+                <t-tag size="small" variant="light" theme="success"
+                  >已打卡: {{ todayPunchedCount }}</t-tag
+                >
               </div>
             </div>
-          </div>
-          <div
-            v-if="heatmapLoading"
-            class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-neutral-950/50 rounded-md"
-          >
-            <t-loading text="正在更新热力图..." />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-12 gap-2">
-          <div
-            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
-          >
             <div
-              class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center"
+              class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
             >
-              <div class="text-xs font-bold text-blue-600 dark:text-blue-400">
-                各任务类型的打卡趋势
-              </div>
-              <div class="flex items-center gap-1">
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="copyChart(chart1Ref, '各任务类型的打卡趋势')"
+              <div class="text-xs text-center mb-1">未开始任务</div>
+              <div class="flex flex-col items-center justify-center gap-1">
+                <div
+                  class="text-2xl sm:text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400"
                 >
-                  <template #icon><copy-icon /></template>
-                </t-button>
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
+                  {{ animatedUnstarted }}
+                </div>
+                <t-tag size="small" variant="light" theme="warning"
+                  >占比: {{ unstartedTaskRatio }}%</t-tag
                 >
-                  <template #icon><download-icon /></template>
-                </t-button>
               </div>
             </div>
-            <div class="p-2">
-              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart ref="chart1Ref" :option="punchInsByCategoryOption" autoresize />
-              </div>
-            </div>
-          </div>
-
-          <div
-            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
-          >
             <div
-              class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center"
+              class="p-2 rounded bg-linear-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
             >
-              <div class="text-xs font-bold text-purple-600 dark:text-purple-400">任务分类</div>
-              <div class="flex items-center gap-1">
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="copyChart(chart2Ref, '任务分类')"
+              <div class="text-xs text-center mb-1">未完成目标</div>
+              <div class="flex flex-col items-center justify-center gap-1">
+                <div
+                  class="text-2xl sm:text-3xl font-bold text-center text-red-600 dark:text-red-400"
                 >
-                  <template #icon><copy-icon /></template>
-                </t-button>
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="exportChart(chart2Ref, '任务分类')"
+                  {{ animatedUnfinishedGoals }}
+                </div>
+                <t-tag size="small" variant="light" theme="danger"
+                  >占比: {{ unfinishedGoalRatio }}%</t-tag
                 >
-                  <template #icon><download-icon /></template>
-                </t-button>
               </div>
             </div>
-            <div class="p-2">
-              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart ref="chart2Ref" :option="categoryOption" autoresize />
-              </div>
-            </div>
-          </div>
-
-          <div
-            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
-          >
             <div
-              class="px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border-b border-green-100 dark:border-green-900/30 flex justify-between items-center"
+              class="p-2 rounded bg-linear-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
             >
-              <div class="text-xs font-bold text-green-600 dark:text-green-400">
-                每日打卡次数趋势
-              </div>
-              <div class="flex items-center gap-1">
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="copyChart(chart3Ref, '每日打卡次数趋势')"
+              <div class="text-xs text-center mb-1">今日打卡次数</div>
+              <div class="flex flex-col items-center justify-center gap-1">
+                <div
+                  class="text-2xl sm:text-3xl font-bold text-center text-blue-600 dark:text-blue-400"
                 >
-                  <template #icon><copy-icon /></template>
-                </t-button>
-                <t-button
+                  {{ animatedPunchIns }}
+                </div>
+                <t-tag
                   size="small"
-                  variant="text"
-                  shape="square"
-                  @click="exportChart(chart3Ref, '每日打卡次数趋势')"
+                  variant="light"
+                  :theme="punchInsDiff >= 0 ? 'success' : 'danger'"
                 >
-                  <template #icon><download-icon /></template>
-                </t-button>
+                  较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
+                </t-tag>
               </div>
             </div>
-            <div class="p-2">
-              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart ref="chart3Ref" :option="punchInsOption" autoresize />
+            <div
+              class="p-2 rounded bg-linear-to-br from-purple-100 to-purple-50 dark:from-purple-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
+            >
+              <div class="text-xs text-center mb-1">今日累计分钟</div>
+              <div class="flex flex-col items-center justify-center gap-1">
+                <div
+                  class="text-2xl sm:text-3xl font-bold text-center text-purple-600 dark:text-purple-400"
+                >
+                  {{ animatedMinutes }}
+                </div>
+                <t-tag
+                  size="small"
+                  variant="light"
+                  :theme="minutesDiff >= 0 ? 'success' : 'danger'"
+                >
+                  较昨日{{ minutesDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(minutesDiff) }} 分钟
+                </t-tag>
+              </div>
+            </div>
+            <div
+              class="p-2 rounded bg-linear-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
+            >
+              <div class="text-xs text-center mb-1">连续打卡天数</div>
+              <div class="flex flex-col items-center justify-center gap-1">
+                <div
+                  class="text-2xl sm:text-3xl font-bold text-center text-orange-600 dark:text-orange-400"
+                >
+                  {{ animatedConsecutive }}
+                </div>
+                <t-tag size="small" variant="light" theme="warning">
+                  最大连续: {{ animatedMaxConsecutive }} 天
+                </t-tag>
               </div>
             </div>
           </div>
 
-          <div
-            class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
-          >
+          <div class="rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden mb-2 relative">
             <div
-              class="px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-900/30 flex justify-between items-center"
+              class="px-2 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700"
             >
-              <div class="text-xs font-bold text-orange-600 dark:text-orange-400">
-                每日打卡分钟数趋势
-              </div>
-              <div class="flex items-center gap-1">
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="copyChart(chart4Ref, '每日打卡分钟数趋势')"
-                >
-                  <template #icon><copy-icon /></template>
-                </t-button>
-                <t-button
-                  size="small"
-                  variant="text"
-                  shape="square"
-                  @click="exportChart(chart4Ref, '每日打卡分钟数趋势')"
-                >
-                  <template #icon><download-icon /></template>
-                </t-button>
+              <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">
+                最近一年活跃热力图（打卡次数/分钟数）
               </div>
             </div>
             <div class="p-2">
-              <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
-                <VChart ref="chart4Ref" :option="minutesOption" autoresize />
+              <div class="w-full overflow-x-auto">
+                <div class="w-fit mx-auto">
+                  <div
+                    id="todo-cal-heatmap"
+                    ref="heatmapContainerRef"
+                    class="min-w-[980px] min-h-[140px] overflow-x-auto"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div
+              v-if="heatmapLoading"
+              class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-neutral-950/50 rounded-md"
+            >
+              <t-loading text="正在更新热力图..." />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-12 gap-2">
+            <div
+              class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
+            >
+              <div
+                class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center"
+              >
+                <div class="text-xs font-bold text-blue-600 dark:text-blue-400">
+                  各任务类型的打卡趋势
+                </div>
+                <div class="flex items-center gap-1">
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="copyChart(chart1Ref, '各任务类型的打卡趋势')"
+                  >
+                    <template #icon><copy-icon /></template>
+                  </t-button>
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
+                  >
+                    <template #icon><download-icon /></template>
+                  </t-button>
+                </div>
+              </div>
+              <div class="p-2">
+                <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                  <VChart ref="chart1Ref" :option="punchInsByCategoryOption" autoresize />
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
+            >
+              <div
+                class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center"
+              >
+                <div class="text-xs font-bold text-purple-600 dark:text-purple-400">任务分类</div>
+                <div class="flex items-center gap-1">
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="copyChart(chart2Ref, '任务分类')"
+                  >
+                    <template #icon><copy-icon /></template>
+                  </t-button>
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="exportChart(chart2Ref, '任务分类')"
+                  >
+                    <template #icon><download-icon /></template>
+                  </t-button>
+                </div>
+              </div>
+              <div class="p-2">
+                <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                  <VChart ref="chart2Ref" :option="categoryOption" autoresize />
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
+            >
+              <div
+                class="px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border-b border-green-100 dark:border-green-900/30 flex justify-between items-center"
+              >
+                <div class="text-xs font-bold text-green-600 dark:text-green-400">
+                  每日打卡次数趋势
+                </div>
+                <div class="flex items-center gap-1">
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="copyChart(chart3Ref, '每日打卡次数趋势')"
+                  >
+                    <template #icon><copy-icon /></template>
+                  </t-button>
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="exportChart(chart3Ref, '每日打卡次数趋势')"
+                  >
+                    <template #icon><download-icon /></template>
+                  </t-button>
+                </div>
+              </div>
+              <div class="p-2">
+                <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                  <VChart ref="chart3Ref" :option="punchInsOption" autoresize />
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="col-span-12 lg:col-span-6 rounded-md bg-neutral-50 dark:bg-neutral-900 overflow-hidden border border-neutral-100 dark:border-neutral-800"
+            >
+              <div
+                class="px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-900/30 flex justify-between items-center"
+              >
+                <div class="text-xs font-bold text-orange-600 dark:text-orange-400">
+                  每日打卡分钟数趋势
+                </div>
+                <div class="flex items-center gap-1">
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="copyChart(chart4Ref, '每日打卡分钟数趋势')"
+                  >
+                    <template #icon><copy-icon /></template>
+                  </t-button>
+                  <t-button
+                    size="small"
+                    variant="text"
+                    shape="square"
+                    @click="exportChart(chart4Ref, '每日打卡分钟数趋势')"
+                  >
+                    <template #icon><download-icon /></template>
+                  </t-button>
+                </div>
+              </div>
+              <div class="p-2">
+                <div class="w-full aspect-video overflow-hidden" style="line-height: 0">
+                  <VChart ref="chart4Ref" :option="minutesOption" autoresize />
+                </div>
               </div>
             </div>
           </div>
