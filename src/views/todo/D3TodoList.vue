@@ -124,6 +124,11 @@ const authDialogVisible = ref(false)
 const authPassword = ref('')
 const authPasswordRef = ref()
 
+// Loading states for async operations
+const isAddingTodo = ref(false)
+const isSavingEdit = ref(false)
+const isPunchingIn = ref(false)
+
 watch(
   () => authDialogVisible.value,
   (val) => {
@@ -947,100 +952,109 @@ const onPunchTrigger = (id: string) => {
   punchDialogVisible.value = true
 }
 
-const confirmPunch = () => {
+const confirmPunch = async () => {
+  if (isPunchingIn.value) return
   if (!currentPunchId.value) return
-  punchDialogVisible.value = false
 
   // Pass minutes if enabled and valid
   const minutes = punchMinutesEnabled.value ? punchMinutes.value : undefined
   const prep = preparePunch(currentPunchId.value, punchNote.value, minutes)
 
   if (prep.kind === 'not_found' || prep.kind === 'too_frequent') {
-    // maybe show message for too frequent?
     if (prep.kind === 'too_frequent') MessagePlugin.warning('打卡太频繁，请稍后再试')
+    punchDialogVisible.value = false
     return
   }
 
-  if (prep.kind === 'update_note' && prep.recordId) {
-    // Quick update note logic locally? Or server?
-    // Server-first for update too
-    supabase
-      .from('todo_punch_records')
-      .update({ note: punchNote.value })
-      .eq('id', prep.recordId)
-      .then(({ error }) => {
-        if (!error) {
-          updatePunchRecordNote(prep.recordId!, punchNote.value)
-          MessagePlugin.success('备注已更新')
-        }
-      })
-    return
-  }
+  isPunchingIn.value = true
 
-  if (prep.kind === 'ok' && prep.record) {
-    const dbRecord = {
-      todo_id: prep.record.todoId,
-      todo_title: prep.record.todoTitle,
-      category: prep.record.category,
-      timestamp: prep.record.timestamp,
-      day_key: prep.record.dayKey,
-      unit: prep.record.unit,
-      minutes_per_time: prep.record.minutesPerTime,
-      note: prep.record.note,
+  try {
+    if (prep.kind === 'update_note' && prep.recordId) {
+      // Server-first for update
+      const { error } = await supabase
+        .from('todo_punch_records')
+        .update({ note: punchNote.value })
+        .eq('id', prep.recordId)
+
+      if (!error) {
+        updatePunchRecordNote(prep.recordId!, punchNote.value)
+        MessagePlugin.success('备注已更新')
+        punchDialogVisible.value = false
+      } else {
+        throw error
+      }
+      return
     }
 
-    supabase
-      .from('todo_punch_records')
-      .insert(dbRecord)
-      .select()
-      .single()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Punch failed', error)
-          MessagePlugin.error('打卡失败')
-        } else if (data) {
-          // Success!
-          // data has the real ID
-          prep.record.id = data.id
-          addPunchRecordDirectly(prep.record)
+    if (prep.kind === 'ok' && prep.record) {
+      const dbRecord = {
+        todo_id: prep.record.todoId,
+        todo_title: prep.record.todoTitle,
+        category: prep.record.category,
+        timestamp: prep.record.timestamp,
+        day_key: prep.record.dayKey,
+        unit: prep.record.unit,
+        minutes_per_time: prep.record.minutesPerTime,
+        note: prep.record.note,
+      }
 
-          // CRITICAL: Update Todo state in Supabase (punch_ins, done, completed_at)
-          // addPunchRecordDirectly has updated local state, now sync to server
-          const info = getTodoById(prep.record.todoId)
-          if (info) {
-            supabase
-              .from('todos')
-              .update({
-                punch_ins: info.punchIns,
-                done: info.done,
-                completed_at: info.completedAt || null,
-              })
-              .eq('id', info.id)
-              .then(({ error }) => {
-                if (error) console.error('Failed to update todo state', error)
-              })
-          }
+      const { data, error } = await supabase
+        .from('todo_punch_records')
+        .insert(dbRecord)
+        .select()
+        .single()
 
-          // 播放 Rainbow 碎纸屑效果
-          const colors = [
-            '#60a5fa',
-            '#a78bfa',
-            '#f472b6',
-            '#34d399',
-            '#fb923c',
-            '#facc15',
-            '#22c55e',
-          ]
-          confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: colors,
-            disableForReducedMotion: true,
-          })
-          MessagePlugin.success('打卡成功')
+      if (error) {
+        console.error('Punch failed', error)
+        MessagePlugin.error('打卡失败')
+        return
+      }
+
+      if (data) {
+        // Success!
+        // data has the real ID
+        prep.record.id = data.id
+        addPunchRecordDirectly(prep.record)
+
+        // CRITICAL: Update Todo state in Supabase (punch_ins, done, completed_at)
+        const info = getTodoById(prep.record.todoId)
+        if (info) {
+          const { error: updateError } = await supabase
+            .from('todos')
+            .update({
+              punch_ins: info.punchIns,
+              done: info.done,
+              completed_at: info.completedAt || null,
+            })
+            .eq('id', info.id)
+
+          if (updateError) console.error('Failed to update todo state', updateError)
         }
-      })
+
+        // Close dialog ONLY after success
+        punchDialogVisible.value = false
+
+        // 播放 Rainbow 碎纸屑效果
+        const colors = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: colors,
+        })
+
+        MessagePlugin.success('打卡成功')
+
+        // Reset form inputs (optional but good practice)
+        punchNote.value = ''
+        punchMinutes.value = 15
+      }
+    }
+  } catch (err) {
+    console.error('Punch error:', err)
+    MessagePlugin.error('操作异常，请重试')
+  } finally {
+    isPunchingIn.value = false
   }
 }
 
@@ -1563,6 +1577,8 @@ const openEdit = (id: string) => {
 }
 
 const saveEdit = async () => {
+  if (isSavingEdit.value) return // Prevent double submission
+
   const id = editingTodoId.value
   if (!id) return
 
@@ -1590,42 +1606,48 @@ const saveEdit = async () => {
     return
   }
 
-  const ok = applyTodoEdit(id, {
-    title: nextTitle,
-    category: todo.category,
-    period: todo.period,
-    minFrequency: todo.minFrequency,
-    unit: todo.unit,
-    minutesPerTime: nextMinutesPerTime,
-    description: editDescription.value.trim() || undefined,
-    deadline: todo.deadline,
-  })
-  if (!ok) return
+  isSavingEdit.value = true
 
-  // Update in Supabase for all task types
-  await updateTodoInSupabase(id, {
-    title: nextTitle,
-    description: editDescription.value.trim() || undefined,
-  })
+  try {
+    const ok = applyTodoEdit(id, {
+      title: nextTitle,
+      category: todo.category,
+      period: todo.period,
+      minFrequency: todo.minFrequency,
+      unit: todo.unit,
+      minutesPerTime: nextMinutesPerTime,
+      description: editDescription.value.trim() || undefined,
+      deadline: todo.deadline,
+    })
+    if (!ok) return
 
-  // Update punch records in Supabase
-  const { error: punchUpdateError } = await supabase
-    .from('todo_punch_records')
-    .update({ todo_title: nextTitle })
-    .eq('todo_id', id)
-    .select()
+    // Update in Supabase for all task types
+    await updateTodoInSupabase(id, {
+      title: nextTitle,
+      description: editDescription.value.trim() || undefined,
+    })
 
-  if (punchUpdateError) {
-    console.error('Failed to update punch record titles:', punchUpdateError)
-  } else {
-    punchRecords.value = punchRecords.value.map((record) =>
-      record.todoId === id ? { ...record, todoTitle: nextTitle } : record,
-    )
+    // Update punch records in Supabase
+    const { error: punchUpdateError } = await supabase
+      .from('todo_punch_records')
+      .update({ todo_title: nextTitle })
+      .eq('todo_id', id)
+      .select()
+
+    if (punchUpdateError) {
+      console.error('Failed to update punch record titles:', punchUpdateError)
+    } else {
+      punchRecords.value = punchRecords.value.map((record) =>
+        record.todoId === id ? { ...record, todoTitle: nextTitle } : record,
+      )
+    }
+
+    editVisible.value = false
+    editingTodoId.value = null
+    MessagePlugin.success('已保存修改')
+  } finally {
+    isSavingEdit.value = false
   }
-
-  editVisible.value = false
-  editingTodoId.value = null
-  MessagePlugin.success('已保存修改')
 }
 
 // Goal History Management Functions
@@ -1936,6 +1958,8 @@ const handlePunchIn = (id: string) => {
 }
 
 const addTodo = async () => {
+  if (isAddingTodo.value) return // Prevent double submission
+
   if (!categoryOptions.value.length) {
     MessagePlugin.warning('请先在配置管理中添加分类后再添加')
     return
@@ -1944,6 +1968,8 @@ const addTodo = async () => {
     MessagePlugin.warning('请选择任务分类')
     return
   }
+
+  isAddingTodo.value = true
 
   // 1. Prepare data (Validation & Object Construction)
   const res = prepareTodo({
@@ -2066,6 +2092,8 @@ const addTodo = async () => {
   } catch (e) {
     console.error('❌ Unexpected error in addTodo:', e)
     MessagePlugin.error('添加任务发生异常')
+  } finally {
+    isAddingTodo.value = false
   }
 }
 
@@ -2182,7 +2210,31 @@ const toggleDone = async (id: string, done: boolean) => {
   }
 }
 
-const todayTodos = computed(() => todos.value.filter((t) => t.dayKey === todayKey.value))
+const todayTodos = computed(() => {
+  return todos.value.filter((t) => {
+    // 1. Exact match (Daily, Once, or same-day creation)
+    if (t.dayKey === todayKey.value) return true
+
+    // 2. Periodic tasks (Weekly, Monthly, Yearly) - check if todayKey falls within the cycle
+    if (t.period === 'once' || t.period === 'daily') return false
+
+    const taskDate = dayjs(t.dayKey)
+    const targetDate = dayjs(todayKey.value)
+
+    if (t.period === 'weekly') {
+      const diff = targetDate.diff(taskDate, 'day')
+      // Assuming week starts on Monday as per useTodoStore logic
+      return diff >= 0 && diff < 7
+    }
+    if (t.period === 'monthly') {
+      return taskDate.isSame(targetDate, 'month')
+    }
+    if (t.period === 'yearly') {
+      return taskDate.isSame(targetDate, 'year')
+    }
+    return false
+  })
+})
 const todayCompletedCount = computed(() => todayTodos.value.filter((t) => t.done).length)
 const todayPunchRecords = computed(() =>
   punchRecords.value.filter((r) => r.dayKey === todayKey.value),
@@ -2799,8 +2851,8 @@ const exportDialogWidth = computed(() => {
     :cancel-btn="null"
     @confirm="() => verifyAuth()"
   >
-    <div class="p-4">
-      <div class="text-center mb-4">
+    <div class="p-2">
+      <div class="text-center mb-2">
         <div class="text-4xl mb-2">🔒</div>
         <div class="text-sm text-neutral-600 dark:text-neutral-400">请输入密码以访问待办事项</div>
       </div>
@@ -2818,10 +2870,10 @@ const exportDialogWidth = computed(() => {
 
   <div
     v-if="isAuthenticated"
-    class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50 pb-4"
+    class="w-full min-h-screen dark:bg-neutral-900 overflow-x-hidden bg-neutral-50"
   >
-    <div class="max-w-[1200px] mx-auto pt-4 px-4">
-      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+    <div class="max-w-[1200px] mx-auto pt-2 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
         <div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
           {{ todayDisplay }}
@@ -2830,8 +2882,8 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <!-- Add Task/Goal Section (Desktop only) -->
-    <div v-if="!isMobile" class="max-w-[1200px] mx-auto mt-4 px-4">
-      <div class="bg-white dark:bg-neutral-800 rounded-lg p-4 shadow-sm">
+    <div v-if="!isMobile" class="max-w-[1200px] mx-auto mt-2 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm">
         <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
           <t-input
             autofocus
@@ -2849,16 +2901,17 @@ const exportDialogWidth = computed(() => {
           <t-button
             @click="addTodo"
             class="w-full sm:w-auto"
-            :disabled="!categoryOptions.length || !category"
+            :disabled="!categoryOptions.length || !category || isAddingTodo"
+            :loading="isAddingTodo"
           >
             <template #icon>
-              <add-icon size="20" />
+              <add-icon v-if="!isAddingTodo" size="20" />
             </template>
-            {{ period === 'once' ? '新建目标' : '新建任务' }}
+            {{ isAddingTodo ? '提交中...' : period === 'once' ? '新建目标' : '新建任务' }}
           </t-button>
         </div>
 
-        <div class="grid grid-cols-12 gap-x-4 gap-y-3 mt-4">
+        <div class="grid grid-cols-12 gap-x-4 gap-y-3 mt-2">
           <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
             <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
             <div class="flex items-center gap-2 flex-1">
@@ -2977,7 +3030,7 @@ const exportDialogWidth = computed(() => {
         </div>
       </div>
     </div>
-    <div v-else class="max-w-[1200px] mx-auto mt-4 px-4">
+    <div v-else class="max-w-[1200px] mx-auto mt-2 px-4">
       <div
         class="bg-white/50 dark:bg-neutral-800/50 rounded-lg p-6 border border-dashed border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center text-neutral-400"
       >
@@ -2988,18 +3041,18 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <!-- Section Title: Tasks/Goals -->
-    <div class="max-w-[1200px] mx-auto mt-4 px-4">
-      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
         <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">任务/目标</h2>
       </div>
     </div>
 
-    <div class="max-w-[1200px] mx-auto mt-4 px-4">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4">
       <!-- Dashboard Grid -->
       <div
         v-if="boardGroups.length"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mb-4"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mb-2"
       >
         <div
           v-for="group in boardGroups"
@@ -3133,22 +3186,22 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <!-- Section Title: History/Archive -->
-    <div class="max-w-[1200px] mx-auto mt-4 px-4">
-      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
         <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">历史/归档</h2>
       </div>
     </div>
 
     <!-- History & Archive Content -->
-    <div class="max-w-[1200px] mx-auto mt-4 px-4">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4">
       <t-tabs
         :default-value="1"
         class="rounded-lg overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm"
       >
         <t-tab-panel :value="1" :label="`打卡记录 (${currentHistoryRecords.length})`">
-          <div class="min-h-[300px] p-2">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 pb-2 gap-2">
+          <div class="min-h-[100px] p-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
               <div class="flex items-center gap-2">
                 <t-button variant="text" shape="square" @click="prevDay">
                   <template #icon><chevron-left-icon /></template>
@@ -3163,11 +3216,11 @@ const exportDialogWidth = computed(() => {
             </div>
 
             <template v-if="currentHistoryRecords.length">
-              <div class="flex flex-col gap-2">
+              <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2">
                 <div
                   v-for="record in currentHistoryRecords"
                   :key="record.id"
-                  class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  class="p-2 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                 >
                   <div class="flex flex-col gap-1">
                     <div class="flex flex-wrap items-center gap-2">
@@ -3278,13 +3331,13 @@ const exportDialogWidth = computed(() => {
           </div>
         </t-tab-panel>
         <t-tab-panel :value="2" :label="`已归档 (${archivedHistorySorted.length})`">
-          <div class="min-h-[300px] p-2">
+          <div class="min-h-[100px] p-2">
             <template v-if="archivedHistorySorted.length">
               <div class="flex flex-col gap-2">
                 <div
                   v-for="item in archivedHistorySorted"
                   :key="`${item.title}@@${item.category}@@${item.period}@@${item.archivedAt}`"
-                  class="p-3 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
+                  class="p-2 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
                 >
                   <div class="flex flex-col gap-2">
                     <div class="flex flex-wrap items-center gap-2">
@@ -3333,19 +3386,19 @@ const exportDialogWidth = computed(() => {
     </div>
 
     <!-- Section Title: Data Statistics -->
-    <div class="max-w-[1200px] mx-auto mt-4 px-4">
-      <div class="bg-white dark:bg-neutral-800 rounded-lg p-3 shadow-sm flex items-center gap-3">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4">
+      <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
         <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">数据统计</h2>
       </div>
     </div>
 
     <!-- Data Statistics Content -->
-    <div class="max-w-[1200px] mx-auto mt-4 px-4 pb-2">
+    <div class="max-w-[1200px] mx-auto mt-2 px-4 pb-2">
       <div class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm overflow-hidden">
-        <div class="p-4">
+        <div class="p-2">
           <div
-            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4"
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2"
           >
             <div class="flex items-center gap-2">
               <t-radio-group v-model="statsRange" variant="default-filled" size="small">
@@ -3367,7 +3420,7 @@ const exportDialogWidth = computed(() => {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-2">
             <div
               class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
             >
@@ -3715,7 +3768,7 @@ const exportDialogWidth = computed(() => {
               </div>
             </div>
 
-            <div v-if="exportGoals.length" class="mt-4 pt-4 border-t" :style="exportDividerStyle">
+            <div v-if="exportGoals.length" class="mt-2 pt-2 border-t" :style="exportDividerStyle">
               <div class="text-sm font-bold mb-2 flex items-center gap-2">
                 <span>本周完成的目标</span>
                 <span :style="exportSuccessBadgeStyle">{{ exportGoals.length }}</span>
@@ -3742,7 +3795,7 @@ const exportDialogWidth = computed(() => {
             </div>
           </div>
         </div>
-        <div class="mt-4 flex justify-end gap-2">
+        <div class="mt-2 flex justify-end gap-2">
           <t-button
             variant="outline"
             @click="exportDialogVisible = false"
@@ -3767,7 +3820,7 @@ const exportDialogWidth = computed(() => {
       :width="editDialogWidth"
       :footer="false"
     >
-      <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
+      <div class="grid grid-cols-12 gap-2 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
           <div class="text-sm mb-1">{{ isEditingGoal ? '目标名称' : '任务名称' }}</div>
           <t-input
@@ -3785,9 +3838,18 @@ const exportDialogWidth = computed(() => {
           />
         </div>
       </div>
-      <div class="mt-4 flex justify-end gap-2">
-        <t-button variant="outline" @click="editVisible = false">取消</t-button>
-        <t-button theme="primary" @click="saveEdit">保存</t-button>
+      <div class="mt-2 flex justify-end gap-2">
+        <t-button variant="outline" @click="editVisible = false" :disabled="isSavingEdit"
+          >取消</t-button
+        >
+        <t-button
+          theme="primary"
+          @click="saveEdit"
+          :loading="isSavingEdit"
+          :disabled="isSavingEdit"
+        >
+          {{ isSavingEdit ? '保存中...' : '保存' }}
+        </t-button>
       </div>
     </t-dialog>
 
@@ -3797,7 +3859,7 @@ const exportDialogWidth = computed(() => {
       :width="editDialogWidth"
       :footer="false"
     >
-      <div class="grid grid-cols-12 gap-3 max-h-[70vh] overflow-y-auto px-1">
+      <div class="grid grid-cols-12 gap-2 max-h-[70vh] overflow-y-auto px-1">
         <div class="col-span-12">
           <div class="text-sm mb-1">任务名称</div>
           <t-input v-model="templateTitle" placeholder="请输入任务名称" />
@@ -3903,7 +3965,7 @@ const exportDialogWidth = computed(() => {
           <t-input v-model="templateDescription" placeholder="可选：添加任务的详细描述" />
         </div>
       </div>
-      <div class="mt-4 flex justify-end gap-2">
+      <div class="mt-2 flex justify-end gap-2">
         <t-button variant="outline" @click="templateEditVisible = false">取消</t-button>
         <t-button theme="primary" @click="saveTemplateEdit">保存</t-button>
       </div>
@@ -3915,10 +3977,10 @@ const exportDialogWidth = computed(() => {
       :width="punchDialogWidth"
       :footer="false"
     >
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-2">
         <div class="text-sm">请输入本次打卡备注（可选）：</div>
         <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
-        <div v-if="punchMinutesEnabled" class="flex items-center gap-3">
+        <div v-if="punchMinutesEnabled" class="flex items-center gap-2">
           <div class="text-sm shrink-0">本次分钟</div>
           <div class="flex items-center gap-2">
             <t-button
@@ -3942,8 +4004,17 @@ const exportDialogWidth = computed(() => {
           </div>
         </div>
         <div class="flex justify-end gap-2 mt-2">
-          <t-button variant="outline" @click="punchDialogVisible = false">取消</t-button>
-          <t-button theme="primary" @click="confirmPunch">确认打卡</t-button>
+          <t-button variant="outline" @click="punchDialogVisible = false" :disabled="isPunchingIn"
+            >取消</t-button
+          >
+          <t-button
+            theme="primary"
+            @click="confirmPunch"
+            :loading="isPunchingIn"
+            :disabled="isPunchingIn"
+          >
+            {{ isPunchingIn ? '打卡中...' : '确认打卡' }}
+          </t-button>
         </div>
       </div>
     </t-dialog>
@@ -3957,7 +4028,7 @@ const exportDialogWidth = computed(() => {
       <div class="max-h-[70vh] overflow-y-auto px-1">
         <!-- 添加新记录表单 -->
         <div
-          class="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 mb-3"
+          class="p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 mb-3"
         >
           <div class="text-xs font-semibold mb-2">
             {{ editingGoalHistoryId ? '编辑记录' : '添加新记录' }}
@@ -4016,10 +4087,10 @@ const exportDialogWidth = computed(() => {
           <div
             v-for="record in currentGoalHistory"
             :key="record.id"
-            class="p-3 rounded-lg border transition-all"
+            class="p-2 rounded-lg border transition-all"
             :class="
               record.type === 'milestone'
-                ? 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
+                ? 'bg-linear-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border-amber-300 dark:border-amber-700'
                 : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
             "
           >
@@ -4080,7 +4151,7 @@ const exportDialogWidth = computed(() => {
           暂无进度记录,点击上方"添加记录"开始记录目标进展
         </div>
       </div>
-      <div class="mt-4 flex justify-end">
+      <div class="mt-2 flex justify-end">
         <t-button variant="outline" @click="goalHistoryDialogVisible = false">关闭</t-button>
       </div>
     </t-dialog>
@@ -4092,7 +4163,7 @@ const exportDialogWidth = computed(() => {
       header="配置管理"
       :footer="false"
     >
-      <div class="p-4 space-y-6">
+      <div class="p-2 space-y-6">
         <div>
           <div class="text-sm mb-2 font-medium">任务分类</div>
           <div
@@ -4194,7 +4265,7 @@ const exportDialogWidth = computed(() => {
         </div>
 
         <div
-          class="flex justify-end gap-2 pt-4 border-t border-neutral-100 dark:border-neutral-800"
+          class="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800"
         >
           <t-button variant="outline" @click="resetUiConfig">恢复默认</t-button>
           <t-button theme="primary" @click="saveUiConfigFromDraft">保存</t-button>
@@ -4208,7 +4279,7 @@ const exportDialogWidth = computed(() => {
       :header="`编辑分类: ${editingCategory.name}`"
       @confirm="saveCategoryConfig"
     >
-      <div class="space-y-4 pt-4">
+      <div class="space-y-4 pt-2">
         <div>
           <div class="text-sm font-medium mb-2">卡片颜色</div>
           <t-color-picker
@@ -4246,7 +4317,7 @@ const exportDialogWidth = computed(() => {
     class="w-full min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900"
   >
     <div class="text-center">
-      <div class="text-6xl mb-4">🔒</div>
+      <div class="text-6xl mb-2">🔒</div>
       <div
         class="text-xl font-bold mb-2"
         style="font-family: 'Fira Sans', sans-serif; color: #0d9488"

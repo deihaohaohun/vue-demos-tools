@@ -92,12 +92,17 @@ export const useTodoCharts = (args: {
             bucket[c] = (bucket[c] || 0) + (v || 0)
           }
         }
-      } else {
-        for (const t of args.todos.value) {
+      }
+
+      // Always collect categories from current todos ensuring reactivity
+      for (const t of args.todos.value) {
+        const c = t.category || '未分类'
+        categorySet.add(c)
+
+        // If no dayStats, we still need to calculate values from todos (fallback logic)
+        if (!args.dayStats) {
           const dk = t.dayKey
           if (!byDay[dk]) continue
-          const c = t.category || '未分类'
-          categorySet.add(c)
           const bucket = byDay[dk] || (byDay[dk] = {})
           bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
         }
@@ -338,14 +343,19 @@ export const useTodoCharts = (args: {
           bucket[c] = (bucket[c] || 0) + (v || 0)
         }
       }
-    } else {
-      for (const t of args.todos.value) {
+    }
+
+    // Always collect categories from current todos ensuring reactivity
+    for (const t of args.todos.value) {
+      if (t.unit !== 'minutes') continue
+
+      const c = t.category || '未分类'
+      categorySet.add(c)
+
+      // If no dayStats, we still need to calculate values from todos (fallback logic)
+      if (!args.dayStats) {
         const dk = t.dayKey
         if (!byDay[dk]) continue
-        if (t.unit !== 'minutes') continue
-
-        const c = t.category || '未分类'
-        categorySet.add(c)
         const bucket = byDay[dk] || (byDay[dk] = {})
         const mins =
           (t.punchIns || 0) * (typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15)

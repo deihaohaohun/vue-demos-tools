@@ -103,34 +103,6 @@ const remainingTime = computed(() => {
   return `${m}分`
 })
 
-const hashString = (s: string) => {
-  let h = 0
-  for (let i = 0; i < s.length; i += 1) {
-    h = (h * 31 + s.charCodeAt(i)) | 0
-  }
-  return Math.abs(h)
-}
-
-const getCategoryCssVars = (category: string) => {
-  if (!category) return {}
-  const seed = hashString(category)
-  const h = (seed * 137.508) % 360
-  return {
-    '--cat-bg': `hsl(${h} 90% 96%)`,
-    '--cat-bg-hover': `hsl(${h} 90% 93%)`,
-    '--cat-border': `hsl(${h} 70% 85%)`,
-    '--cat-bg-dark': `hsla(${h}, 60%, 18%, 0.35)`,
-    '--cat-bg-hover-dark': `hsla(${h}, 60%, 18%, 0.5)`,
-    '--cat-border-dark': `hsla(${h}, 50%, 45%, 0.45)`,
-    '--cat-tag-bg': `hsl(${h} 85% 90%)`,
-    '--cat-tag-border': `hsl(${h} 70% 82%)`,
-    '--cat-tag-text': `hsl(${h} 40% 28%)`,
-    '--cat-tag-bg-dark': `hsla(${h}, 60%, 25%, 0.55)`,
-    '--cat-tag-border-dark': `hsla(${h}, 55%, 45%, 0.55)`,
-    '--cat-tag-text-dark': `hsl(${h} 80% 80%)`,
-  } as Record<string, string>
-}
-
 const getPeriodTheme = (period: string) => {
   const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
     daily: 'primary',
@@ -145,13 +117,7 @@ const getPeriodTheme = (period: string) => {
 
 <template>
   <div
-    class="p-2 mb-2 rounded-lg border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0"
-    :class="
-      todo.category
-        ? 'bg-(--cat-bg) hover:bg-(--cat-bg-hover) border-(--cat-border) dark:bg-(--cat-bg-dark) dark:hover:bg-(--cat-bg-hover-dark) dark:border-(--cat-border-dark)'
-        : 'bg-white dark:bg-neutral-900 border-transparent'
-    "
-    :style="getCategoryCssVars(todo.category)"
+    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-800"
     @click.stop="emit('toggle-select', todo.id)"
   >
     <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
