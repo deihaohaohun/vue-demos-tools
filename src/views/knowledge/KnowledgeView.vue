@@ -102,14 +102,6 @@ const handleAdd = () => {
 const addEditorEl = ref<HTMLElement | null>(null)
 let addEditor: AiEditor | null = null
 
-const disableAiEditorResize = (root: HTMLElement | null) => {
-  if (!root) return
-  const maybeResizable = root.querySelectorAll<HTMLElement>('*')
-  maybeResizable.forEach((el) => {
-    el.style.setProperty('resize', 'none', 'important')
-  })
-}
-
 const syncAddEditorLayout = () => {
   requestAnimationFrame(() => {
     window.dispatchEvent(new Event('resize'))
@@ -117,12 +109,6 @@ const syncAddEditorLayout = () => {
   setTimeout(() => {
     window.dispatchEvent(new Event('resize'))
   }, 60)
-  setTimeout(() => {
-    disableAiEditorResize(addEditorEl.value)
-  }, 0)
-  setTimeout(() => {
-    disableAiEditorResize(addEditorEl.value)
-  }, 120)
 }
 
 watch(addDialogVisible, async (visible) => {
@@ -135,7 +121,6 @@ watch(addDialogVisible, async (visible) => {
       placeholder: '请输入详细内容、心得或笔记...',
       draggable: false,
     })
-    disableAiEditorResize(addEditorEl.value)
     if (form.value.content) {
       addEditor.setContent(form.value.content)
     }
@@ -300,7 +285,6 @@ watch(editDialogVisible, async (visible) => {
       element: editEditorEl.value,
       placeholder: '编辑资源内容...',
     })
-    disableAiEditorResize(editEditorEl.value)
     if (editForm.value.content) {
       editEditor.setContent(editForm.value.content)
     }

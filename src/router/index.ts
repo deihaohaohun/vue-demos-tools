@@ -12,7 +12,7 @@ const router = createRouter({
     {
       path: '/nihongo',
       name: 'nihongo',
-      meta: { title: '日语学习' },
+      meta: { title: '霓虹语学习' },
       component: () => import('@/views/nihongo/NihongoView.vue'),
     },
     {

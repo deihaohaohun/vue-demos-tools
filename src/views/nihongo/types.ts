@@ -3,6 +3,7 @@ export interface GrammarMeaning {
   tips?: string[]
   usage: string[]
   examples: string[]
+  content?: string
   references?: { name: string; url: string; logo?: string }[]
 }
 

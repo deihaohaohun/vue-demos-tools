@@ -132,7 +132,7 @@ export const n3Data: GrammarItem[] = [
     meanings: [
       {
         meaning: '趁着...（在状态改变前）',
-        usage: ['动词连体形 + うちに', '形容词 + うちに', '名词 + のうちに'],
+        usage: ['PI(な・の) + うちに'],
         examples: ['若いうちに勉強しておきなさい。', '忘れないうちにメモしておきます。'],
       },
       {
@@ -203,11 +203,11 @@ export const n3Data: GrammarItem[] = [
     mastery: 3,
     meanings: [
       {
-        meaning: '如果不先做 A 的话, B 就~(负面)',
-        usage: ['动词て型 + てからでないと', '动词て型 + てからでなければ'],
+        meaning: '如果不先做 A 的话, B 也不~(负面)',
+        usage: ['动词て型 + からでないと/からでなければ'],
         examples: [
-          '直接部屋を見てからでないと、、借りるかどうか決められない。',
-          'パソコンはOSをインストールしてからでなけsれば、、使えません。',
+          '直接部屋を見てからでないと、借りるかどうか決められない。',
+          'パソコンはOSをインストールしてからでなければ、使えません。',
         ],
         references: [
           {
@@ -309,6 +309,28 @@ export const n3Data: GrammarItem[] = [
           {
             name: '出口仁 N3',
             url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=38',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    id: 21,
+    title: '～なくちゃ・なきゃ・～ないと',
+    level: 'N3',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '必须~, 不~不行',
+        usage: ['动词ない形 → なくちゃ/なきゃ/ないと'],
+        examples: ['あ、もうこんな時間。早く帰らなきゃ。', '夏までに何とか痩せなくちゃ。'],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=41',
             logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
           },
         ],

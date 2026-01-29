@@ -3720,8 +3720,6 @@ const exportDialogWidth = computed(() => {
         </div>
         <div class="max-h-[70vh] overflow-y-auto px-2">
           <div ref="exportCaptureRef" class="p-2 rounded border" :style="exportRootStyle">
-            <div class="text-base font-bold mb-3">{{ exportDialogTitle }}</div>
-
             <div class="flex flex-col gap-2">
               <div
                 v-for="d in exportSummaries"
