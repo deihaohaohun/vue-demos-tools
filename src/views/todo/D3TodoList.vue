@@ -56,6 +56,8 @@ import {
   StarIcon,
   RootListIcon,
   TaskIcon,
+  FingerprintIcon,
+  CheckCircleIcon,
 } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -63,6 +65,11 @@ import confetti from 'canvas-confetti'
 import { snapdom } from '@zumer/snapdom'
 import { useDark, useDebounceFn } from '@vueuse/core'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  isPlatformAuthenticatorAvailable,
+  registerCredential,
+  verifyCredential,
+} from './webauthnUtils'
 
 use([
   CanvasRenderer,
@@ -1246,6 +1253,7 @@ const addDraftMinute = () => draftMinutesPerTimesList.value.push(15)
 const removeDraftMinute = (index: number) => draftMinutesPerTimesList.value.splice(index, 1)
 
 onMounted(async () => {
+  await checkBiometrics()
   try {
     // Step 1: Batch Load Configs (0% -> 20%)
     loadingMessage.value = '加载配置...'
@@ -1492,15 +1500,32 @@ onMounted(async () => {
     loadingProgress.value = 100
   } finally {
     // Hide loading overlay after short delay
-    setTimeout(() => {
+    setTimeout(async () => {
       pageLoading.value = false
-      // Show authentication dialog
-      authDialogVisible.value = true
+
+      // Try Biometric Login First
+      if (biometricCredId.value) {
+        await loginWithBiometrics()
+        // If failed or cancelled, show dialog
+        if (!isAuthenticated.value) {
+          authDialogVisible.value = true
+        }
+      } else {
+        // Show authentication dialog
+        authDialogVisible.value = true
+      }
     }, 300)
   }
 })
 
 // Authentication functions
+watch(authPassword, (val) => {
+  const envPassword = import.meta.env.VITE_TODO_PASSWORD
+  if (val && val === envPassword) {
+    verifyAuth()
+  }
+})
+
 const verifyAuth = () => {
   if (!authPassword.value.trim()) {
     MessagePlugin.warning({ content: '请输入密码' })
@@ -1518,9 +1543,59 @@ const verifyAuth = () => {
     authDialogVisible.value = false
     authPassword.value = ''
     MessagePlugin.success({ content: '验证成功' })
+
+    if (isBiometricAvailable.value && !biometricCredId.value) {
+      DialogPlugin.confirm({
+        header: '启用生物识别',
+        body: '检测到您的设备支持生物识别（指纹/人脸），是否启用以便下次直接解锁？',
+        onConfirm: () => {
+          enableBiometrics()
+        },
+      })
+    }
   } else {
     MessagePlugin.error({ content: '密码错误' })
     authPassword.value = ''
+  }
+}
+
+// Biometric Auth State
+const isBiometricAvailable = ref(false)
+const biometricCredId = ref(localStorage.getItem('todo_auth_credential_id') || '')
+
+const checkBiometrics = async () => {
+  try {
+    isBiometricAvailable.value = await isPlatformAuthenticatorAvailable()
+  } catch (e) {
+    console.error('Biometric check failed', e)
+    isBiometricAvailable.value = false
+  }
+}
+
+const enableBiometrics = async () => {
+  if (!isBiometricAvailable.value) {
+    // MessagePlugin.warning('您的设备可能不支持生物识别，尝试强制启用...')
+  }
+  const credId = await registerCredential('User')
+  if (credId) {
+    localStorage.setItem('todo_auth_credential_id', credId)
+    biometricCredId.value = credId
+    MessagePlugin.success('生物识别已启用，下次可直接解锁')
+  } else {
+    MessagePlugin.error('启用失败')
+  }
+}
+
+const loginWithBiometrics = async () => {
+  if (!biometricCredId.value) return
+  const ok = await verifyCredential(biometricCredId.value)
+  if (ok) {
+    isAuthenticated.value = true
+    authDialogVisible.value = false
+    authPassword.value = ''
+    MessagePlugin.success('验证成功')
+  } else {
+    MessagePlugin.warning('生物识别验证失败')
   }
 }
 
@@ -2865,6 +2940,12 @@ const exportDialogWidth = computed(() => {
         @enter="() => verifyAuth()"
         autofocus
       />
+      <div v-if="biometricCredId" class="mt-4 text-center">
+        <t-button variant="outline" shape="circle" size="large" @click="loginWithBiometrics">
+          <template #icon><fingerprint-icon size="24" /></template>
+        </t-button>
+        <div class="text-xs text-neutral-500 mt-2">点击进行指纹/面部验证</div>
+      </div>
     </div>
   </t-dialog>
 
@@ -4260,6 +4341,26 @@ const exportDialogWidth = computed(() => {
             <template #icon><add-icon /></template>
             添加分钟配置
           </t-button>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+          <div class="text-sm font-medium mb-2">安全设置</div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-neutral-600 dark:text-neutral-400"
+              >生物识别解锁 (TouchID/FaceID)</span
+            >
+            <t-button
+              v-if="!biometricCredId"
+              size="small"
+              variant="outline"
+              @click="enableBiometrics"
+            >
+              启用
+            </t-button>
+            <span v-else class="text-xs text-green-500 font-medium flex items-center gap-1">
+              <check-circle-icon /> 已启用
+            </span>
+          </div>
         </div>
 
         <div
