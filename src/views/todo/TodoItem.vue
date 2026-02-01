@@ -115,10 +115,12 @@ const getPeriodTheme = (period: string) => {
 }
 
 const progressPercentage = computed(() => {
-  if (props.todo.done) return 100
-  if (props.todo.period === 'once') return 0 // Goals without done status don't show % bar unless we have a specific target logic
+  // For 'once' (Goals), no bar unless specific logic.
+  if (props.todo.period === 'once') return 0
 
   let percentage = 0
+
+  // Minute tasks: Strict calculation
   if (props.todo.unit === 'minutes') {
     const totalTarget = props.todo.minFrequency * (props.todo.minutesPerTime || 0)
     if (totalTarget > 0) {
@@ -126,6 +128,9 @@ const progressPercentage = computed(() => {
     }
   } else {
     // Times
+    // If explicitly done, treat as 100%
+    if (props.todo.done) return 100
+
     if (props.todo.minFrequency > 0) {
       percentage = (props.todo.punchIns / props.todo.minFrequency) * 100
     }
@@ -140,7 +145,7 @@ const isUnstarted = computed(() => {
 
 <template>
   <div
-    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-800 relative"
+    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-900 relative"
     @click.stop="emit('toggle-select', todo.id)"
   >
     <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
@@ -292,7 +297,7 @@ const isUnstarted = computed(() => {
     <!-- Progress Bar (Bottom) -->
     <div
       v-if="progressPercentage > 0"
-      class="absolute bottom-0 left-0 h-1 bg-teal-500/20 w-full rounded-b-lg overflow-hidden"
+      class="absolute bottom-0 left-0 h-1 bg-neutral-200 dark:bg-neutral-600 w-full rounded-b-lg overflow-hidden"
     >
       <div
         class="h-full bg-teal-500 transition-all duration-300"

@@ -2044,9 +2044,8 @@ const saveTemplateEdit = async () => {
 
 const isTaskCompleted = (t: Todo) => {
   // STRICT LOGIC:
-  // If unit is 'minutes', check total target (minFrequency * minutesPerTime)
-  // If unit is 'times', check minFrequency
-  // For Goals (once), purely check t.done (manual completion)
+  // We prioritize calculating based on targets.
+  // "Done" flag is only primary for 'once' goals or if the task type has no calculated target.
 
   if (t.period === 'once') {
     return !!t.done
@@ -3284,10 +3283,6 @@ const punchDialogWidth = computed(() => {
             <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
               <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
                 <TodoItem
-                  :class="{
-                    'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30 border':
-                      todo.period === 'once' && (getPunchedMinutesForTodo(todo) || 0) > 0,
-                  }"
                   :todo="todo"
                   :punched-minutes="getPunchedMinutesForTodo(todo)"
                   :show-meta-tags="false"
