@@ -721,8 +721,17 @@ const getTodoCycleEndDayKey = (period: TodoPeriod, cycleStartDayKey: string) => 
 }
 
 const getPunchedMinutesForTodo = (todo: (typeof todos.value)[number]) => {
+  // Always calculate for 'once' items (Goals) to show invested time
+  if (todo.period === 'once') {
+    const list = punchRecordsByTodoId.value[todo.id] || []
+    if (!list.length) return undefined
+    return list.reduce(
+      (sum, r) => sum + (typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0),
+      0,
+    )
+  }
+
   if (todo.unit !== 'minutes') return undefined
-  if (todo.period === 'once') return undefined
 
   const list = punchRecordsByTodoId.value[todo.id] || []
   if (!list.length) return undefined
@@ -1133,6 +1142,7 @@ const saveRecordMinutes = () => {
 }
 
 // --- UI Configuration Logic ---
+const isSavingConfig = ref(false)
 const configDrawerVisible = ref(false)
 const draftCategoriesList = ref<string[]>([])
 const draftCategoriesInputRefs = ref<HTMLElement[]>([])
@@ -1202,19 +1212,34 @@ const openConfigDrawer = () => {
   configDrawerVisible.value = true
 }
 
-const saveUiConfigFromDraft = () => {
+const saveUiConfigFromDraft = async () => {
   const cats = draftCategoriesList.value.map((s) => s.trim()).filter(Boolean)
   const freqs = draftMinFrequenciesList.value.filter((n) => typeof n === 'number' && !isNaN(n))
   const mins = draftMinutesPerTimesList.value.filter((n) => typeof n === 'number' && !isNaN(n))
 
-  if (cats.length) uiConfig.value.categories = cats
-  if (freqs.length) uiConfig.value.minFrequencies = freqs
-  if (mins.length) uiConfig.value.minutesPerTimes = mins
-  uiConfig.value.categoryColors = { ...draftCategoryColorsMap.value }
+  // Need to declare this ref in the setup script if not already there, but here we can't easily insert variables.
+  // checking context: lines 1145+. I'll reuse a new ref I'll define inside the function scope? No, that won't work for template binding.
+  // I will assume isSavingConfig is defined (I'll add it in next step) or use a local variable if I can't.
+  // actually, let's just use the function logic here and I'll add the ref declaration separately.
 
-  // Sync is handled by watch(uiConfig) in initSupabaseSyncWatchers
-  configDrawerVisible.value = false
-  MessagePlugin.success('配置已保存')
+  isSavingConfig.value = true
+  try {
+    if (cats.length) uiConfig.value.categories = cats
+    if (freqs.length) uiConfig.value.minFrequencies = freqs
+    if (mins.length) uiConfig.value.minutesPerTimes = mins
+    uiConfig.value.categoryColors = { ...draftCategoryColorsMap.value }
+
+    // Force sync immediately
+    await saveAppConfigToSupabase('ui_config', uiConfig.value)
+
+    configDrawerVisible.value = false
+    MessagePlugin.success('配置已保存')
+  } catch (e) {
+    console.error(e)
+    MessagePlugin.error('保存失败')
+  } finally {
+    isSavingConfig.value = false
+  }
 }
 
 const resetUiConfig = () => {
@@ -1726,6 +1751,12 @@ const saveEdit = async () => {
 }
 
 // Goal History Management Functions
+const adjustGoalHistoryMinutes = (delta: number, event: MouseEvent) => {
+  const step = event.shiftKey ? 5 : 1
+  const newVal = (goalHistoryMinutes.value || 0) + delta * step
+  goalHistoryMinutes.value = Math.max(0, newVal)
+}
+
 const openGoalHistoryDialog = (goalId: string) => {
   currentGoalId.value = goalId
   goalHistoryDialogVisible.value = true
@@ -2013,15 +2044,18 @@ const saveTemplateEdit = async () => {
 
 const isTaskCompleted = (t: Todo) => {
   // STRICT LOGIC:
-  // If unit is 'minutes', check minutesPerTime
+  // If unit is 'minutes', check total target (minFrequency * minutesPerTime)
   // If unit is 'times', check minFrequency
-  // Ignore t.done (manual toggle) unless you want manual override to COUNT as achieved?
-  // User request: "calculate strictly based on min minutes"
-  // So we ignore t.done for the calculation of "Achieved/Not Achieved" stats.
+  // For Goals (once), purely check t.done (manual completion)
+
+  if (t.period === 'once') {
+    return !!t.done
+  }
 
   if (t.unit === 'minutes') {
     const currentMins = getPunchedMinutesForTodo(t) || 0
-    return currentMins >= (t.minutesPerTime || 0)
+    const targetMins = (t.minFrequency || 1) * (t.minutesPerTime || 0)
+    return currentMins >= targetMins
   }
 
   // Default to times
@@ -2425,10 +2459,25 @@ const boardGroups = computed(() => {
 
   // Add dedicated "目标" card for all goals
   if (goalTasks.length > 0) {
-    const unfinished = goalTasks.filter((t) => !isTaskCompleted(t))
-    const completed = goalTasks.filter((t) => isTaskCompleted(t))
-    const total = goalTasks.length
-    const punchedCount = goalTasks.filter((t) => (t.punchIns || 0) > 0).length
+    // Sort goal tasks: those with invested time comes first
+    const sortedGoals = [...goalTasks].sort((a, b) => {
+      // Prioritize undone tasks
+      if (a.done !== b.done) return a.done ? 1 : -1
+
+      // Then prioritize those with invested time
+      const aMins = getPunchedMinutesForTodo(a) || 0
+      const bMins = getPunchedMinutesForTodo(b) || 0
+
+      if (aMins !== bMins) return bMins - aMins
+
+      // Finally create time
+      return b.createdAt - a.createdAt
+    })
+
+    const unfinished = sortedGoals.filter((t) => !isTaskCompleted(t))
+    const completed = sortedGoals.filter((t) => isTaskCompleted(t))
+    const total = sortedGoals.length
+    const punchedCount = sortedGoals.filter((t) => (t.punchIns || 0) > 0).length
     const progress = total > 0 ? ((punchedCount / total) * 100).toFixed(1) : '0.0'
 
     groups.push({
@@ -2818,7 +2867,21 @@ const templateCategoryCounts = computed(() => {
 })
 
 const categoryCountsForChart = computed(() => {
-  const map: Record<string, number> = { ...templateCategoryCounts.value }
+  // Initialize with all configured categories to 0 to ensure they appear in charts
+  const map: Record<string, number> = {}
+
+  if (uiConfig.value.categories) {
+    uiConfig.value.categories.forEach((c) => {
+      map[c] = 0
+    })
+  }
+
+  // Merge template counts
+  const tplCounts = templateCategoryCounts.value
+  for (const [k, v] of Object.entries(tplCounts)) {
+    map[k] = (map[k] || 0) + v
+  }
+
   const goalsCount = todos.value.filter((t) => t.period === 'once').length
   if (goalsCount > 0) {
     map['目标'] = (map['目标'] || 0) + goalsCount
@@ -3183,6 +3246,10 @@ const exportDialogWidth = computed(() => {
             <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
               <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
                 <TodoItem
+                  :class="{
+                    'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30 border':
+                      todo.period === 'once' && (getPunchedMinutesForTodo(todo) || 0) > 0,
+                  }"
                   :todo="todo"
                   :punched-minutes="getPunchedMinutesForTodo(todo)"
                   :show-meta-tags="false"
@@ -3226,34 +3293,6 @@ const exportDialogWidth = computed(() => {
             >
               <div class="opacity-30"><app-icon size="24" /></div>
               暂无任务
-            </div>
-          </div>
-
-          <!-- Footer Progress -->
-          <div
-            class="p-2 bg-linear-to-r from-teal-50/50 to-transparent dark:from-teal-900/10 dark:to-transparent border-t border-neutral-100 dark:border-neutral-700"
-          >
-            <div
-              class="flex items-center justify-between text-xs mb-2"
-              style="color: #134e4a; font-family: 'Fira Sans', sans-serif"
-            >
-              <span class="font-medium">打卡进度</span>
-              <span
-                class="font-mono font-semibold"
-                style="font-family: 'Fira Code', monospace; color: #0d9488"
-                >{{ group.progress }}%</span
-              >
-            </div>
-            <div
-              class="w-full h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden shadow-inner"
-            >
-              <div
-                class="h-full transition-all duration-700 ease-out rounded-full shadow-sm"
-                :style="{
-                  background: `linear-gradient(to right, ${group.color}, ${group.color.replace('50%', '40%')})`,
-                  width: `${group.progress}%`,
-                }"
-              ></div>
             </div>
           </div>
         </div>
@@ -4097,6 +4136,7 @@ const exportDialogWidth = computed(() => {
         </div>
       </div>
     </t-dialog>
+
     <!-- 目标历史记录对话框 -->
     <t-dialog
       v-model:visible="goalHistoryDialogVisible"
@@ -4138,7 +4178,28 @@ const exportDialogWidth = computed(() => {
 
             <div>
               <div class="text-xs mb-1">投入时间（分钟）</div>
-              <t-input-number v-model="goalHistoryMinutes" :min="0" :step="5" size="small" />
+              <div class="flex items-center gap-2">
+                <t-button
+                  variant="outline"
+                  size="small"
+                  shape="square"
+                  :disabled="goalHistoryMinutes <= 0"
+                  @click="adjustGoalHistoryMinutes(-1, $event)"
+                >
+                  <template #icon><minus-icon /></template>
+                </t-button>
+                <div class="min-w-14 text-center tabular-nums font-medium">
+                  {{ goalHistoryMinutes }}
+                </div>
+                <t-button
+                  variant="outline"
+                  size="small"
+                  shape="square"
+                  @click="adjustGoalHistoryMinutes(1, $event)"
+                >
+                  <template #icon><add-icon /></template>
+                </t-button>
+              </div>
             </div>
 
             <div class="flex gap-2">
@@ -4367,7 +4428,13 @@ const exportDialogWidth = computed(() => {
           class="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800"
         >
           <t-button variant="outline" @click="resetUiConfig">恢复默认</t-button>
-          <t-button theme="primary" @click="saveUiConfigFromDraft">保存</t-button>
+          <t-button
+            theme="primary"
+            @click="saveUiConfigFromDraft"
+            :loading="isSavingConfig"
+            :disabled="isSavingConfig"
+            >保存</t-button
+          >
         </div>
       </div>
     </t-drawer>

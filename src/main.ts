@@ -12,6 +12,10 @@ import 'aieditor/dist/style.css'
 import 'viewerjs/dist/viewer.css'
 import VueViewer from 'v-viewer'
 import './lib/spaghetti.ts'
+import 'dayjs/locale/zh-cn'
+import dayjs from 'dayjs'
+
+dayjs.locale('zh-cn')
 
 const app = createApp(App)
 

@@ -493,7 +493,20 @@ export const useTodoStore = () => {
     // Update Todo stats
     if (todo) {
       todo.punchIns += 1
-      if (todo.punchIns === todo.minFrequency && !todo.done && !options?.skipAutoCompletion) {
+
+      let shouldAutoComplete = false
+      if (todo.unit === 'minutes') {
+        // Estimate progress based on count * per_time
+        // This is an approximation since individual records might be edited,
+        // but for the "add punch" action (standard size), this is appropriate.
+        const currentEstimated = todo.punchIns * (todo.minutesPerTime || 0)
+        const target = todo.minFrequency * (todo.minutesPerTime || 0)
+        if (currentEstimated >= target) shouldAutoComplete = true
+      } else {
+        if (todo.punchIns === todo.minFrequency) shouldAutoComplete = true
+      }
+
+      if (shouldAutoComplete && !todo.done && !options?.skipAutoCompletion) {
         // Auto-complete if reached frequency (unless skipped)
         toggleTodoDone(todo.id, true)
       }

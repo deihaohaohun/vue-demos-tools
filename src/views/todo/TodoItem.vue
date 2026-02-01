@@ -59,8 +59,8 @@ const getMinutesDone = (todo: Todo) => {
 }
 
 const minutesDone = computed(() => {
-  if (props.todo.unit !== 'minutes') return 0
   if (typeof props.punchedMinutes === 'number') return props.punchedMinutes
+  if (props.todo.unit !== 'minutes') return 0
   return getMinutesDone(props.todo)
 })
 
@@ -113,11 +113,34 @@ const getPeriodTheme = (period: string) => {
   }
   return map[period] || 'default'
 }
+
+const progressPercentage = computed(() => {
+  if (props.todo.done) return 100
+  if (props.todo.period === 'once') return 0 // Goals without done status don't show % bar unless we have a specific target logic
+
+  let percentage = 0
+  if (props.todo.unit === 'minutes') {
+    const totalTarget = props.todo.minFrequency * (props.todo.minutesPerTime || 0)
+    if (totalTarget > 0) {
+      percentage = (minutesDone.value / totalTarget) * 100
+    }
+  } else {
+    // Times
+    if (props.todo.minFrequency > 0) {
+      percentage = (props.todo.punchIns / props.todo.minFrequency) * 100
+    }
+  }
+  return Math.min(100, Math.max(0, percentage))
+})
+
+const isUnstarted = computed(() => {
+  return !props.todo.done && props.todo.punchIns === 0 && minutesDone.value === 0
+})
 </script>
 
 <template>
   <div
-    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-800"
+    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-800 relative"
     @click.stop="emit('toggle-select', todo.id)"
   >
     <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
@@ -140,9 +163,9 @@ const getPeriodTheme = (period: string) => {
           <t-button
             v-if="todo.period !== 'once'"
             shape="square"
-            theme="primary"
+            variant="outline"
+            theme="default"
             size="small"
-            variant="text"
             @click.stop="emit('punch-in', todo.id)"
           >
             <template #icon>
@@ -154,9 +177,9 @@ const getPeriodTheme = (period: string) => {
           <t-button
             shape="square"
             v-if="todo.period === 'once' && !todo.done"
-            theme="success"
+            variant="outline"
+            theme="default"
             size="small"
-            variant="text"
             @click.stop="emit('toggle-done', todo.id, true)"
           >
             <template #icon>
@@ -164,7 +187,13 @@ const getPeriodTheme = (period: string) => {
             </template>
           </t-button>
 
-          <t-button shape="square" variant="text" size="small" @click.stop="emit('edit', todo.id)">
+          <t-button
+            shape="square"
+            variant="outline"
+            theme="default"
+            size="small"
+            @click.stop="emit('edit', todo.id)"
+          >
             <template v-slot:icon>
               <edit-icon size="14" />
             </template>
@@ -174,8 +203,8 @@ const getPeriodTheme = (period: string) => {
           <t-button
             v-if="todo.period === 'once'"
             shape="square"
-            variant="text"
-            theme="primary"
+            variant="outline"
+            theme="default"
             size="small"
             title="查看进度记录"
             @click.stop="emit('view-history', todo.id)"
@@ -188,8 +217,8 @@ const getPeriodTheme = (period: string) => {
           <t-button
             v-if="!(todo.period === 'once' && todo.done)"
             :title="todo.period === 'once' ? '放弃目标' : '归档'"
-            :theme="todo.period === 'once' ? 'danger' : 'warning'"
-            variant="text"
+            theme="danger"
+            variant="outline"
             size="small"
             shape="square"
             @click.stop="emit('archive', todo.id)"
@@ -208,9 +237,19 @@ const getPeriodTheme = (period: string) => {
           todo.punchIns > 0 ||
           todo.unit === 'minutes' ||
           remainingTime ||
-          (todo.category && todo.period === 'once')
+          (todo.category && todo.period === 'once') ||
+          isUnstarted
         "
       >
+        <t-tag
+          v-if="isUnstarted"
+          size="small"
+          variant="light"
+          theme="danger"
+          class="text-neutral-400"
+        >
+          尚未开始
+        </t-tag>
         <t-tag
           v-if="todo.category && todo.period === 'once'"
           size="small"
@@ -220,13 +259,19 @@ const getPeriodTheme = (period: string) => {
           {{ todo.category }}
         </t-tag>
         <t-tag
-          v-if="todo.period !== 'once' && (todo.punchIns > 0 || todo.unit === 'minutes')"
+          v-if="
+            (todo.period !== 'once' && (todo.punchIns > 0 || todo.unit === 'minutes')) ||
+            (todo.period === 'once' && (todo.punchIns > 0 || minutesDone > 0))
+          "
           size="small"
           variant="light"
           theme="primary"
         >
           <template v-if="todo.unit === 'minutes'">
             {{ minutesDone }}/{{ todo.minFrequency * (todo.minutesPerTime || 0) }} 分钟
+          </template>
+          <template v-else-if="todo.period === 'once' && minutesDone > 0">
+            已投入 {{ minutesDone }} 分钟
           </template>
           <template v-else> {{ todo.punchIns }}/{{ todo.minFrequency }} 次 </template>
         </t-tag>
@@ -243,7 +288,17 @@ const getPeriodTheme = (period: string) => {
         </t-tag>
       </div>
     </div>
+
+    <!-- Progress Bar (Bottom) -->
+    <div
+      v-if="progressPercentage > 0"
+      class="absolute bottom-0 left-0 h-1 bg-teal-500/20 w-full rounded-b-lg overflow-hidden"
+    >
+      <div
+        class="h-full bg-teal-500 transition-all duration-300"
+        :style="{ width: `${progressPercentage}%` }"
+      ></div>
+    </div>
   </div>
 </template>
-
 <style lang="scss" scoped></style>
