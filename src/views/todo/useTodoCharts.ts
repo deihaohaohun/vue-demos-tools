@@ -320,6 +320,11 @@ export const useTodoCharts = (args: {
           lineStyle: {
             width: 4,
           },
+          label: {
+            show: true,
+            position: 'top',
+            color: t.text,
+          },
         },
       ],
     }
@@ -569,6 +574,11 @@ export const useTodoCharts = (args: {
           itemStyle: {
             color: '#60a5fa',
             borderRadius: 4, // 全圆角
+          },
+          label: {
+            show: true,
+            position: 'top',
+            color: t.text,
           },
         },
       ],

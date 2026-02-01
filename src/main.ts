@@ -11,11 +11,12 @@ import 'tdesign-vue-next/es/style/index.css'
 import 'aieditor/dist/style.css'
 import 'viewerjs/dist/viewer.css'
 import VueViewer from 'v-viewer'
-import './lib/spaghetti.ts'
 import 'dayjs/locale/zh-cn'
 import dayjs from 'dayjs'
+import weekOfYear from 'dayjs/plugin/weekOfYear'
 
 dayjs.locale('zh-cn')
+dayjs.extend(weekOfYear)
 
 const app = createApp(App)
 

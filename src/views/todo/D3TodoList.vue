@@ -2644,24 +2644,26 @@ const exportWeekDayKeys = computed(() => {
 })
 
 const exportWeekRangeText = computed(() => {
-  const keys = exportWeekDayKeys.value
-  if (keys.length !== 7) return ''
-  return `${keys[0]} ~ ${keys[6]}`
+  const start = exportWeekStartDate.value
+  // dayjs(start).week() returns the week of year
+  // Need to ensure locale is correct
+  const w = dayjs(start).week()
+  return `${dayjs(start).year()}年 第${w}周`
 })
 
 const exportDialogTitle = computed(() => {
   const keys = exportWeekDayKeys.value
-  if (!keys.length) return '打卡历史'
+  if (!keys.length) return '打卡统计'
   const start = keys[0]
   const end = keys[keys.length - 1]
-  return `${start}到${end}打卡历史`
+  return `打卡统计(${start}到${end})`
 })
 
 const exportImageFileName = computed(() => {
   const keys = exportWeekDayKeys.value
   const start = keys[0] || 'start'
   const end = keys[keys.length - 1] || 'end'
-  return `${start}_to_${end}_打卡历史.png`
+  return `${start}_to_${end}_打卡统计.png`
 })
 
 const exportRootStyle = computed(() => {
@@ -2793,23 +2795,63 @@ const nextExportWeek = () => {
 const exportDialogToImage = async () => {
   if (!exportCaptureRef.value) return
   exportingImage.value = true
+
+  // Clone strategy to avoid viewport clipping issues + scrolling issues
+  // We'll create a clone, force it to be full width off-screen, and capture that.
+  let clone: HTMLElement | null = null
+
   try {
     await nextTick()
+
+    // 1. Create Clone
+    const original = exportCaptureRef.value
+    clone = original.cloneNode(true) as HTMLElement
+
+    // 2. Set styles to ensure full render
+    // fixed positioning to take it out of flow, z-index to hide it behind things (or just offscreen)
+    // IMPORTANT: Top/Left offscreen might cause issues with some capture tools if they rely on viewport intersection.
+    // Safest is top:0, left:0, z-index: -9999.
+    Object.assign(clone.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      zIndex: '-9999',
+      width: 'max-content', // Force full width
+      height: 'max-content',
+      maxWidth: 'none',
+      maxHeight: 'none',
+      overflow: 'visible',
+      transform: 'none',
+      margin: '0',
+      padding: '20px', // Add padding to avoid edge clipping and give breathing room
+    })
+
+    // 3. Append to body
+    document.body.appendChild(clone)
+
+    // 4. Capture
     const scale = Math.max(2, window.devicePixelRatio || 1)
-    const result = await snapdom(exportCaptureRef.value, {
+    const result = await snapdom(clone, {
       scale,
       backgroundColor: exportPalette.value.rootBg,
     })
+
     await result.download({
       type: 'png',
       filename: exportImageFileName.value,
       backgroundColor: exportPalette.value.rootBg,
     })
+
     MessagePlugin.success('已导出图片')
-    exportDialogVisible.value = false
-  } catch {
+    // Don't close dialog automatically, user might want to adjust
+    // exportDialogVisible.value = false
+  } catch (e) {
+    console.error(e)
     MessagePlugin.error('导出失败，请重试')
   } finally {
+    if (clone && clone.parentNode) {
+      clone.parentNode.removeChild(clone)
+    }
     exportingImage.value = false
   }
 }
@@ -2938,10 +2980,6 @@ const editDialogWidth = computed(() => {
 
 const punchDialogWidth = computed(() => {
   return windowWidth.value < 640 ? '95%' : '400px'
-})
-
-const exportDialogWidth = computed(() => {
-  return windowWidth.value < 640 ? '95%' : '860px'
 })
 </script>
 
@@ -3645,9 +3683,7 @@ const exportDialogWidth = computed(() => {
             <div
               class="px-2 py-2 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700"
             >
-              <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">
-                最近一年活跃热力图（打卡次数/分钟数）
-              </div>
+              <div class="text-sm font-bold text-neutral-600 dark:text-neutral-300">打卡热力图</div>
             </div>
             <div class="p-2">
               <div class="w-full overflow-x-auto">
@@ -3814,7 +3850,9 @@ const exportDialogWidth = computed(() => {
     <t-dialog
       v-model:visible="exportDialogVisible"
       :header="exportDialogTitle"
-      :width="exportDialogWidth"
+      width="95%"
+      placement="top"
+      :top="'5vh'"
       :footer="false"
     >
       <div
@@ -3838,13 +3876,13 @@ const exportDialogWidth = computed(() => {
             >下一周</t-button
           >
         </div>
-        <div class="max-h-[70vh] overflow-y-auto px-2">
-          <div ref="exportCaptureRef" class="p-2 rounded border" :style="exportRootStyle">
-            <div class="flex flex-col gap-2">
+        <div class="max-h-[60vh] overflow-auto px-2">
+          <div ref="exportCaptureRef" class="w-fit" :style="exportRootStyle">
+            <div class="flex gap-2 items-start">
               <div
                 v-for="d in exportSummaries"
                 :key="d.dayKey"
-                class="p-2 rounded border"
+                class="p-2 rounded border min-w-[300px] shrink-0"
                 :style="exportDayCardStyle"
               >
                 <div class="flex items-center justify-between gap-2">
@@ -3891,7 +3929,7 @@ const exportDialogWidth = computed(() => {
                 <span>本周完成的目标</span>
                 <span :style="exportSuccessBadgeStyle">{{ exportGoals.length }}</span>
               </div>
-              <div class="flex flex-col gap-2">
+              <div class="flex flex-row flex-wrap gap-2">
                 <div
                   v-for="g in exportGoals"
                   :key="g.id"
@@ -3904,9 +3942,9 @@ const exportDialogWidth = computed(() => {
                       {{ g.category }}
                     </span>
                     <span :style="exportSuccessBadgeStyle"> 已完成 </span>
-                    <span class="text-xs" :style="exportMutedTextStyle"
-                      >完成于 {{ dayjs(g.completedAt).format('YYYY-MM-DD HH:mm') }}</span
-                    >
+                    <span class="text-xs" :style="exportMutedTextStyle">{{
+                      dayjs(g.completedAt).format('MM-DD HH:mm')
+                    }}</span>
                   </div>
                 </div>
               </div>
