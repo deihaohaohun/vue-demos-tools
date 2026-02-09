@@ -135,14 +135,16 @@ const authPasswordRef = ref()
 const isAddingTodo = ref(false)
 const isSavingEdit = ref(false)
 const isPunchingIn = ref(false)
+const isAddingGoalHistory = ref(false) // 添加目标历史记录时的loading状态
 
 watch(
   () => authDialogVisible.value,
   (val) => {
     if (val) {
-      nextTick(() => {
+      // 使用setTimeout确保对话框完全渲染后再聚焦
+      setTimeout(() => {
         authPasswordRef.value?.focus()
-      })
+      }, 100)
     }
   },
 )
@@ -204,10 +206,6 @@ const loadTodosFromSupabase = async () => {
 }
 
 /**
- * Save a new todo to Supabase (supports all task types)
- */
-
-/**
  * Update an existing todo in Supabase
  */
 const updateTodoInSupabase = async (
@@ -219,6 +217,11 @@ const updateTodoInSupabase = async (
     done?: boolean
     completed_at?: number
     punch_ins?: number
+    category?: string
+    period?: TodoPeriod
+    min_frequency?: number
+    unit?: TodoUnit
+    minutes_per_time?: number
   },
 ) => {
   try {
@@ -1570,10 +1573,13 @@ const verifyAuth = () => {
     MessagePlugin.success({ content: '验证成功' })
 
     if (isBiometricAvailable.value && !biometricCredId.value) {
-      DialogPlugin.confirm({
+      const confirmDialog = DialogPlugin.confirm({
         header: '启用生物识别',
         body: '检测到您的设备支持生物识别（指纹/人脸），是否启用以便下次直接解锁？',
         onConfirm: () => {
+          // 先关闭确认对话框
+          confirmDialog.hide()
+          // 然后启用生物识别
           enableBiometrics()
         },
       })
@@ -1633,6 +1639,12 @@ const editVisible = ref(false)
 const editingTodoId = ref<string | null>(null)
 const editTitle = ref('')
 const editDescription = ref('')
+// 编辑任务时的模板属性
+const editCategory = ref<string>('')
+const editPeriod = ref<TodoPeriod>('daily')
+const editMinFrequency = ref<number>(1)
+const editUnit = ref<TodoUnit>('times')
+const editMinutesPerTime = ref<number>(15)
 
 const editingTodo = computed(() => {
   const id = editingTodoId.value
@@ -1643,7 +1655,32 @@ const editingTodo = computed(() => {
 const editOnlyDescription = computed(() => {
   const t = editingTodo.value
   if (!t) return false
+  // 目标且已完成，只能编辑描述
   return t.period === 'once' && t.done
+})
+
+// 编辑时可用的分类选项
+const editCategoryOptions = computed(() => {
+  const cats = [...categoryOptions.value]
+  const cur = editCategory.value
+  if (cur && !cats.includes(cur)) cats.unshift(cur)
+  return cats
+})
+
+// 编辑时可用的最小频率选项
+const editMinFrequencyOptions = computed(() => {
+  const opts = [...minFrequencyOptions.value]
+  const cur = editMinFrequency.value
+  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
+  return opts.sort((a, b) => a - b)
+})
+
+// 编辑时可用的每次分钟选项
+const editMinutesPerTimeOptions = computed(() => {
+  const opts = [...minutesPerTimeOptions.value]
+  const cur = editMinutesPerTime.value
+  if (typeof cur === 'number' && cur > 0 && !opts.includes(cur)) opts.push(cur)
+  return opts.sort((a, b) => a - b)
 })
 
 const isEditingGoal = computed(() => {
@@ -1673,6 +1710,25 @@ const openEdit = (id: string) => {
   editTitle.value = todo.title
   editDescription.value = todo.description || ''
 
+  // 如果任务来自模板，加载模板的完整信息以便编辑
+  if (todo.templateId) {
+    const template = templates.value.find((t) => t.id === todo.templateId)
+    if (template) {
+      editCategory.value = template.category
+      editPeriod.value = template.period
+      editMinFrequency.value = template.minFrequency
+      editUnit.value = template.unit
+      editMinutesPerTime.value = template.minutesPerTime || 15
+    }
+  } else {
+    // 如果不是来自模板，使用任务自身的属性
+    editCategory.value = todo.category
+    editPeriod.value = todo.period
+    editMinFrequency.value = todo.minFrequency
+    editUnit.value = todo.unit
+    editMinutesPerTime.value = todo.minutesPerTime || 15
+  }
+
   editVisible.value = true
 }
 
@@ -1688,49 +1744,82 @@ const saveEdit = async () => {
   const isCompletedGoal = todo.period === 'once' && todo.done
 
   const nextTitle = isCompletedGoal ? todo.title : editTitle.value.trim()
-  const tplMinutes =
-    todo.templateId && templates.value.find((t) => t.id === todo.templateId)?.unit === 'minutes'
-      ? templates.value.find((t) => t.id === todo.templateId)?.minutesPerTime
-      : undefined
-  const nextMinutesPerTime =
-    todo.unit === 'minutes'
-      ? typeof todo.minutesPerTime === 'number'
-        ? todo.minutesPerTime
-        : typeof tplMinutes === 'number'
-          ? tplMinutes
-          : 15
-      : 15
 
   if (!nextTitle) {
     MessagePlugin.warning('任务标题不能为空')
     return
   }
 
+  // 如果不是已完成的目标，验证分类
+  if (!isCompletedGoal && editCategoryOptions.value.length && !editCategory.value) {
+    MessagePlugin.warning('请选择任务分类')
+    return
+  }
+
   isSavingEdit.value = true
 
   try {
+    // 应用编辑到任务
     const ok = applyTodoEdit(id, {
       title: nextTitle,
-      category: todo.category,
-      period: todo.period,
-      minFrequency: todo.minFrequency,
-      unit: todo.unit,
-      minutesPerTime: nextMinutesPerTime,
+      category: isCompletedGoal ? todo.category || '' : editCategory.value,
+      period: isCompletedGoal ? todo.period : editPeriod.value,
+      minFrequency: isCompletedGoal ? todo.minFrequency : editMinFrequency.value,
+      unit: isCompletedGoal ? todo.unit : editUnit.value,
+      minutesPerTime: isCompletedGoal ? todo.minutesPerTime || 15 : editMinutesPerTime.value,
       description: editDescription.value.trim() || undefined,
       deadline: todo.deadline,
     })
     if (!ok) return
 
-    // Update in Supabase for all task types
+    // 更新到 Supabase
     await updateTodoInSupabase(id, {
       title: nextTitle,
+      category: isCompletedGoal ? todo.category || '' : editCategory.value,
+      period: isCompletedGoal ? todo.period : editPeriod.value,
+      min_frequency: isCompletedGoal ? todo.minFrequency : editMinFrequency.value,
+      unit: isCompletedGoal ? todo.unit : editUnit.value,
+      minutes_per_time: isCompletedGoal ? todo.minutesPerTime || 15 : editMinutesPerTime.value,
       description: editDescription.value.trim() || undefined,
     })
 
-    // Update punch records in Supabase
+    // 如果任务来自模板，同时更新模板
+    if (!isCompletedGoal && todo.templateId) {
+      const template = templates.value.find((t) => t.id === todo.templateId)
+      if (template) {
+        // 更新模板
+        const templateOk = applyTemplateEdit(todo.templateId, {
+          title: nextTitle,
+          category: editCategory.value,
+          period: editPeriod.value,
+          minFrequency: editMinFrequency.value,
+          unit: editUnit.value,
+          minutesPerTime: editMinutesPerTime.value,
+          description: editDescription.value.trim() || undefined,
+        })
+
+        if (templateOk) {
+          // 同步模板到 Supabase
+          await updateTemplateInSupabase(todo.templateId, {
+            title: nextTitle,
+            category: editCategory.value,
+            period: editPeriod.value,
+            min_frequency: editMinFrequency.value,
+            unit: editUnit.value,
+            minutes_per_time: editMinutesPerTime.value,
+            description: editDescription.value.trim() || undefined,
+          })
+        }
+      }
+    }
+
+    // 更新打卡记录中的任务标题
     const { error: punchUpdateError } = await supabase
       .from('todo_punch_records')
-      .update({ todo_title: nextTitle })
+      .update({
+        todo_title: nextTitle,
+        category: isCompletedGoal ? todo.category : editCategory.value,
+      })
       .eq('todo_id', id)
       .select()
 
@@ -1738,7 +1827,13 @@ const saveEdit = async () => {
       console.error('Failed to update punch record titles:', punchUpdateError)
     } else {
       punchRecords.value = punchRecords.value.map((record) =>
-        record.todoId === id ? { ...record, todoTitle: nextTitle } : record,
+        record.todoId === id
+          ? {
+              ...record,
+              todoTitle: nextTitle,
+              category: isCompletedGoal ? todo.category : editCategory.value,
+            }
+          : record,
       )
     }
 
@@ -1768,6 +1863,7 @@ const openGoalHistoryDialog = (goalId: string) => {
 }
 
 const addGoalHistory = async () => {
+  if (isAddingGoalHistory.value) return // 防止重复提交
   const id = currentGoalId.value
   if (!id) return
 
@@ -1788,6 +1884,8 @@ const addGoalHistory = async () => {
     return
   }
 
+  isAddingGoalHistory.value = true // 开始loading
+
   // Insert Goal History to Supabase
   const { data: ghData, error: ghError } = await supabase
     .from('todo_goal_history_records')
@@ -1804,6 +1902,7 @@ const addGoalHistory = async () => {
   if (ghError || !ghData) {
     console.error('Failed to save goal history', ghError)
     MessagePlugin.error('保存进度失败')
+    isAddingGoalHistory.value = false // 结束loading
     return
   }
 
@@ -1886,6 +1985,7 @@ const addGoalHistory = async () => {
   goalHistoryContent.value = ''
   goalHistoryMinutes.value = 0
   goalHistoryType.value = 'regular'
+  isAddingGoalHistory.value = false // 结束loading
   // MessagePlugin.success('已添加记录并同步打卡') // Moved inside async callback
 }
 
@@ -3038,7 +3138,6 @@ const punchDialogWidth = computed(() => {
         placeholder="输入密码"
         ref="authPasswordRef"
         @enter="() => verifyAuth()"
-        autofocus
       />
       <div v-if="biometricCredId" class="mt-4 text-center">
         <t-button variant="outline" shape="circle" size="large" @click="loginWithBiometrics">
@@ -3988,6 +4087,98 @@ const punchDialogWidth = computed(() => {
             :placeholder="isEditingGoal ? '可选：添加目标的详细描述' : '可选：添加任务的详细描述'"
           />
         </div>
+
+        <!-- 如果不是已完成的目标，显示可编辑的分类、周期等字段 -->
+        <template v-if="!editOnlyDescription">
+          <div class="col-span-12">
+            <div class="text-sm mb-1">任务分类</div>
+            <div class="flex items-center gap-2">
+              <t-radio-group
+                v-if="editCategoryOptions.length"
+                v-model="editCategory"
+                variant="default-filled"
+                size="small"
+                class="flex flex-wrap"
+              >
+                <t-radio-button v-for="c in editCategoryOptions" :key="c" :value="c">{{
+                  c
+                }}</t-radio-button>
+              </t-radio-group>
+              <t-input
+                v-else
+                v-model="editCategory"
+                placeholder="暂无分类，请先在配置管理中添加"
+                disabled
+                class="flex-1"
+              />
+            </div>
+          </div>
+
+          <div class="col-span-12">
+            <div class="text-sm mb-1">任务周期</div>
+            <t-radio-group
+              v-model="editPeriod"
+              variant="default-filled"
+              size="small"
+              class="flex flex-wrap"
+            >
+              <t-radio-button value="daily">每天</t-radio-button>
+              <t-radio-button value="weekly">每周</t-radio-button>
+              <t-radio-button value="monthly">每月</t-radio-button>
+              <t-radio-button value="yearly">每年</t-radio-button>
+              <t-radio-button value="once">目标</t-radio-button>
+            </t-radio-group>
+          </div>
+
+          <div class="col-span-12">
+            <div class="text-sm mb-1">任务单位</div>
+            <t-radio-group
+              v-model="editUnit"
+              variant="default-filled"
+              size="small"
+              :disabled="editPeriod === 'once'"
+              class="flex flex-wrap"
+            >
+              <t-radio-button value="times">次数</t-radio-button>
+              <t-radio-button value="minutes">分钟</t-radio-button>
+            </t-radio-group>
+          </div>
+
+          <div class="col-span-12">
+            <div class="text-sm mb-1">最小频率</div>
+            <div class="flex items-center gap-2">
+              <t-radio-group
+                v-model="editMinFrequency"
+                variant="default-filled"
+                size="small"
+                :disabled="editPeriod === 'once'"
+                class="flex flex-wrap"
+              >
+                <t-radio-button v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{
+                  freq
+                }}</t-radio-button>
+              </t-radio-group>
+              <div class="text-sm text-neutral-400">次</div>
+            </div>
+          </div>
+
+          <div class="col-span-12" v-if="editUnit === 'minutes'">
+            <div class="text-sm mb-1">每次分钟</div>
+            <div class="flex items-center gap-2">
+              <t-radio-group
+                v-model="editMinutesPerTime"
+                variant="default-filled"
+                size="small"
+                class="flex flex-wrap"
+              >
+                <t-radio-button v-for="m in editMinutesPerTimeOptions" :key="m" :value="m">{{
+                  m
+                }}</t-radio-button>
+              </t-radio-group>
+              <div class="text-sm text-neutral-400">分钟</div>
+            </div>
+          </div>
+        </template>
       </div>
       <div class="mt-2 flex justify-end gap-2">
         <t-button variant="outline" @click="editVisible = false" :disabled="isSavingEdit"
@@ -4124,7 +4315,7 @@ const punchDialogWidth = computed(() => {
 
     <t-dialog
       v-model:visible="punchDialogVisible"
-      header="打卡备注"
+      :header="currentPunchTodo ? `打卡: ${currentPunchTodo.title}` : '打卡备注'"
       :width="punchDialogWidth"
       :footer="false"
     >
@@ -4240,9 +4431,11 @@ const punchDialogWidth = computed(() => {
                 v-if="!editingGoalHistoryId"
                 size="small"
                 theme="primary"
+                :loading="isAddingGoalHistory"
+                :disabled="isAddingGoalHistory"
                 @click="addGoalHistory"
               >
-                添加记录
+                {{ isAddingGoalHistory ? '添加中...' : '添加记录' }}
               </t-button>
               <template v-else>
                 <t-button size="small" theme="primary" @click="saveGoalHistory"> 保存 </t-button>
