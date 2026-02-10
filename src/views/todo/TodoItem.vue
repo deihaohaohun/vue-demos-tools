@@ -266,19 +266,23 @@ const isUnstarted = computed(() => {
         <t-tag
           v-if="
             (todo.period !== 'once' && (todo.punchIns > 0 || todo.unit === 'minutes')) ||
-            (todo.period === 'once' && (todo.punchIns > 0 || minutesDone > 0))
+            todo.period === 'once'
           "
           size="small"
           variant="light"
           theme="primary"
         >
-          <template v-if="todo.unit === 'minutes'">
-            {{ minutesDone }}/{{ todo.minFrequency * (todo.minutesPerTime || 0) }} 分钟
+          <!-- 目标任务只显示投入时间 -->
+          <template v-if="todo.period === 'once'">
+            <span v-if="minutesDone">已投入 {{ minutesDone }} 分钟</span>
           </template>
-          <template v-else-if="todo.period === 'once' && minutesDone > 0">
-            已投入 {{ minutesDone }} 分钟
+          <template v-else>
+            <!-- 非目标任务：按分钟或次数显示 -->
+            <template v-if="todo.unit === 'minutes'">
+              {{ minutesDone }}/{{ todo.minFrequency * (todo.minutesPerTime || 0) }} 分钟
+            </template>
+            <template v-else>{{ todo.punchIns }}/{{ todo.minFrequency }} 次 </template>
           </template>
-          <template v-else> {{ todo.punchIns }}/{{ todo.minFrequency }} 次 </template>
         </t-tag>
         <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
           {{ remainingTime }}

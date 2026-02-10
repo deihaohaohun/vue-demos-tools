@@ -37,6 +37,8 @@ interface TodoTemplate {
   deadline?: number
   archived?: boolean
   archivedAt?: number
+  done?: boolean // 目标完成状态
+  completedAt?: number // 目标完成时间
 }
 
 interface DayStat {
@@ -93,6 +95,7 @@ interface GoalHistoryRecord {
   type: 'regular' | 'milestone'
   timestamp: number
   note?: string
+  inputTime?: number // 投入时间（分钟）
 }
 
 interface UiConfig {
@@ -512,16 +515,18 @@ export const useTodoStore = () => {
       }
     }
 
-    // Update Day Stats
-    const stat = ensureDayStat(record.dayKey)
-    stat.punchInsTotal += 1
-    incCategory(stat.categoryPunchIns, record.category || '未分类', 1)
+    // Update Day Stats (Exclude Goals)
+    if (todo?.period !== 'once') {
+      const stat = ensureDayStat(record.dayKey)
+      stat.punchInsTotal += 1
+      incCategory(stat.categoryPunchIns, record.category || '未分类', 1)
 
-    // Update minutes stats if minutesPerTime is set (regardless of unit)
-    if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
-      const mins = record.minutesPerTime
-      stat.minutesTotal += mins
-      incCategory(stat.categoryMinutes, record.category || '未分类', mins)
+      // Update minutes stats if minutesPerTime is set (regardless of unit)
+      if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
+        const mins = record.minutesPerTime
+        stat.minutesTotal += mins
+        incCategory(stat.categoryMinutes, record.category || '未分类', mins)
+      }
     }
 
     // 限制最大记录数，避免 localStorage 过大，比如最近 5000 条
@@ -543,6 +548,8 @@ export const useTodoStore = () => {
     const record = punchRecords.value.find((r) => r.id === id)
     if (!record) return false
 
+    const todo = todos.value.find((t) => t.id === record.todoId)
+
     const dk = record.dayKey
     const stat = ensureDayStat(dk)
     const categoryKey = record.category || '未分类'
@@ -550,10 +557,13 @@ export const useTodoStore = () => {
     const oldMinutes = typeof record.minutesPerTime === 'number' ? record.minutesPerTime : 0
     const nextMinutes = Math.max(0, Math.round(minutes))
 
-    const delta = nextMinutes - oldMinutes
-    if (delta !== 0) {
-      stat.minutesTotal = Math.max(0, (stat.minutesTotal || 0) + delta)
-      incCategory(stat.categoryMinutes, categoryKey, delta)
+    // Update minutes stats (Exclude Goals)
+    if (todo?.period !== 'once') {
+      const delta = nextMinutes - oldMinutes
+      if (delta !== 0) {
+        stat.minutesTotal = Math.max(0, (stat.minutesTotal || 0) + delta)
+        incCategory(stat.categoryMinutes, categoryKey, delta)
+      }
     }
 
     record.minutesPerTime = nextMinutes
@@ -661,39 +671,34 @@ export const useTodoStore = () => {
       }
     }
 
-    // Template logic: try to find existing template
+    // Template logic: 所有任务（包括目标）都需要模板
     let templateId: string | undefined = undefined
     let newTemplate: TodoTemplate | undefined = undefined
 
-    if (params.period !== 'once') {
-      const existingTemplate = templates.value.find(
-        (t) =>
-          !t.archived &&
-          t.title === text &&
-          t.period === params.period &&
-          t.category === params.category,
-      )
-      if (existingTemplate) {
-        templateId = existingTemplate.id
-      } else {
-        // Need to create new template
-        // We will prepare the object but strict ID generation (if using server)
-        // implies we might want to wait. However, for D3TodoList flow,
-        // we can return the template object.
-        // Note: For 'Server-First', D3TodoList should save this template
-        // to Supabase *before* saving the Todo.
-        newTemplate = {
-          id: '', // Placeholder
-          title: text,
-          category: params.category,
-          period: params.period,
-          minFrequency: params.minFrequency,
-          unit: params.unit,
-          minutesPerTime: params.minutesPerTime,
-          description: params.description,
-          createdAt: now,
-          archived: false,
-        }
+    const existingTemplate = templates.value.find(
+      (t) =>
+        !t.archived &&
+        t.title === text &&
+        t.period === params.period &&
+        t.category === params.category,
+    )
+    if (existingTemplate) {
+      templateId = existingTemplate.id
+    } else {
+      // 创建新模板（包括目标任务）
+      newTemplate = {
+        id: '', // Placeholder，由服务器生成
+        title: text,
+        category: params.category,
+        period: params.period,
+        minFrequency: params.minFrequency,
+        unit: params.unit,
+        minutesPerTime: params.minutesPerTime,
+        description: params.description,
+        createdAt: now,
+        archived: false,
+        deadline: params.deadline,
+        done: false,
       }
     }
 
@@ -739,10 +744,12 @@ export const useTodoStore = () => {
       description: todo.description,
     })
 
-    // Update Day Stats
-    const stat = ensureDayStat(todo.dayKey)
-    stat.createdCount += 1
-    incCategory(stat.categoryCreated, todo.category || '未分类', 1)
+    // Update Day Stats (Exclude Goals)
+    if (todo.period !== 'once') {
+      const stat = ensureDayStat(todo.dayKey)
+      stat.createdCount += 1
+      incCategory(stat.categoryCreated, todo.category || '未分类', 1)
+    }
   }
 
   const addTodoFromHistory = (
@@ -831,8 +838,12 @@ export const useTodoStore = () => {
       dayKey: dk,
       deadline: params.deadline,
     })
-    ensureDayStat(dk).createdCount += 1
-    incCategory(ensureDayStat(dk).categoryCreated, params.category, 1)
+    // Update Day Stats (Exclude Goals)
+    if (params.period !== 'once') {
+      ensureDayStat(dk).createdCount += 1
+      incCategory(ensureDayStat(dk).categoryCreated, params.category, 1)
+    }
+
     updateHistory({
       title: text,
       category: params.category,
@@ -939,15 +950,19 @@ export const useTodoStore = () => {
     todo.done = done
     if (done) {
       todo.completedAt = Date.now()
-      ensureDayStat(todo.dayKey).completedCount += 1
-      incCategory(ensureDayStat(todo.dayKey).categoryCompleted, todo.category || '未分类', 1)
+      if (todo.period !== 'once') {
+        ensureDayStat(todo.dayKey).completedCount += 1
+        incCategory(ensureDayStat(todo.dayKey).categoryCompleted, todo.category || '未分类', 1)
+      }
       return true
     }
 
     todo.completedAt = undefined
-    const stat = ensureDayStat(todo.dayKey)
-    stat.completedCount = Math.max(0, stat.completedCount - 1)
-    incCategory(stat.categoryCompleted, todo.category || '未分类', -1)
+    if (todo.period !== 'once') {
+      const stat = ensureDayStat(todo.dayKey)
+      stat.completedCount = Math.max(0, stat.completedCount - 1)
+      incCategory(stat.categoryCompleted, todo.category || '未分类', -1)
+    }
     return true
   }
 

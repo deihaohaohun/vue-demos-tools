@@ -177,109 +177,29 @@ const exportPalette = computed(() => {
   }
 })
 
-// ============================================
-// Supabase Helper Functions for Todos
-// ============================================
-
-/**
- * Load all todos from Supabase
- */
-const loadTodosFromSupabase = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('todos')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Failed to load todos from Supabase:', error)
-      MessagePlugin.error('加载任务失败')
-      return []
-    }
-
-    return data || []
-  } catch (err) {
-    console.error('Error loading todos:', err)
-    MessagePlugin.error('加载任务时发生错误')
-    return []
-  }
-}
-
-/**
- * Update an existing todo in Supabase
- */
-const updateTodoInSupabase = async (
-  id: string,
-  updates: {
-    title?: string
-    description?: string
-    deadline?: number
-    done?: boolean
-    completed_at?: number
-    punch_ins?: number
-    category?: string
-    period?: TodoPeriod
-    min_frequency?: number
-    unit?: TodoUnit
-    minutes_per_time?: number
-  },
-) => {
-  try {
-    const { error } = await supabase.from('todos').update(updates).eq('id', id)
-
-    if (error) {
-      console.error('Failed to update todo in Supabase:', error)
-      MessagePlugin.error('更新任务失败')
-      return false
-    }
-
-    return true
-  } catch (err) {
-    console.error('Error updating todo:', err)
-    MessagePlugin.error('更新任务时发生错误')
-    return false
-  }
-}
-
-/**
- * Delete a todo from Supabase
- */
-const deleteTodoFromSupabase = async (id: string) => {
-  try {
-    const { error } = await supabase.from('todos').delete().eq('id', id)
-
-    if (error) {
-      console.error('Failed to delete todo from Supabase:', error)
-      MessagePlugin.error('删除任务失败')
-      return false
-    }
-
-    return true
-  } catch (err) {
-    console.error('Error deleting todo:', err)
-    MessagePlugin.error('删除任务时发生错误')
-    return false
-  }
-}
-
 /**
  * Mark a todo as complete in Supabase
  */
 const markTodoCompleteInSupabase = async (id: string, done: boolean) => {
   try {
-    const updates: { done: boolean; completed_at: number | null } = {
-      done,
-      completed_at: done ? Date.now() : null,
+    const todo = getTodoById(id)
+    if (!todo) return false
+
+    // 只有目标任务需要更新模板状态
+    if (todo.period === 'once') {
+      const updates: { done: boolean; completed_at: number | null } = {
+        done,
+        completed_at: done ? Date.now() : null,
+      }
+
+      const { error } = await supabase.from('todo_templates').update(updates).eq('id', id)
+
+      if (error) {
+        console.error('Failed to mark goal complete in Supabase:', error)
+        MessagePlugin.error('更新目标状态失败')
+        return false
+      }
     }
-
-    const { error } = await supabase.from('todos').update(updates).eq('id', id)
-
-    if (error) {
-      console.error('Failed to mark todo complete in Supabase:', error)
-      MessagePlugin.error('更新任务状态失败')
-      return false
-    }
-
     return true
   } catch (err) {
     console.error('Error marking todo complete:', err)
@@ -434,63 +354,6 @@ const archiveTemplateInSupabase = async (id: string) => {
  * Generate a todo from a template using server-first approach
  * This ensures all auto-generated todos have proper UUIDs from the database
  */
-const generateTodoFromTemplate = async (
-  template: TodoTemplate,
-  dayKey: string,
-): Promise<Todo | null> => {
-  try {
-    const now = Date.now()
-
-    const dbPayload = {
-      title: template.title,
-      category: template.category,
-      period: template.period,
-      min_frequency: template.minFrequency,
-      unit: template.unit,
-      minutes_per_time: template.minutesPerTime || null,
-      description: template.description,
-      done: false,
-      completed_at: null,
-      punch_ins: 0,
-      template_id: template.id,
-      created_at: new Date(now).toISOString(),
-      day_key: dayKey,
-      deadline: null,
-    }
-
-    console.log('📋 Generating todo from template:', template.title, 'for', dayKey)
-
-    const { data, error } = await supabase.from('todos').insert(dbPayload).select().single()
-
-    if (error || !data) {
-      console.error('❌ Failed to generate todo from template:', error)
-      return null
-    }
-
-    console.log('✅ Todo generated successfully:', data)
-
-    // Map back to local interface
-    return {
-      id: data.id,
-      title: data.title,
-      done: data.done,
-      punchIns: data.punch_ins,
-      category: data.category,
-      period: data.period as TodoPeriod,
-      minFrequency: data.min_frequency,
-      unit: data.unit as TodoUnit,
-      minutesPerTime: data.minutes_per_time,
-      description: data.description,
-      templateId: data.template_id,
-      createdAt: new Date(data.created_at).getTime(),
-      dayKey: data.day_key,
-      deadline: data.deadline,
-    }
-  } catch (err) {
-    console.error('❌ Error generating todo from template:', err)
-    return null
-  }
-}
 
 // ============================================
 // Supabase Sync Helpers for Auxiliary Data
@@ -724,16 +587,19 @@ const getTodoCycleEndDayKey = (period: TodoPeriod, cycleStartDayKey: string) => 
 }
 
 const getPunchedMinutesForTodo = (todo: (typeof todos.value)[number]) => {
-  // Always calculate for 'once' items (Goals) to show invested time
+  // 对于目标任务，从goalHistoryRecords的inputTime字段中获取投入时间
   if (todo.period === 'once') {
-    const list = punchRecordsByTodoId.value[todo.id] || []
-    if (!list.length) return undefined
-    return list.reduce(
-      (sum, r) => sum + (typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0),
-      0,
-    )
+    const records = goalHistoryRecords.value.filter((r) => r.goalId === todo.id)
+    if (!records.length) return undefined
+
+    // 累加所有历史记录中的投入时间（从input_time字段）
+    return records.reduce((sum, r) => {
+      const minutes = typeof r.inputTime === 'number' ? r.inputTime : 0
+      return sum + minutes
+    }, 0)
   }
 
+  // 非目标任务，从punchRecords中获取
   if (todo.unit !== 'minutes') return undefined
 
   const list = punchRecordsByTodoId.value[todo.id] || []
@@ -1035,21 +901,6 @@ const confirmPunch = async () => {
         prep.record.id = data.id
         addPunchRecordDirectly(prep.record)
 
-        // CRITICAL: Update Todo state in Supabase (punch_ins, done, completed_at)
-        const info = getTodoById(prep.record.todoId)
-        if (info) {
-          const { error: updateError } = await supabase
-            .from('todos')
-            .update({
-              punch_ins: info.punchIns,
-              done: info.done,
-              completed_at: info.completedAt || null,
-            })
-            .eq('id', info.id)
-
-          if (updateError) console.error('Failed to update todo state', updateError)
-        }
-
         // Close dialog ONLY after success
         punchDialogVisible.value = false
 
@@ -1220,11 +1071,6 @@ const saveUiConfigFromDraft = async () => {
   const freqs = draftMinFrequenciesList.value.filter((n) => typeof n === 'number' && !isNaN(n))
   const mins = draftMinutesPerTimesList.value.filter((n) => typeof n === 'number' && !isNaN(n))
 
-  // Need to declare this ref in the setup script if not already there, but here we can't easily insert variables.
-  // checking context: lines 1145+. I'll reuse a new ref I'll define inside the function scope? No, that won't work for template binding.
-  // I will assume isSavingConfig is defined (I'll add it in next step) or use a local variable if I can't.
-  // actually, let's just use the function logic here and I'll add the ref declaration separately.
-
   isSavingConfig.value = true
   try {
     if (cats.length) uiConfig.value.categories = cats
@@ -1349,6 +1195,8 @@ onMounted(async () => {
         archived: template.archived || false,
         archivedAt: template.archived_at,
         createdAt: new Date(template.created_at).getTime(),
+        done: template.done || false,
+        completedAt: template.completed_at,
       }
 
       if (existingIdx >= 0) {
@@ -1359,62 +1207,21 @@ onMounted(async () => {
         templates.value.push(templateItem)
       }
     }
+    loadingProgress.value = 30
+
+    // Step 2.5: Legacy mapping skipped (todos table removed)
+    const legacyIdMap = new Map<string, string>()
+
     loadingProgress.value = 40
 
-    // Step 3: Load Todos (40% -> 60%)
-    loadingMessage.value = '加载任务...'
-    // Load all todos from Supabase
-    const supabaseTodos = await loadTodosFromSupabase()
+    // Step 3: 从模板在内存中生成当天的 todos (40% -> 65%)
+    // 不再从数据库加载 todos，而是根据模板直接生成
+    loadingMessage.value = '生成今日任务...'
 
-    // Sync loaded todos with local store
-    // First, remove any todos that exist in local store but not in Supabase
-    // (to handle cases where they were deleted from Supabase)
-    const supabaseTodoIds = new Set(supabaseTodos.map((t) => t.id))
-    const todosToRemove = todos.value.filter((t) => !supabaseTodoIds.has(t.id))
-
-    for (const todoToRemove of todosToRemove) {
-      const idx = todos.value.findIndex((t) => t.id === todoToRemove.id)
-      if (idx >= 0) todos.value.splice(idx, 1)
-    }
-
-    // Then add/update todos from Supabase
-    for (const todo of supabaseTodos) {
-      const existingIdx = todos.value.findIndex((t: Todo) => t.id === todo.id)
-
-      const todoItem: Todo = {
-        id: todo.id,
-        title: todo.title,
-        category: todo.category || '',
-        period: todo.period as TodoPeriod,
-        minFrequency: todo.min_frequency || 1,
-        unit: (todo.unit as TodoUnit) || 'times',
-        minutesPerTime: todo.minutes_per_time,
-        description: todo.description,
-        done: todo.done || false,
-        completedAt: todo.completed_at,
-        punchIns: todo.punch_ins || 0,
-        templateId: todo.template_id,
-        createdAt: new Date(todo.created_at).getTime(),
-        dayKey: todo.day_key,
-        deadline: todo.deadline,
-      }
-
-      if (existingIdx >= 0) {
-        // Update existing
-        todos.value[existingIdx] = todoItem
-      } else {
-        // Add new
-        todos.value.push(todoItem)
-      }
-    }
-    loadingProgress.value = 60
-
-    // Step 3.5: Generate missing template instances (60% -> 65%)
-    loadingMessage.value = '检查模板任务...'
-    const todayDate = new Date()
     const todayKey = dayjs().format('YYYY-MM-DD')
+    const todayDate = new Date()
 
-    // Helper to calculate cycle start based on period
+    // 计算各周期的起始日期
     const getCycleStartKey = (period: TodoPeriod): string => {
       if (period === 'daily') return todayKey
       if (period === 'weekly') {
@@ -1435,38 +1242,74 @@ onMounted(async () => {
       return todayKey
     }
 
-    // Check each template to see if it needs a todo for the current cycle
-    for (const template of templates.value) {
-      if (template.archived || template.period === 'once') continue
+    // 清空当前的 todos
+    todos.value = []
 
+    // 遍历所有模板，在内存中生成 todos
+    for (const template of templates.value) {
+      // 跳过已归档的模板
+      if (template.archived) continue
+
+      // 目标任务（once）：只显示未完成的
+      if (template.period === 'once') {
+        if (template.done) continue // 已完成的目标不显示
+
+        const todo: Todo = {
+          id: template.id, // 直接使用模板 ID
+          title: template.title,
+          done: false,
+          punchIns: 0, // 后续从打卡记录计算
+          category: template.category,
+          period: 'once',
+          minFrequency: template.minFrequency,
+          unit: template.unit,
+          minutesPerTime: template.minutesPerTime,
+          description: template.description,
+          templateId: template.id,
+          createdAt: template.createdAt,
+          dayKey: todayKey,
+          deadline: template.deadline,
+        }
+        todos.value.push(todo)
+        continue
+      }
+
+      // 周期任务：根据当前周期生成
       const cycleStartKey = getCycleStartKey(template.period)
 
-      // Check if there's already a todo for this template in the current cycle
-      const existingTodo = todos.value.find((t) => {
-        if (t.templateId !== template.id) return false
-
-        // For the current cycle, check if the todo was created on or after the cycle start
-        const todoCreatedKey = dayjs(t.createdAt).format('YYYY-MM-DD')
-        return todoCreatedKey >= cycleStartKey
-      })
-
-      if (!existingTodo) {
-        console.log(
-          `📋 Template "${template.title}" needs a todo for cycle starting ${cycleStartKey}`,
-        )
-        const generated = await generateTodoFromTemplate(template, cycleStartKey)
-        if (generated) {
-          addTodoDirectly(generated)
-          console.log(`✅ Generated todo for template: ${template.title}`)
-        }
+      const todo: Todo = {
+        id: template.id, // 直接使用模板 ID
+        title: template.title,
+        done: false, // 后续从打卡记录计算
+        punchIns: 0, // 后续从打卡记录计算
+        category: template.category,
+        period: template.period,
+        minFrequency: template.minFrequency,
+        unit: template.unit,
+        minutesPerTime: template.minutesPerTime,
+        description: template.description,
+        templateId: template.id,
+        createdAt: template.createdAt,
+        dayKey: cycleStartKey,
+        deadline: template.deadline,
       }
+      todos.value.push(todo)
     }
+
+    console.log(
+      `✅ Generated ${todos.value.length} todos from ${templates.value.length} templates (in memory)`,
+    )
     loadingProgress.value = 65
 
     // Step 4: Load Punch Records & Day Stats (65% -> 100%)
     loadingMessage.value = '加载打卡记录...'
-    // 4. Load Stats and Records
-    const { data: statsData } = await supabase.from('todo_day_stats').select('*')
+
+    // 只加载今年的统计数据
+    const yearStartKey = dayjs(todayKey).startOf('year').format('YYYY-MM-DD')
+    const { data: statsData } = await supabase
+      .from('todo_day_stats')
+      .select('*')
+      .gte('day_key', yearStartKey)
     if (statsData) {
       const mappedStats: Record<string, DayStat> = {}
       statsData.forEach((s) => {
@@ -1482,11 +1325,14 @@ onMounted(async () => {
         }
       })
       dayStats.value = mappedStats
+      console.log(`✅ Loaded ${statsData.length} day stats (this year)`)
     }
 
+    // 只加载当天的打卡记录
     const { data: punchData } = await supabase
       .from('todo_punch_records')
       .select('*')
+      .eq('day_key', todayKey)
       .order('timestamp', { ascending: false })
     if (punchData) {
       punchRecords.value = punchData.map((r) => ({
@@ -1500,29 +1346,114 @@ onMounted(async () => {
         minutesPerTime: r.minutes_per_time,
         note: r.note,
       }))
+      console.log(`✅ Loaded ${punchData.length} punch records for today`)
     }
 
-    const { data: goalHistoryData } = await supabase
-      .from('todo_goal_history_records')
-      .select('*')
-      .order('timestamp', { ascending: false })
-    if (goalHistoryData) {
-      goalHistoryRecords.value = goalHistoryData.map((r) => ({
-        id: r.id,
-        goalId: r.goal_id,
-        content: r.content,
-        type: r.type,
-        timestamp: r.timestamp,
-        note: r.note,
-      }))
+    // 加载所有未完成目标的历史记录（用于显示投入时间）
+    // 关键修复：使用 legacyIdMap 来转换 goal_id
+    const activeGoalTemplateIds = todos.value
+      .filter((t) => t.period === 'once' && !t.done)
+      .map((t) => t.id)
+
+    // 我们需要查找：
+    // 1. goal_id = templateId (新数据)
+    // 2. goal_id = oldId (旧数据，通过 legacyIdMap 查找)
+
+    // 反向映射：templateId -> [oldId1, oldId2...]
+    const templateToLegacyIds = new Map<string, string[]>()
+    legacyIdMap.forEach((templateId, oldId) => {
+      const list = templateToLegacyIds.get(templateId) || []
+      list.push(oldId)
+      templateToLegacyIds.set(templateId, list)
+    })
+
+    // 收集所有可能的 goal_id (包括新的 templateId 和旧的 oldId)
+    const allPossibleGoalIds = new Set<string>()
+    activeGoalTemplateIds.forEach((tid) => {
+      allPossibleGoalIds.add(tid)
+      const oldIds = templateToLegacyIds.get(tid)
+      if (oldIds) oldIds.forEach((oid) => allPossibleGoalIds.add(oid))
+    })
+
+    if (allPossibleGoalIds.size > 0) {
+      const { data: goalHistoryData } = await supabase
+        .from('todo_goal_history_records')
+        .select('*')
+        .in('goal_id', Array.from(allPossibleGoalIds))
+        .order('timestamp', { ascending: false })
+
+      if (goalHistoryData && goalHistoryData.length > 0) {
+        // 加载后需要标准化 goalId 为 templateId
+        goalHistoryRecords.value = goalHistoryData.map((r) => {
+          // 尝试找到对应的 templateId
+          let normalizedGoalId = r.goal_id
+          if (legacyIdMap.has(r.goal_id)) {
+            normalizedGoalId = legacyIdMap.get(r.goal_id)
+          } else if (activeGoalTemplateIds.includes(r.goal_id)) {
+            normalizedGoalId = r.goal_id
+          }
+
+          return {
+            id: r.id,
+            goalId: normalizedGoalId!, // 归一化为 Template ID
+            content: r.content,
+            type: r.type,
+            timestamp: r.timestamp,
+            note: r.note,
+            inputTime: r.input_time || 0,
+          }
+        })
+        console.log(`✅ Loaded ${goalHistoryData.length} goal history records for active goals`)
+      } else {
+        goalHistoryRecords.value = []
+      }
+    } else {
+      goalHistoryRecords.value = []
+      console.log(`✅ No active goals, skipped loading goal history records`)
     }
+    loadingProgress.value = 90
+
+    // Step 5: 从打卡记录更新 todo 进度
+    loadingMessage.value = '计算任务进度...'
+
+    // 按 todoId 分组统计当天的打卡记录
+    for (const todo of todos.value) {
+      if (todo.period === 'once') continue // 目标的进度从 goalHistoryRecords 计算
+
+      // 获取当前周期内的打卡记录 (支持旧ID匹配)
+      const todoRecords = punchRecords.value.filter(
+        (r) => r.todoId === todo.id || legacyIdMap.get(r.todoId) === todo.id,
+      )
+
+      if (todoRecords.length > 0) {
+        todo.punchIns = todoRecords.length
+
+        // 自动判断是否完成
+        if (todo.unit === 'minutes') {
+          const totalMinutes = todoRecords.reduce(
+            (sum, r) => sum + (typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0),
+            0,
+          )
+          const targetMinutes = todo.minFrequency * (todo.minutesPerTime || 0)
+          todo.done = totalMinutes >= targetMinutes
+        } else {
+          todo.done = todo.punchIns >= todo.minFrequency
+        }
+
+        if (todo.done) {
+          const latestRecord = todoRecords[0]
+          if (latestRecord) {
+            todo.completedAt = latestRecord.timestamp // 最新打卡时间
+          }
+        }
+      }
+    }
+
+    console.log(`✅ Updated todo progress from punch records`)
     loadingProgress.value = 100
 
     // 5. Initialize Sync Watchers
     initSupabaseSyncWatchers()
-
-    // 6. Materialize Today's Todos
-    materializeTodayTodosFromTemplates()
   } catch (error) {
     console.error('❌ Error during page initialization:', error)
     loadingProgress.value = 100
@@ -1697,6 +1628,13 @@ const currentGoalHistory = computed(() => {
   return getGoalHistoryRecords(id).sort((a, b) => b.timestamp - a.timestamp)
 })
 
+const viewedGoalTotalMinutes = computed(() => {
+  return currentGoalHistory.value.reduce(
+    (acc, r) => acc + (typeof r.inputTime === 'number' ? r.inputTime : 0),
+    0,
+  )
+})
+
 const todayDisplay = computed(() => {
   const w = ['日', '一', '二', '三', '四', '五', '六']
   return `${todayKey.value} 周${w[new Date().getDay()]}`
@@ -1772,8 +1710,8 @@ const saveEdit = async () => {
     })
     if (!ok) return
 
-    // 更新到 Supabase
-    await updateTodoInSupabase(id, {
+    // 更新模板到 Supabase (替代原updateTodoInSupabase)
+    await updateTemplateInSupabase(id, {
       title: nextTitle,
       category: isCompletedGoal ? todo.category || '' : editCategory.value,
       period: isCompletedGoal ? todo.period : editPeriod.value,
@@ -1886,6 +1824,9 @@ const addGoalHistory = async () => {
 
   isAddingGoalHistory.value = true // 开始loading
 
+  // 获取投入时间
+  const inputMinutes = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
+
   // Insert Goal History to Supabase
   const { data: ghData, error: ghError } = await supabase
     .from('todo_goal_history_records')
@@ -1895,6 +1836,7 @@ const addGoalHistory = async () => {
       type: ghPrep.record.type,
       timestamp: ghPrep.record.timestamp,
       note: ghPrep.record.note,
+      input_time: inputMinutes, // 保存投入时间到新字段
     })
     .select('id')
     .single()
@@ -1947,22 +1889,6 @@ const addGoalHistory = async () => {
           prep.record.id = data.id
           addPunchRecordDirectly(prep.record, { skipAutoCompletion: true })
 
-          // CRITICAL: Update Todo state in Supabase
-          const info = getTodoById(prep.record.todoId)
-          if (info) {
-            supabase
-              .from('todos')
-              .update({
-                punch_ins: info.punchIns,
-                done: info.done,
-                completed_at: info.completedAt || null,
-              })
-              .eq('id', info.id)
-              .then(({ error }) => {
-                if (error) console.error('Failed to update todo state', error)
-              })
-          }
-
           MessagePlugin.success('已添加记录并同步打卡')
         } else {
           MessagePlugin.warning('历史记录添加成功，但打卡同步失败')
@@ -1993,21 +1919,11 @@ const startEditGoalHistory = (record: GoalHistoryRecord) => {
   editingGoalHistoryId.value = record.id
   goalHistoryContent.value = record.content
 
-  // 查找对应的打卡记录以获取时间
-  // 通过 content (note) 和 goalId (todoId) 匹配
-  const relatedPunch = punchRecords.value.find(
-    (p) => p.todoId === record.goalId && p.note === record.content,
-  )
-
-  if (relatedPunch && relatedPunch.unit === 'minutes') {
-    goalHistoryMinutes.value =
-      typeof relatedPunch.minutesPerTime === 'number' ? relatedPunch.minutesPerTime : 0
-  } else {
-    goalHistoryMinutes.value = 0
-  }
+  // 直接从record获取投入时间
+  goalHistoryMinutes.value = typeof record.inputTime === 'number' ? record.inputTime : 0
 }
 
-const saveGoalHistory = () => {
+const saveGoalHistory = async () => {
   const id = editingGoalHistoryId.value
   if (!id) return
 
@@ -2017,14 +1933,40 @@ const saveGoalHistory = () => {
     return
   }
 
-  const success = updateGoalHistoryRecord(id, content)
-  if (!success) {
+  // 获取当前的投入时间
+  const inputMinutes = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
+
+  // 更新到 Supabase
+  const { error } = await supabase
+    .from('todo_goal_history_records')
+    .update({
+      content: content,
+      input_time: inputMinutes,
+    })
+    .eq('id', id)
+
+  if (error) {
+    console.error('Failed to update goal history record:', error)
     MessagePlugin.error('更新失败')
     return
   }
 
+  // 更新本地状态
+  const success = updateGoalHistoryRecord(id, content)
+  if (!success) {
+    MessagePlugin.error('本地更新失败')
+    return
+  }
+
+  // 同时更新本地的 inputTime
+  const record = goalHistoryRecords.value.find((r) => r.id === id)
+  if (record) {
+    record.inputTime = inputMinutes
+  }
+
   editingGoalHistoryId.value = null
   goalHistoryContent.value = ''
+  goalHistoryMinutes.value = 0
   MessagePlugin.success('已更新历史记录')
 }
 
@@ -2201,16 +2143,17 @@ const addTodo = async () => {
     return
   }
 
-  // 2. Perform Server Operations
+  // 2. Perform Server Operations - 只保存模板，不保存 todo
   try {
     const todoPayload = res.todo
     const newTemplate = res.newTemplate
 
-    // 2a. Handle Template (if needed)
+    // 保存模板到数据库（所有任务都需要模板，包括目标）
+    let templateId = todoPayload.templateId
+
     if (newTemplate) {
-      console.log('📋 Saving new template to Supabase first:', newTemplate)
-      // Since it's server-first, we save template to DB and get ID
-      const templateId = await saveTemplateToSupabase({
+      console.log('📋 Saving new template to Supabase:', newTemplate)
+      const savedId = await saveTemplateToSupabase({
         title: newTemplate.title,
         category: newTemplate.category,
         period: newTemplate.period,
@@ -2221,82 +2164,46 @@ const addTodo = async () => {
         deadline: newTemplate.deadline,
         created_at: newTemplate.createdAt,
       })
+      templateId = savedId || undefined
 
-      if (templateId) {
-        // Update payload with real ID
-        todoPayload.templateId = templateId
-      } else {
-        MessagePlugin.error('模板保存失败，取消创建任务')
+      if (!templateId) {
+        MessagePlugin.error('保存模板失败')
         return
       }
-    } else if (todoPayload.templateId) {
-      // Using existing template, ID is already set in payload
+
+      // 将模板添加到本地 store
+      newTemplate.id = templateId
+      templates.value.push(newTemplate)
+      console.log('✅ Template saved successfully, ID:', templateId)
     }
 
-    const dbPayload = {
+    // 在内存中生成 todo（不保存到数据库）
+    const localTodo: Todo = {
+      id: templateId || todoPayload.id, // 使用模板 ID
       title: todoPayload.title,
+      done: false,
+      punchIns: 0,
       category: todoPayload.category,
       period: todoPayload.period,
-      min_frequency: todoPayload.minFrequency,
+      minFrequency: todoPayload.minFrequency,
       unit: todoPayload.unit,
-      minutes_per_time: todoPayload.minutesPerTime || null,
+      minutesPerTime: todoPayload.minutesPerTime,
       description: todoPayload.description,
-      done: todoPayload.done,
-      completed_at: todoPayload.completedAt || null,
-      punch_ins: todoPayload.punchIns,
-      template_id: todoPayload.templateId || null,
-      created_at: new Date(todoPayload.createdAt).toISOString(),
-      day_key: todoPayload.dayKey,
-      deadline: todoPayload.deadline || null,
+      templateId: templateId,
+      createdAt: todoPayload.createdAt,
+      dayKey: todoPayload.dayKey,
+      deadline: todoPayload.deadline,
     }
 
-    const { data: insertedTodo, error } = await supabase
-      .from('todos')
-      .insert(dbPayload)
-      .select()
-      .single()
+    // 添加到内存中的 todos 列表
+    addTodoDirectly(localTodo)
 
-    if (error) {
-      console.error('❌ Failed to save todo:', error)
-      MessagePlugin.error('保存任务失败')
-      return
-    }
+    MessagePlugin.success('任务添加成功')
 
-    // 3. Update Local State with Server Response
-    if (insertedTodo) {
-      console.log('✅ Todo saved successfully:', insertedTodo)
-
-      // Map back to local interface
-      const localTodo: Todo = {
-        id: insertedTodo.id, // The Server Generated ID!
-        title: insertedTodo.title,
-        done: insertedTodo.done,
-        punchIns: insertedTodo.punch_ins,
-        category: insertedTodo.category,
-        period: insertedTodo.period,
-        minFrequency: insertedTodo.min_frequency,
-        unit: insertedTodo.unit,
-        minutesPerTime: insertedTodo.minutes_per_time,
-        description: insertedTodo.description,
-        templateId: insertedTodo.template_id,
-        createdAt: new Date(insertedTodo.created_at).getTime(),
-        dayKey: insertedTodo.day_key,
-        deadline: insertedTodo.deadline,
-        completedAt: insertedTodo.completed_at
-          ? new Date(insertedTodo.completed_at).getTime()
-          : undefined,
-      }
-
-      // Add to store!
-      addTodoDirectly(localTodo)
-
-      MessagePlugin.success('任务添加成功')
-
-      // Reset form
-      title.value = ''
-      description.value = ''
-      deadline.value = ''
-    }
+    // Reset form
+    title.value = ''
+    description.value = ''
+    deadline.value = ''
   } catch (e) {
     console.error('❌ Unexpected error in addTodo:', e)
     MessagePlugin.error('添加任务发生异常')
@@ -2339,8 +2246,8 @@ const archiveTodo = (id: string) => {
           return
         }
 
-        // Delete from Supabase as well
-        await deleteTodoFromSupabase(id)
+        // Archive the template instead of deleting todo
+        await archiveTemplateInSupabase(id)
 
         for (const rid of res.removedIds) selectedIds.value.delete(rid)
 
@@ -2816,18 +2723,24 @@ const buildExportData = () => {
 
     for (const r of recordsOfDay) {
       let recordMinutes = 0
-      if (r.unit === 'minutes') {
-        const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
-        recordMinutes = mins
-        minutesTotal += mins
-      } else {
-        const tpl = templates.value.find(
-          (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
-        )
-        if (tpl && tpl.unit === 'minutes') {
-          const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+      const todo = todos.value.find((t) => t.id === r.todoId) // Find the associated todo
+
+      // Only count minutes for non-goal tasks
+      if (todo?.period !== 'once') {
+        if (r.unit === 'minutes') {
+          const mins = typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 15
           recordMinutes = mins
           minutesTotal += mins
+        } else {
+          // If punch record unit is not minutes, check template
+          const tpl = templates.value.find(
+            (t) => t.title === r.todoTitle && (t.category || '未分类') === (r.category || '未分类'),
+          )
+          if (tpl && tpl.unit === 'minutes') {
+            const mins = typeof tpl.minutesPerTime === 'number' ? tpl.minutesPerTime : 15
+            recordMinutes = mins
+            minutesTotal += mins
+          }
         }
       }
 
@@ -3023,10 +2936,6 @@ const categoryCountsForChart = computed(() => {
     map[k] = (map[k] || 0) + v
   }
 
-  const goalsCount = todos.value.filter((t) => t.period === 'once').length
-  if (goalsCount > 0) {
-    map['目标'] = (map['目标'] || 0) + goalsCount
-  }
   return map
 })
 
@@ -3377,7 +3286,7 @@ const punchDialogWidth = computed(() => {
           </div>
 
           <!-- Body -->
-          <div class="p-2 flex-1 flex flex-col gap-2 min-h-[200px]">
+          <div class="p-2 flex-1 flex flex-col gap-2 min-h-[100px]">
             <!-- Unfinished -->
             <div v-if="group.unfinished.length > 0" class="flex flex-col gap-2">
               <div v-for="todo in group.unfinished" :key="todo.id" class="transform transition-all">
@@ -3398,12 +3307,7 @@ const punchDialogWidth = computed(() => {
 
             <!-- Completed -->
             <div v-if="group.completed.length > 0" class="flex flex-col gap-2">
-              <!-- Divider if needed, or just append -->
-              <div
-                v-if="group.unfinished.length > 0"
-                class="h-px bg-neutral-100 dark:bg-neutral-700 my-1"
-              ></div>
-              <div v-for="todo in group.completed" :key="todo.id" class="opacity-60">
+              <div v-for="todo in group.completed" :key="todo.id" class="opacity-40">
                 <TodoItem
                   :todo="todo"
                   :punched-minutes="getPunchedMinutesForTodo(todo)"
@@ -4364,7 +4268,7 @@ const punchDialogWidth = computed(() => {
     <!-- 目标历史记录对话框 -->
     <t-dialog
       v-model:visible="goalHistoryDialogVisible"
-      header="目标进度记录"
+      :header="`目标进度记录 (已投入 ${viewedGoalTotalMinutes} 分钟)`"
       :width="editDialogWidth"
       :footer="false"
     >
@@ -4481,6 +4385,15 @@ const punchDialogWidth = computed(() => {
                   <span class="text-xs text-neutral-500 dark:text-neutral-400">
                     {{ dayjs(record.timestamp).format('YYYY-MM-DD HH:mm') }}
                   </span>
+                  <!-- 显示投入时间 -->
+                  <t-tag
+                    v-if="record.inputTime && record.inputTime > 0"
+                    size="small"
+                    theme="primary"
+                    variant="light"
+                  >
+                    {{ record.inputTime }} 分钟
+                  </t-tag>
                 </div>
                 <div class="text-sm mb-1 whitespace-pre-wrap">{{ record.content }}</div>
                 <div v-if="record.note" class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
