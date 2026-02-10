@@ -1328,11 +1328,11 @@ onMounted(async () => {
       console.log(`✅ Loaded ${statsData.length} day stats (this year)`)
     }
 
-    // 只加载当天的打卡记录
+    // 加载今年的打卡记录(用于图表统计)
     const { data: punchData } = await supabase
       .from('todo_punch_records')
       .select('*')
-      .eq('day_key', todayKey)
+      .gte('day_key', yearStartKey)
       .order('timestamp', { ascending: false })
     if (punchData) {
       punchRecords.value = punchData.map((r) => ({
@@ -1346,7 +1346,7 @@ onMounted(async () => {
         minutesPerTime: r.minutes_per_time,
         note: r.note,
       }))
-      console.log(`✅ Loaded ${punchData.length} punch records for today`)
+      console.log(`✅ Loaded ${punchData.length} punch records (this year)`)
     }
 
     // 加载所有未完成目标的历史记录（用于显示投入时间）
@@ -2942,6 +2942,7 @@ const categoryCountsForChart = computed(() => {
 const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption } = useTodoCharts({
   todos,
   dayStats,
+  punchRecords,
   rangeDayKeys,
   rangeLabels,
   punchInsSeries,

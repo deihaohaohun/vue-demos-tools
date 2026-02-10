@@ -15,9 +15,17 @@ type DayStatLike = {
   categoryMinutes?: Record<string, number>
 }
 
+type PunchRecordLike = {
+  dayKey: string
+  category: string
+  unit?: string
+  minutesPerTime?: number
+}
+
 export const useTodoCharts = (args: {
   todos: Ref<TodoLike[]>
   dayStats?: Ref<Record<string, DayStatLike>>
+  punchRecords?: Ref<PunchRecordLike[]>
   rangeDayKeys: ComputedRef<string[]>
   rangeLabels: ComputedRef<string[]>
   punchInsSeries: ComputedRef<number[]>
@@ -337,35 +345,33 @@ export const useTodoCharts = (args: {
 
     for (const dk of dayKeys) byDay[dk] = {}
 
-    if (args.dayStats) {
-      for (const dk of dayKeys) {
-        const stat = args.dayStats.value?.[dk]
-        const entries = stat?.categoryMinutes ? Object.entries(stat.categoryMinutes) : []
-        for (const [c, v] of entries) {
-          if (!v) continue
-          categorySet.add(c)
-          const bucket = byDay[dk] || (byDay[dk] = {})
-          bucket[c] = (bucket[c] || 0) + (v || 0)
+    // 优先从打卡记录中直接计算实际投入时间
+    if (args.punchRecords) {
+      for (const record of args.punchRecords.value) {
+        // 只处理在统计范围内的记录
+        if (!dayKeys.includes(record.dayKey)) continue
+
+        const category = record.category || '未分类'
+        categorySet.add(category)
+
+        // 计算该打卡记录的实际分钟数
+        let minutes = 0
+        if (record.unit === 'minutes' && typeof record.minutesPerTime === 'number') {
+          minutes = record.minutesPerTime
+        }
+
+        // 如果有分钟数,累加到对应日期和分类
+        if (minutes > 0) {
+          const bucket = byDay[record.dayKey] || (byDay[record.dayKey] = {})
+          bucket[category] = (bucket[category] || 0) + minutes
         }
       }
     }
 
-    // Always collect categories from current todos ensuring reactivity
+    // 从所有任务中收集分类,确保所有分类都显示(即使为0)
     for (const t of args.todos.value) {
-      if (t.unit !== 'minutes') continue
-
       const c = t.category || '未分类'
       categorySet.add(c)
-
-      // If no dayStats, we still need to calculate values from todos (fallback logic)
-      if (!args.dayStats) {
-        const dk = t.dayKey
-        if (!byDay[dk]) continue
-        const bucket = byDay[dk] || (byDay[dk] = {})
-        const mins =
-          (t.punchIns || 0) * (typeof t.minutesPerTime === 'number' ? t.minutesPerTime : 15)
-        bucket[c] = (bucket[c] || 0) + mins
-      }
     }
 
     const categories = Array.from(categorySet)
