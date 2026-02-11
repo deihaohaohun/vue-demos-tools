@@ -1421,8 +1421,15 @@ onMounted(async () => {
       if (todo.period === 'once') continue // 目标的进度从 goalHistoryRecords 计算
 
       // 获取当前周期内的打卡记录 (支持旧ID匹配)
+      // FIX: 必须过滤时间范围，否则会把历史周期的打卡记录算进来，导致每日任务无法重置
+      const cycleStartKey = getTodoCycleStartDayKey(todo.period, todo.dayKey)
+      const cycleEndKey = getTodoCycleEndDayKey(todo.period, cycleStartKey)
+
       const todoRecords = punchRecords.value.filter(
-        (r) => r.todoId === todo.id || legacyIdMap.get(r.todoId) === todo.id,
+        (r) =>
+          (r.todoId === todo.id || legacyIdMap.get(r.todoId) === todo.id) &&
+          r.dayKey >= cycleStartKey &&
+          r.dayKey <= cycleEndKey,
       )
 
       if (todoRecords.length > 0) {

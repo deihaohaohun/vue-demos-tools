@@ -393,6 +393,53 @@ export const useTodoStore = () => {
       }
     })
 
+    // 遍历所有模板，为本周期尚未生成任务的模板创建新任务
+    templates.value.forEach((tpl) => {
+      if (tpl.archived) return
+      if (tpl.period === 'once') return // 目标任务不重复生成
+      if (coveredTemplateIds.has(tpl.id)) return // 已有任务覆盖
+
+      // 检查时间有效性
+      const cycleStart = getCycleStart(tpl, todayDate)
+      const cycleEndExclusive = getCycleEndExclusive(tpl, cycleStart)
+      const tplCreatedAt = dayjs(tpl.createdAt)
+
+      // 如果模板是在当前周期结束之后创建的，显然不应该生成
+      if (tplCreatedAt.isAfter(cycleEndExclusive)) return
+
+      // 生成新任务实例
+      // 关键：这里强制重置状态，解决了"新周期状态未重置"的问题
+      // FIX: Ensure ID matches D3TodoList logic (use template ID for periodic tasks) to allow punch record linking
+      const newTodo: Todo = {
+        id: tpl.id,
+        title: tpl.title,
+        category: tpl.category,
+        period: tpl.period,
+        minFrequency: tpl.minFrequency,
+        unit: tpl.unit,
+        minutesPerTime: tpl.minutesPerTime,
+        description: tpl.description,
+        createdAt: Date.now(), // 创建时间为当前
+        dayKey: tk,
+        templateId: tpl.id,
+        done: false, // 重置完成状态
+        punchIns: 0, // 重置投入次数
+        completedAt: undefined, // 重置完成时间
+        deadline: tpl.deadline,
+      }
+
+      if (newTodo.unit === 'minutes' && typeof newTodo.minutesPerTime !== 'number') {
+        newTodo.minutesPerTime = 15
+      }
+
+      instances.push(newTodo)
+
+      // 更新今日统计
+      const stat = ensureDayStat(tk)
+      stat.createdCount += 1
+      incCategory(stat.categoryCreated, newTodo.category || '未分类', 1)
+    })
+
     todos.value = instances
   }
 
