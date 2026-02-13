@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { UploadIcon, LinkIcon, DeleteIcon, CopyIcon } from 'tdesign-icons-vue-next'
 
@@ -11,12 +11,28 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'update:wallpaper', value: string): void
+  (e: 'close-dialog'): void
 }>()
 
 const activeTab = ref('local')
 const inputUrl = ref('')
-const previewUrl = ref('')
+const filePreview = ref('')
+const historySelection = ref('')
 const wallpaperHistory = ref<string[]>([])
+
+const previewUrl = computed({
+  get: () => {
+    if (activeTab.value === 'local' || activeTab.value === 'clipboard') return filePreview.value
+    if (activeTab.value === 'url') return inputUrl.value
+    if (activeTab.value === 'history') return historySelection.value
+    return ''
+  },
+  set: (val: string) => {
+    if (activeTab.value === 'local' || activeTab.value === 'clipboard') filePreview.value = val
+    if (activeTab.value === 'url') inputUrl.value = val
+    if (activeTab.value === 'history') historySelection.value = val
+  },
+})
 
 const loadHistory = () => {
   try {
@@ -62,7 +78,7 @@ const addToHistory = (url: string) => {
 }
 
 const selectFromHistory = (url: string) => {
-  previewUrl.value = url
+  historySelection.value = url
 }
 
 const deleteFromHistory = (url: string, e: Event) => {
@@ -81,18 +97,28 @@ watch(
   (val) => {
     if (val) {
       loadHistory()
-      previewUrl.value = props.currentWallpaper
+      // Initialize file preview with current wallpaper so Local tab shows it (if it's not a secret)
+      filePreview.value = props.currentWallpaper
+
       inputUrl.value = ''
+      historySelection.value = '' // No history selected initially
+
       if (props.currentWallpaper && props.currentWallpaper.startsWith('http')) {
         // create a temporary check, though robust detection is harder, simple check is ok
         if (!props.currentWallpaper.startsWith('data:')) {
           activeTab.value = 'url'
           // Do not pre-fill inputUrl so user can easily paste a new one
           // inputUrl.value = props.currentWallpaper
+
+          // However, if we are in URL tab and input is empty, user sees NOTHING.
+          // Maybe we should allow previewUrl to fallback to currentWallpaper?
+          // No, user said "tabs should not affect each other".
+          // So if I go to URL tab and it is empty, preview should be empty.
         }
       }
     }
   },
+  { immediate: true },
 )
 
 const compressImage = (dataUrl: string): Promise<string> => {
@@ -156,10 +182,10 @@ const handleFileChange = (event: Event) => {
   reader.onload = async (e) => {
     const rawResult = e.target?.result as string
     try {
-      previewUrl.value = await compressImage(rawResult)
+      filePreview.value = await compressImage(rawResult)
     } catch (err) {
       console.error('Compression failed', err)
-      previewUrl.value = rawResult
+      filePreview.value = rawResult
     }
   }
   reader.readAsDataURL(file)
@@ -181,11 +207,11 @@ const handlePaste = async () => {
         reader.onload = async (e) => {
           const rawResult = e.target?.result as string
           try {
-            previewUrl.value = await compressImage(rawResult)
+            filePreview.value = await compressImage(rawResult)
             MessagePlugin.success('已从剪贴板读取并压缩图片')
           } catch (err) {
             console.error(err)
-            previewUrl.value = rawResult
+            filePreview.value = rawResult
             MessagePlugin.success('已从剪贴板读取图片')
           }
         }
@@ -200,11 +226,7 @@ const handlePaste = async () => {
   }
 }
 
-const handleUrlInput = () => {
-  if (inputUrl.value) {
-    previewUrl.value = inputUrl.value
-  }
-}
+// handleUrlInput removed as we rely on computed property + v-model
 
 const confirm = () => {
   if (previewUrl.value) {
@@ -224,6 +246,7 @@ const clearWallpaper = () => {
 
 const close = () => {
   emit('update:visible', false)
+  emit('close-dialog')
 }
 </script>
 
@@ -233,6 +256,7 @@ const close = () => {
     header="设置壁纸"
     width="500px"
     @close="close"
+    @cancel="close"
     @confirm="confirm"
     :confirm-btn="{ content: '应用壁纸', theme: 'primary' }"
     :cancel-btn="{ content: '取消', variant: 'outline' }"
@@ -276,7 +300,7 @@ const close = () => {
             <t-input
               v-model="inputUrl"
               placeholder="请输入图片 URL (https://...)"
-              @change="handleUrlInput"
+              @change="() => {}"
               clearable
             >
               <template #prefix-icon><link-icon /></template>
@@ -295,7 +319,7 @@ const close = () => {
                 v-for="(url, index) in wallpaperHistory"
                 :key="index"
                 class="relative group cursor-pointer aspect-video rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                :class="{ 'ring-2 ring-teal-500': previewUrl === url }"
+                :class="{ 'ring-2 ring-teal-500': historySelection === url }"
                 @click="selectFromHistory(url)"
               >
                 <div

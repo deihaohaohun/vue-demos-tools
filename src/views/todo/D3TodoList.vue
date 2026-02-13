@@ -3149,34 +3149,36 @@ const punchDialogWidth = computed(() => {
           {{ todayDisplay }}
         </div>
         <div class="ml-auto flex items-center gap-1">
-          <t-tooltip content="预览壁纸 (长按)" v-if="currentWallpaper">
-            <t-button
-              variant="text"
-              shape="square"
-              v-if="!isMobile"
-              @mouseenter="isWallpaperPreview = true"
-              @mouseleave="isWallpaperPreview = false"
-            >
-              <template #icon><browse-icon /></template>
-            </t-button>
-          </t-tooltip>
+          <t-button
+            v-if="currentWallpaper && !isMobile"
+            variant="text"
+            shape="square"
+            @mouseenter="isWallpaperPreview = true"
+            @mouseleave="isWallpaperPreview = false"
+            title="预览壁纸 (长按)"
+          >
+            <template #icon><browse-icon /></template>
+          </t-button>
 
-          <t-tooltip content="随机切换历史壁纸" v-if="wallpaperHistory.length > 0">
-            <t-button variant="text" shape="square" v-if="!isMobile" @click="randomWallpaper">
-              <template #icon><history-icon /></template>
-            </t-button>
-          </t-tooltip>
+          <t-button
+            v-if="wallpaperHistory.length > 0 && !isMobile"
+            variant="text"
+            shape="square"
+            @click="randomWallpaper"
+            title="随机切换历史壁纸"
+          >
+            <template #icon><history-icon /></template>
+          </t-button>
 
-          <t-tooltip content="设置壁纸">
-            <t-button
-              variant="text"
-              shape="square"
-              @click="wallpaperDialogVisible = true"
-              v-if="!isMobile"
-            >
-              <template #icon><image-icon /></template>
-            </t-button>
-          </t-tooltip>
+          <t-button
+            v-if="!isMobile"
+            variant="text"
+            shape="square"
+            @click="wallpaperDialogVisible = true"
+            title="设置壁纸"
+          >
+            <template #icon><image-icon /></template>
+          </t-button>
         </div>
       </div>
     </div>
@@ -4764,7 +4766,7 @@ const punchDialogWidth = computed(() => {
       v-model:visible="wallpaperDialogVisible"
       :current-wallpaper="currentWallpaper"
       @update:wallpaper="handleWallpaperUpdate"
-      @close="loadWallpaperHistory"
+      @close-dialog="loadWallpaperHistory"
     />
   </div>
 
