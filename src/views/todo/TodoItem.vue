@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {
-  RefreshIcon,
-  CheckIcon,
-  EditIcon,
-  CheckCircleIcon,
-  CloseIcon,
-  TimeIcon,
-} from 'tdesign-icons-vue-next'
+  IconRefresh,
+  IconCheck,
+  IconEdit,
+  IconCheckCircle,
+  IconClose,
+  IconClockCircle,
+} from '@arco-design/web-vue/es/icon'
 import { computed } from 'vue'
 import dayjs from 'dayjs'
 
@@ -28,7 +28,9 @@ interface Todo {
 interface Props {
   todo: Todo
   punchedMinutes?: number
+  minutesToday?: number
   showMetaTags?: boolean
+  compact?: boolean
 }
 
 interface Emits {
@@ -104,12 +106,12 @@ const remainingTime = computed(() => {
 })
 
 const getPeriodTheme = (period: string) => {
-  const map: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
-    daily: 'primary',
-    weekly: 'success',
-    monthly: 'warning',
-    yearly: 'danger',
-    once: 'default',
+  const map: Record<string, 'arcoblue' | 'green' | 'orange' | 'red' | 'gray'> = {
+    daily: 'arcoblue',
+    weekly: 'green',
+    monthly: 'orange',
+    yearly: 'red',
+    once: 'gray',
   }
   return map[period] || 'default'
 }
@@ -145,13 +147,13 @@ const isUnstarted = computed(() => {
 
 <template>
   <div
-    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-900 relative"
+    class="p-2 mb-2 rounded-lg transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer last-of-type:mb-0 bg-neutral-100 dark:bg-neutral-900 relative hover:scale-[1.01] hover:shadow-md hover:bg-white dark:hover:bg-neutral-800"
     @click.stop="emit('toggle-select', todo.id)"
   >
     <div class="pointer-events-none flex flex-col gap-2 flex-1 min-w-0">
       <!-- 第一行：任务名称 + 操作按钮 -->
       <div class="flex items-center justify-between gap-1">
-        <t-tooltip
+        <a-tooltip
           :content="todo.title"
           placement="top-left"
           show-arrow
@@ -161,77 +163,64 @@ const isUnstarted = computed(() => {
           <div class="text-base font-medium text-neutral-800 dark:text-neutral-200 truncate">
             {{ todo.title }}
           </div>
-        </t-tooltip>
+        </a-tooltip>
 
         <!-- 操作按钮组 (移到第一行) -->
         <div class="flex gap-1 items-center shrink-0 pointer-events-auto">
-          <t-button
+          <a-button
             v-if="todo.period !== 'once'"
-            shape="square"
-            variant="outline"
-            theme="default"
-            size="small"
+            type="outline"
+            size="mini"
             @click.stop="emit('punch-in', todo.id)"
           >
             <template #icon>
-              <refresh-icon v-if="todo.punchIns > 0" size="14" />
-              <check-icon v-if="todo.punchIns <= 0" size="14" />
+              <icon-refresh v-if="todo.punchIns > 0" />
+              <icon-check v-if="todo.punchIns <= 0" />
             </template>
-          </t-button>
+          </a-button>
 
-          <t-button
-            shape="square"
+          <a-button
             v-if="todo.period === 'once' && !todo.done"
-            variant="outline"
-            theme="default"
-            size="small"
+            type="outline"
+            size="mini"
             @click.stop="emit('toggle-done', todo.id, true)"
           >
             <template #icon>
-              <check-circle-icon size="14" />
+              <icon-check-circle />
             </template>
-          </t-button>
+          </a-button>
 
-          <t-button
-            shape="square"
-            variant="outline"
-            theme="default"
-            size="small"
-            @click.stop="emit('edit', todo.id)"
-          >
+          <a-button type="outline" size="mini" @click.stop="emit('edit', todo.id)">
             <template v-slot:icon>
-              <edit-icon size="14" />
+              <icon-edit />
             </template>
-          </t-button>
+          </a-button>
 
           <!-- 目标历史按钮 (仅目标显示) -->
-          <t-button
+          <a-button
             v-if="todo.period === 'once'"
-            shape="square"
-            variant="outline"
-            theme="default"
-            size="small"
+            type="outline"
+            size="mini"
             title="查看进度记录"
             @click.stop="emit('view-history', todo.id)"
           >
             <template #icon>
-              <time-icon size="14" />
+              <icon-clock-circle />
             </template>
-          </t-button>
+          </a-button>
 
-          <t-button
+          <a-button
             v-if="!(todo.period === 'once' && todo.done)"
             :title="todo.period === 'once' ? '放弃目标' : '归档'"
-            theme="danger"
-            variant="outline"
-            size="small"
-            shape="square"
+            type="outline"
+            status="danger"
+            size="mini"
             @click.stop="emit('archive', todo.id)"
           >
             <template #icon>
-              <close-icon />
+              <icon-close />
             </template>
-          </t-button>
+          </a-button>
         </div>
       </div>
 
@@ -246,35 +235,23 @@ const isUnstarted = computed(() => {
           isUnstarted
         "
       >
-        <t-tag
-          v-if="isUnstarted"
-          size="small"
-          variant="light"
-          theme="danger"
-          class="text-neutral-400"
-        >
+        <a-tag v-if="isUnstarted" size="small" color="red" class="text-neutral-400">
           尚未开始
-        </t-tag>
-        <t-tag
-          v-if="todo.category && todo.period === 'once'"
-          size="small"
-          variant="outline"
-          class="bg-(--cat-tag-bg) text-(--cat-tag-text) border-(--cat-tag-border) dark:bg-(--cat-tag-bg-dark) dark:text-(--cat-tag-text-dark) dark:border-(--cat-tag-border-dark)"
-        >
+        </a-tag>
+        <a-tag v-if="todo.category && todo.period === 'once'" size="small" type="outline">
           {{ todo.category }}
-        </t-tag>
-        <t-tag
+        </a-tag>
+        <a-tag
           v-if="
             (todo.period !== 'once' && (todo.punchIns > 0 || todo.unit === 'minutes')) ||
             (todo.period === 'once' && minutesDone > 0)
           "
           size="small"
-          variant="light"
-          theme="primary"
+          type="primary"
         >
           <!-- 目标任务只显示投入时间 -->
           <template v-if="todo.period === 'once'">
-            <span>已投入 {{ minutesDone }} 分钟</span>
+            <span>总计 {{ minutesDone }} 分钟</span>
           </template>
           <template v-else>
             <!-- 非目标任务：按分钟或次数显示 -->
@@ -283,18 +260,20 @@ const isUnstarted = computed(() => {
             </template>
             <template v-else>{{ todo.punchIns }}/{{ todo.minFrequency }} 次 </template>
           </template>
-        </t-tag>
-        <t-tag v-if="remainingTime" size="small" variant="light" theme="warning">
-          {{ remainingTime }}
-        </t-tag>
-        <t-tag
-          v-if="todo.period !== 'once'"
+        </a-tag>
+        <a-tag
+          v-if="todo.period === 'once' && minutesToday && minutesToday > 0"
           size="small"
-          variant="light"
-          :theme="getPeriodTheme(todo.period)"
+          color="green"
         >
+          今日 +{{ minutesToday }} 分钟
+        </a-tag>
+        <a-tag v-if="remainingTime" size="small" color="orange">
+          {{ remainingTime }}
+        </a-tag>
+        <a-tag v-if="todo.period !== 'once'" size="small" :color="getPeriodTheme(todo.period)">
           {{ periodTextMap[todo.period] }}
-        </t-tag>
+        </a-tag>
       </div>
     </div>
 

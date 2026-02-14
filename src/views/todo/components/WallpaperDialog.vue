@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
-import { UploadIcon, LinkIcon, DeleteIcon, CopyIcon } from 'tdesign-icons-vue-next'
+import { Message } from '@arco-design/web-vue'
+import { IconUpload, IconLink, IconDelete, IconCopy } from '@arco-design/web-vue/es/icon'
 
 const props = defineProps<{
   visible: boolean
@@ -19,6 +19,10 @@ const inputUrl = ref('')
 const filePreview = ref('')
 const historySelection = ref('')
 const wallpaperHistory = ref<string[]>([])
+const isVisible = computed({
+  get: () => props.visible,
+  set: (val) => emit('update:visible', val),
+})
 
 const previewUrl = computed({
   get: () => {
@@ -87,7 +91,7 @@ const deleteFromHistory = (url: string, e: Event) => {
   if (idx > -1) {
     wallpaperHistory.value.splice(idx, 1)
     saveHistory()
-    MessagePlugin.success('已从历史记录移除')
+    Message.success('已从历史记录移除')
   }
 }
 
@@ -168,13 +172,13 @@ const handleFileChange = (event: Event) => {
   if (!file) return
 
   if (!file.type.startsWith('image/')) {
-    MessagePlugin.warning('请选择图片文件')
+    Message.warning('请选择图片文件')
     return
   }
 
   // Limit size to 10MB (we will compress it anyway)
   if (file.size > 10 * 1024 * 1024) {
-    MessagePlugin.warning('图片原始大小不能超过 10MB')
+    Message.warning('图片原始大小不能超过 10MB')
     return
   }
 
@@ -208,21 +212,21 @@ const handlePaste = async () => {
           const rawResult = e.target?.result as string
           try {
             filePreview.value = await compressImage(rawResult)
-            MessagePlugin.success('已从剪贴板读取并压缩图片')
+            Message.success('已从剪贴板读取并压缩图片')
           } catch (err) {
             console.error(err)
             filePreview.value = rawResult
-            MessagePlugin.success('已从剪贴板读取图片')
+            Message.success('已从剪贴板读取图片')
           }
         }
         reader.readAsDataURL(blob)
         return
       }
     }
-    MessagePlugin.warning('剪贴板中没有图片')
+    Message.warning('剪贴板中没有图片')
   } catch (err) {
     console.error(err)
-    MessagePlugin.error('无法读取剪贴板，请检查权限')
+    Message.error('无法读取剪贴板，请检查权限')
   }
 }
 
@@ -234,14 +238,14 @@ const confirm = () => {
   }
   emit('update:wallpaper', previewUrl.value)
   emit('update:visible', false)
-  MessagePlugin.success('壁纸设置成功')
+  Message.success('壁纸设置成功')
 }
 
 const clearWallpaper = () => {
   previewUrl.value = ''
   emit('update:wallpaper', '')
   emit('update:visible', false)
-  MessagePlugin.success('已清除壁纸')
+  Message.success('已清除壁纸')
 }
 
 const close = () => {
@@ -251,19 +255,18 @@ const close = () => {
 </script>
 
 <template>
-  <t-dialog
-    :visible="visible"
-    header="设置壁纸"
+  <a-modal
+    v-model:visible="isVisible"
+    title="设置壁纸"
     width="500px"
-    @close="close"
     @cancel="close"
-    @confirm="confirm"
-    :confirm-btn="{ content: '应用壁纸', theme: 'primary' }"
-    :cancel-btn="{ content: '取消', variant: 'outline' }"
+    @ok="confirm"
+    ok-text="应用壁纸"
+    cancel-text="取消"
   >
     <div class="flex flex-col gap-4">
-      <t-tabs v-model="activeTab">
-        <t-tab-panel value="local" label="本地文件">
+      <a-tabs v-model:active-key="activeTab">
+        <a-tab-pane key="local" title="本地文件">
           <div class="pt-4 flex flex-col items-center justify-center gap-4">
             <div
               class="w-full h-32 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-neutral-800 transition-colors relative group"
@@ -274,42 +277,37 @@ const close = () => {
                 class="absolute inset-0 opacity-0 cursor-pointer z-10"
                 @change="handleFileChange"
               />
-              <upload-icon size="32" class="text-neutral-400 group-hover:text-teal-500 mb-2" />
+              <icon-upload size="32" class="text-neutral-400 group-hover:text-teal-500 mb-2" />
               <div class="text-sm text-neutral-500 group-hover:text-teal-600">
                 点击选择或拖拽图片到此处
               </div>
               <div class="text-xs text-neutral-400 mt-1">支持 JPG, PNG, WebP (最大 5MB)</div>
             </div>
           </div>
-        </t-tab-panel>
+        </a-tab-pane>
 
-        <t-tab-panel value="clipboard" label="剪贴板">
+        <a-tab-pane key="clipboard" title="剪贴板">
           <div class="pt-4 flex flex-col items-center justify-center gap-4">
             <div class="text-center text-neutral-500 text-sm mb-2">
               如果您的剪贴板中有图片，可以直接点击下方按钮粘贴
             </div>
-            <t-button @click="handlePaste" block variant="outline">
-              <template #icon><copy-icon /></template>
+            <a-button @click="handlePaste" block type="outline">
+              <template #icon><icon-copy /></template>
               从剪贴板粘贴
-            </t-button>
+            </a-button>
           </div>
-        </t-tab-panel>
+        </a-tab-pane>
 
-        <t-tab-panel value="url" label="在线地址">
+        <a-tab-pane key="url" title="在线地址">
           <div class="pt-4 flex flex-col gap-4">
-            <t-input
-              v-model="inputUrl"
-              placeholder="请输入图片 URL (https://...)"
-              @change="() => {}"
-              clearable
-            >
-              <template #prefix-icon><link-icon /></template>
-            </t-input>
+            <a-input v-model="inputUrl" placeholder="请输入图片 URL (https://...)" allow-clear>
+              <template #prefix><icon-link /></template>
+            </a-input>
             <div class="text-xs text-neutral-400">请输入有效的图片链接，建议使用 HTTPS 链接</div>
           </div>
-        </t-tab-panel>
+        </a-tab-pane>
 
-        <t-tab-panel value="history" label="历史记录">
+        <a-tab-pane key="history" title="历史记录">
           <div class="pt-4">
             <div v-if="wallpaperHistory.length === 0" class="text-center text-neutral-400 py-8">
               暂无历史记录
@@ -330,13 +328,13 @@ const close = () => {
                   class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-1 hover:bg-red-500 text-white"
                   @click="(e) => deleteFromHistory(url, e)"
                 >
-                  <delete-icon size="12" />
+                  <icon-delete size="12" />
                 </div>
               </div>
             </div>
           </div>
-        </t-tab-panel>
-      </t-tabs>
+        </a-tab-pane>
+      </a-tabs>
 
       <!-- Preview Area -->
       <div v-if="previewUrl" class="mt-2">
@@ -354,10 +352,10 @@ const close = () => {
           </div>
         </div>
         <div class="mt-2 flex justify-end">
-          <t-button theme="danger" variant="text" size="small" @click="previewUrl = ''">
-            <template #icon><delete-icon /></template>
+          <a-button status="danger" type="text" size="small" @click="previewUrl = ''">
+            <template #icon><icon-delete /></template>
             移除当前选择
-          </t-button>
+          </a-button>
         </div>
       </div>
 
@@ -373,10 +371,10 @@ const close = () => {
         v-if="currentWallpaper"
       >
         <span class="text-sm text-neutral-500">已有壁纸正在使用中</span>
-        <t-button theme="danger" variant="outline" size="small" @click="clearWallpaper">
+        <a-button status="danger" type="outline" size="small" @click="clearWallpaper">
           清除壁纸
-        </t-button>
+        </a-button>
       </div>
     </div>
-  </t-dialog>
+  </a-modal>
 </template>

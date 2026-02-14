@@ -481,19 +481,9 @@ const handleSave = () => {
 
                     <!-- Fallback to Structured Content -->
                     <template v-else>
-                      <div
-                        class="text-xs font-black dark:text-indigo-400 uppercase tracking-wider flex items-center gap-2 mb-1.5"
-                      >
-                        <span
-                          v-if="item.meanings.length > 1"
-                          class="bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded text-[10px]"
-                          >含义 {{ idx + 1 }}</span
-                        >
-                      </div>
-
-                      <p class="text-slate-700 dark:text-slate-300 font-medium mb-2">
+                      <h3 class="dark:text-slate-300 text-lg font-bold mb-2">
                         {{ m.meaning }}
-                      </p>
+                      </h3>
 
                       <div v-if="m.tips && m.tips.length > 0" class="flex flex-wrap gap-1.5 mb-2">
                         <a-tag
@@ -509,11 +499,6 @@ const handleSave = () => {
                       </div>
 
                       <div v-if="m.usage && m.usage.length > 0" class="mb-2">
-                        <h4
-                          class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5"
-                        >
-                          接续
-                        </h4>
                         <div class="flex flex-wrap gap-1.5">
                           <code
                             v-for="(u, uIdx) in m.usage"

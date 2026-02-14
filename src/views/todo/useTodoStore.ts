@@ -483,7 +483,7 @@ export const useTodoStore = () => {
     return typeof todo.minutesPerTime === 'number' ? todo.minutesPerTime : 15
   }
 
-  const preparePunch = (id: string, note?: string, minutes?: number) => {
+  const preparePunch = (id: string, note?: string, minutes?: number, timestamp?: number) => {
     const todo = todos.value.find((t) => t.id === id)
     if (!todo) return { kind: 'not_found' as const }
 
@@ -502,7 +502,7 @@ export const useTodoStore = () => {
       return { kind: 'too_frequent' as const }
     }
 
-    const now = Date.now()
+    const now = typeof timestamp === 'number' ? timestamp : Date.now()
     const punchDayKey = formatDayKey(now)
 
     // If user explicitly provides minutes, use those and set unit to 'minutes'
@@ -582,6 +582,13 @@ export const useTodoStore = () => {
     }
   }
 
+  const deletePunchRecord = (id: string) => {
+    const index = punchRecords.value.findIndex((r) => r.id === id)
+    if (index === -1) return false
+    punchRecords.value.splice(index, 1)
+    return true
+  }
+
   const updatePunchRecordNote = (id: string, note: string) => {
     const record = punchRecords.value.find((r) => r.id === id)
     if (record) {
@@ -626,6 +633,7 @@ export const useTodoStore = () => {
     content: string,
     type: 'regular' | 'milestone',
     note?: string,
+    inputTime?: number,
   ) => {
     const goal = todos.value.find((t) => t.id === goalId && t.period === 'once')
     if (!goal) return { kind: 'not_found' as const }
@@ -641,6 +649,7 @@ export const useTodoStore = () => {
       type,
       timestamp: Date.now(),
       note: note?.trim() || undefined,
+      inputTime: typeof inputTime === 'number' ? inputTime : 0,
     }
 
     return { kind: 'ok' as const, record }
@@ -650,7 +659,12 @@ export const useTodoStore = () => {
     goalHistoryRecords.value.unshift(record)
   }
 
-  const updateGoalHistoryRecord = (id: string, content: string, note?: string) => {
+  const updateGoalHistoryRecord = (
+    id: string,
+    content: string,
+    note?: string,
+    inputTime?: number,
+  ) => {
     const record = goalHistoryRecords.value.find((r) => r.id === id)
     if (!record) return false
 
@@ -659,6 +673,9 @@ export const useTodoStore = () => {
 
     record.content = trimmedContent
     record.note = note?.trim() || undefined
+    if (typeof inputTime === 'number') {
+      record.inputTime = inputTime
+    }
     return true
   }
 
@@ -1341,6 +1358,7 @@ export const useTodoStore = () => {
     getTodoById,
     preparePunch,
     addPunchRecordDirectly,
+    deletePunchRecord,
     updatePunchRecordNote,
     updatePunchRecordMinutes,
     prepareTodo,

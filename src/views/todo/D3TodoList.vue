@@ -9,7 +9,7 @@ import {
   type ComponentPublicInstance,
   type Component,
 } from 'vue'
-import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
+import { Message, Modal } from '@arco-design/web-vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -36,32 +36,32 @@ import {
   type UiConfig,
 } from './useTodoStore'
 import {
-  AddIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  SettingIcon,
-  DeleteIcon,
-  EditIcon,
-  FileExportIcon,
-  DownloadIcon,
-  MinusIcon,
-  AppIcon,
-  CopyIcon,
-  BookIcon,
-  CalendarIcon,
-  ChartIcon,
-  MoneyIcon,
-  UserIcon,
-  HeartIcon,
-  StarIcon,
-  RootListIcon,
-  TaskIcon,
-  FingerprintIcon,
-  CheckCircleIcon,
-  ImageIcon,
-  HistoryIcon,
-  BrowseIcon,
-} from 'tdesign-icons-vue-next'
+  IconPlus,
+  IconLeft,
+  IconRight,
+  IconSettings,
+  IconDelete,
+  IconEdit,
+  IconExport,
+  IconDownload,
+  IconMinus,
+  IconApps,
+  IconCopy,
+  IconBook,
+  IconCalendar,
+  IconBarChart,
+  IconSafe,
+  IconUser,
+  IconHeart,
+  IconStar,
+  IconList,
+  IconCheckSquare,
+  IconRobot,
+  IconCheckCircle,
+  IconImage,
+  IconHistory,
+  IconEye,
+} from '@arco-design/web-vue/es/icon'
 import WallpaperDialog from './components/WallpaperDialog.vue'
 import dayjs from 'dayjs'
 import { useNumberAnimation } from '@/composables/useNumberAnimation'
@@ -99,6 +99,7 @@ const {
   getTodoById,
   preparePunch,
   addPunchRecordDirectly,
+  deletePunchRecord,
   updatePunchRecordNote,
   updatePunchRecordMinutes,
   prepareTodo,
@@ -174,7 +175,7 @@ const randomWallpaper = () => {
     if (val) next = val
   }
   handleWallpaperUpdate(next)
-  MessagePlugin.success('已切换壁纸')
+  Message.success('已切换壁纸')
 }
 
 onMounted(() => {
@@ -200,7 +201,7 @@ const handleWallpaperUpdate = (url: string) => {
     }
   } catch (e) {
     console.error('Failed to save wallpaper', e)
-    MessagePlugin.error('图片太大，无法保存到本地存储，请尝试更小的图片')
+    Message.error('图片太大，无法保存到本地存储，请尝试更小的图片')
     // Reset if failed
     currentWallpaper.value = localStorage.getItem('todo_wallpaper') || ''
   }
@@ -265,14 +266,14 @@ const markTodoCompleteInSupabase = async (id: string, done: boolean) => {
 
       if (error) {
         console.error('Failed to mark goal complete in Supabase:', error)
-        MessagePlugin.error('更新目标状态失败')
+        Message.error('更新目标状态失败')
         return false
       }
     }
     return true
   } catch (err) {
     console.error('Error marking todo complete:', err)
-    MessagePlugin.error('更新任务状态时发生错误')
+    Message.error('更新任务状态时发生错误')
     return false
   }
 }
@@ -317,7 +318,7 @@ const saveTemplateToSupabase = async (template: {
 
     if (error) {
       console.error('❌ Failed to save template to Supabase:', error)
-      MessagePlugin.error('保存模板到数据库失败')
+      Message.error('保存模板到数据库失败')
       return null
     }
 
@@ -325,7 +326,7 @@ const saveTemplateToSupabase = async (template: {
     return data.id as string
   } catch (err) {
     console.error('❌ Error saving template:', err)
-    MessagePlugin.error('保存模板时发生错误')
+    Message.error('保存模板时发生错误')
     return null
   }
 }
@@ -342,7 +343,7 @@ const loadTemplatesFromSupabase = async () => {
 
     if (error) {
       console.error('Failed to load templates from Supabase:', error)
-      MessagePlugin.error('加载模板失败')
+      Message.error('加载模板失败')
       return []
     }
 
@@ -350,7 +351,7 @@ const loadTemplatesFromSupabase = async () => {
     return data || []
   } catch (err) {
     console.error('Error loading templates:', err)
-    MessagePlugin.error('加载模板时发生错误')
+    Message.error('加载模板时发生错误')
     return []
   }
 }
@@ -378,7 +379,7 @@ const updateTemplateInSupabase = async (
 
     if (error) {
       console.error('Failed to update template in Supabase:', error)
-      MessagePlugin.error('更新模板失败')
+      Message.error('更新模板失败')
       return false
     }
 
@@ -386,7 +387,7 @@ const updateTemplateInSupabase = async (
     return true
   } catch (err) {
     console.error('Error updating template:', err)
-    MessagePlugin.error('更新模板时发生错误')
+    Message.error('更新模板时发生错误')
     return false
   }
 }
@@ -406,7 +407,7 @@ const archiveTemplateInSupabase = async (id: string) => {
 
     if (error) {
       console.error('Failed to archive template in Supabase:', error)
-      MessagePlugin.error('归档模板失败')
+      Message.error('归档模板失败')
       return false
     }
 
@@ -414,7 +415,7 @@ const archiveTemplateInSupabase = async (id: string) => {
     return true
   } catch (err) {
     console.error('Error archiving template:', err)
-    MessagePlugin.error('归档模板时发生错误')
+    Message.error('归档模板时发生错误')
     return false
   }
 }
@@ -631,6 +632,25 @@ const punchRecordsByTodoId = computed(() => {
   return out
 })
 
+// 目标任务投入时间计算优化
+const goalMinutesMap = computed(() => {
+  const map = new Map()
+  const today = dayjs().format('YYYY-MM-DD')
+
+  goalHistoryRecords.value.forEach((r) => {
+    if (!map.has(r.goalId)) {
+      map.set(r.goalId, { total: 0, today: 0 })
+    }
+    const stats = map.get(r.goalId)
+    const mins = typeof r.inputTime === 'number' ? r.inputTime : 0
+    stats.total += mins
+    if (dayjs(r.timestamp).format('YYYY-MM-DD') === today) {
+      stats.today += mins
+    }
+  })
+  return map
+})
+
 const getTodoCycleStartDayKey = (period: TodoPeriod, dayKey: string) => {
   if (period === 'daily' || period === 'once') return dayKey
   const d = dayjs(dayKey)
@@ -656,16 +676,11 @@ const getTodoCycleEndDayKey = (period: TodoPeriod, cycleStartDayKey: string) => 
 }
 
 const getPunchedMinutesForTodo = (todo: (typeof todos.value)[number]) => {
-  // 对于目标任务，从goalHistoryRecords的inputTime字段中获取投入时间
+  // 对于目标任务，从计算出的 Map 中获取
   if (todo.period === 'once') {
-    const records = goalHistoryRecords.value.filter((r) => r.goalId === todo.id)
-    if (!records.length) return undefined
-
-    // 累加所有历史记录中的投入时间（从input_time字段）
-    return records.reduce((sum, r) => {
-      const minutes = typeof r.inputTime === 'number' ? r.inputTime : 0
-      return sum + minutes
-    }, 0)
+    const stats = goalMinutesMap.value.get(todo.id)
+    if (!stats || stats.total === 0) return undefined
+    return stats.total
   }
 
   // 非目标任务，从punchRecords中获取
@@ -678,14 +693,36 @@ const getPunchedMinutesForTodo = (todo: (typeof todos.value)[number]) => {
   const endKey = getTodoCycleEndDayKey(todo.period, startKey)
 
   let sum = 0
-  let hit = 0
   for (const r of list) {
-    if (r.unit !== 'minutes') continue
-    if (r.dayKey < startKey || r.dayKey > endKey) continue
-    sum += typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0
-    hit += 1
+    const rKey = dayjs(r.timestamp).format('YYYY-MM-DD')
+    if (rKey >= startKey && rKey <= endKey) {
+      sum += r.minutesPerTime || 0
+    }
   }
-  return hit ? sum : undefined
+  return sum
+}
+
+const getPunchedMinutesTodayForTodo = (todo: (typeof todos.value)[number]) => {
+  const today = dayjs().format('YYYY-MM-DD')
+
+  // 对于目标任务，从计算出的 Map 中获取
+  if (todo.period === 'once') {
+    return goalMinutesMap.value.get(todo.id)?.today || 0
+  }
+
+  // 对于普通任务（分钟单位），计算今天的打卡时间
+  if (todo.unit === 'minutes') {
+    const list = punchRecordsByTodoId.value[todo.id] || []
+    return list.reduce((sum, r) => {
+      const rKey = dayjs(r.timestamp).format('YYYY-MM-DD')
+      if (rKey === today) {
+        return sum + (r.minutesPerTime || 0)
+      }
+      return sum
+    }, 0)
+  }
+
+  return 0
 }
 
 const hashString = (s: string) => {
@@ -840,12 +877,12 @@ const periodTextMap: Record<TodoPeriod, string> = {
 }
 
 const getPeriodTheme = (p: TodoPeriod) => {
-  const map: Record<TodoPeriod, 'primary' | 'success' | 'warning' | 'danger' | 'default'> = {
-    daily: 'primary',
-    weekly: 'success',
-    monthly: 'warning',
-    yearly: 'danger',
-    once: 'default',
+  const map: Record<TodoPeriod, 'arcoblue' | 'green' | 'orange' | 'red' | 'gray'> = {
+    daily: 'arcoblue',
+    weekly: 'green',
+    monthly: 'orange',
+    yearly: 'red',
+    once: 'gray',
   }
   return map[p] || 'default'
 }
@@ -915,7 +952,7 @@ const confirmPunch = async () => {
   const prep = preparePunch(currentPunchId.value, punchNote.value, minutes)
 
   if (prep.kind === 'not_found' || prep.kind === 'too_frequent') {
-    if (prep.kind === 'too_frequent') MessagePlugin.warning('打卡太频繁，请稍后再试')
+    if (prep.kind === 'too_frequent') Message.warning('打卡太频繁，请稍后再试')
     punchDialogVisible.value = false
     return
   }
@@ -932,7 +969,7 @@ const confirmPunch = async () => {
 
       if (!error) {
         updatePunchRecordNote(prep.recordId!, punchNote.value)
-        MessagePlugin.success('备注已更新')
+        Message.success('备注已更新')
         punchDialogVisible.value = false
       } else {
         throw error
@@ -960,7 +997,7 @@ const confirmPunch = async () => {
 
       if (error) {
         console.error('Punch failed', error)
-        MessagePlugin.error('打卡失败')
+        Message.error('打卡失败')
         return
       }
 
@@ -982,7 +1019,7 @@ const confirmPunch = async () => {
           colors: colors,
         })
 
-        MessagePlugin.success('打卡成功')
+        Message.success('打卡成功')
 
         // Reset form inputs (optional but good practice)
         punchNote.value = ''
@@ -991,7 +1028,7 @@ const confirmPunch = async () => {
     }
   } catch (err) {
     console.error('Punch error:', err)
-    MessagePlugin.error('操作异常，请重试')
+    Message.error('操作异常，请重试')
   } finally {
     isPunchingIn.value = false
   }
@@ -1027,7 +1064,7 @@ const saveRecordNote = () => {
   if (editingRecordId.value) {
     updatePunchRecordNote(editingRecordId.value, editingRecordNote.value)
     editingRecordId.value = null
-    MessagePlugin.success('备注已更新')
+    Message.success('备注已更新')
   }
 }
 
@@ -1061,7 +1098,7 @@ const saveRecordMinutes = () => {
   if (!id) return
   updatePunchRecordMinutes(id, editingRecordMinutes.value)
   editingRecordMinutesId.value = null
-  MessagePlugin.success('分钟已更新')
+  Message.success('分钟已更新')
 }
 
 // --- UI Configuration Logic ---
@@ -1073,16 +1110,16 @@ const draftMinFrequenciesList = ref<number[]>([])
 const draftMinutesPerTimesList = ref<number[]>([])
 const draftCategoryColorsMap = ref<Record<string, string>>({})
 const iconMap: Record<string, Component> = {
-  'app-icon': AppIcon,
-  'calendar-icon': CalendarIcon,
-  'chart-icon': ChartIcon,
-  'money-icon': MoneyIcon,
-  'user-icon': UserIcon,
-  'book-icon': BookIcon,
-  'heart-icon': HeartIcon,
-  'star-icon': StarIcon,
-  'root-list-icon': RootListIcon,
-  'task-icon': TaskIcon,
+  'app-icon': IconApps,
+  'calendar-icon': IconCalendar,
+  'chart-icon': IconBarChart,
+  'money-icon': IconSafe,
+  'user-icon': IconUser,
+  'book-icon': IconBook,
+  'heart-icon': IconHeart,
+  'star-icon': IconStar,
+  'root-list-icon': IconList,
+  'task-icon': IconCheckSquare,
 }
 
 const availableIcons = [
@@ -1124,7 +1161,7 @@ const saveCategoryConfig = async () => {
   uiConfig.value.categoryIcons[name] = editingCategory.value.icon
 
   categoryEditDialogVisible.value = false
-  MessagePlugin.success(`分类 "${name}" 配置已更新`)
+  Message.success(`分类 "${name}" 配置已更新`)
 }
 
 const openConfigDrawer = () => {
@@ -1151,10 +1188,10 @@ const saveUiConfigFromDraft = async () => {
     await saveAppConfigToSupabase('ui_config', uiConfig.value)
 
     configDrawerVisible.value = false
-    MessagePlugin.success('配置已保存')
+    Message.success('配置已保存')
   } catch (e) {
     console.error(e)
-    MessagePlugin.error('保存失败')
+    Message.error('保存失败')
   } finally {
     isSavingConfig.value = false
   }
@@ -1563,13 +1600,13 @@ watch(authPassword, (val) => {
 
 const verifyAuth = () => {
   if (!authPassword.value.trim()) {
-    MessagePlugin.warning({ content: '请输入密码' })
+    Message.warning({ content: '请输入密码' })
     return
   }
 
   const envPassword = import.meta.env.VITE_TODO_PASSWORD
   if (!envPassword) {
-    MessagePlugin.error({ content: '未配置环境变量 VITE_TODO_PASSWORD' })
+    Message.error({ content: '未配置环境变量 VITE_TODO_PASSWORD' })
     return
   }
 
@@ -1577,22 +1614,22 @@ const verifyAuth = () => {
     isAuthenticated.value = true
     authDialogVisible.value = false
     authPassword.value = ''
-    MessagePlugin.success({ content: '验证成功' })
+    Message.success({ content: '验证成功' })
 
     if (isBiometricAvailable.value && !biometricCredId.value) {
-      const confirmDialog = DialogPlugin.confirm({
-        header: '启用生物识别',
-        body: '检测到您的设备支持生物识别（指纹/人脸），是否启用以便下次直接解锁？',
-        onConfirm: () => {
+      const confirmDialog = Modal.confirm({
+        title: '启用生物识别',
+        content: '检测到您的设备支持生物识别（指纹/人脸），是否启用以便下次直接解锁？',
+        onOk: () => {
           // 先关闭确认对话框
-          confirmDialog.hide()
+          confirmDialog.close()
           // 然后启用生物识别
           enableBiometrics()
         },
       })
     }
   } else {
-    MessagePlugin.error({ content: '密码错误' })
+    Message.error({ content: '密码错误' })
     authPassword.value = ''
   }
 }
@@ -1612,15 +1649,15 @@ const checkBiometrics = async () => {
 
 const enableBiometrics = async () => {
   if (!isBiometricAvailable.value) {
-    // MessagePlugin.warning('您的设备可能不支持生物识别，尝试强制启用...')
+    // Message.warning('您的设备可能不支持生物识别，尝试强制启用...')
   }
   const credId = await registerCredential('User')
   if (credId) {
     localStorage.setItem('todo_auth_credential_id', credId)
     biometricCredId.value = credId
-    MessagePlugin.success('生物识别已启用，下次可直接解锁')
+    Message.success('生物识别已启用，下次可直接解锁')
   } else {
-    MessagePlugin.error('启用失败')
+    Message.error('启用失败')
   }
 }
 
@@ -1631,9 +1668,9 @@ const loginWithBiometrics = async () => {
     isAuthenticated.value = true
     authDialogVisible.value = false
     authPassword.value = ''
-    MessagePlugin.success('验证成功')
+    Message.success('验证成功')
   } else {
-    MessagePlugin.warning('生物识别验证失败')
+    Message.warning('生物识别验证失败')
   }
 }
 
@@ -1760,13 +1797,13 @@ const saveEdit = async () => {
   const nextTitle = isCompletedGoal ? todo.title : editTitle.value.trim()
 
   if (!nextTitle) {
-    MessagePlugin.warning('任务标题不能为空')
+    Message.warning('任务标题不能为空')
     return
   }
 
   // 如果不是已完成的目标，验证分类
   if (!isCompletedGoal && editCategoryOptions.value.length && !editCategory.value) {
-    MessagePlugin.warning('请选择任务分类')
+    Message.warning('请选择任务分类')
     return
   }
 
@@ -1853,7 +1890,7 @@ const saveEdit = async () => {
 
     editVisible.value = false
     editingTodoId.value = null
-    MessagePlugin.success('已保存修改')
+    Message.success('已保存修改')
   } finally {
     isSavingEdit.value = false
   }
@@ -1883,18 +1920,7 @@ const addGoalHistory = async () => {
 
   const content = goalHistoryContent.value.trim()
   if (!content) {
-    MessagePlugin.warning('请输入历史记录内容')
-    return
-  }
-
-  // 1. 添加进度记录 (Server-First)
-  const ghPrep = prepareGoalHistoryRecord(id, content, goalHistoryType.value)
-  if (ghPrep.kind === 'not_found') {
-    MessagePlugin.error('目标不存在')
-    return
-  }
-  if (ghPrep.kind === 'empty_content') {
-    MessagePlugin.warning('历史记录内容不能为空')
+    Message.warning('请输入历史记录内容')
     return
   }
 
@@ -1902,6 +1928,25 @@ const addGoalHistory = async () => {
 
   // 获取投入时间
   const inputMinutes = typeof goalHistoryMinutes.value === 'number' ? goalHistoryMinutes.value : 0
+
+  // 1. 添加进度记录 (Server-First)
+  const ghPrep = prepareGoalHistoryRecord(
+    id,
+    content,
+    goalHistoryType.value,
+    undefined,
+    inputMinutes,
+  )
+  if (ghPrep.kind === 'not_found') {
+    Message.error('目标不存在')
+    isAddingGoalHistory.value = false
+    return
+  }
+  if (ghPrep.kind === 'empty_content') {
+    Message.warning('历史记录内容不能为空')
+    isAddingGoalHistory.value = false
+    return
+  }
 
   // Insert Goal History to Supabase
   const { data: ghData, error: ghError } = await supabase
@@ -1919,7 +1964,7 @@ const addGoalHistory = async () => {
 
   if (ghError || !ghData) {
     console.error('Failed to save goal history', ghError)
-    MessagePlugin.error('保存进度失败')
+    Message.error('保存进度失败')
     isAddingGoalHistory.value = false // 结束loading
     return
   }
@@ -1928,11 +1973,9 @@ const addGoalHistory = async () => {
   ghPrep.record.id = ghData.id
   addGoalHistoryRecordDirectly(ghPrep.record)
 
-  // 2. 自动打卡联动
-  // 将进度内容作为打卡备注
   // 2. 自动打卡联动 (Server-First)
   // 将进度内容作为打卡备注
-  const prep = preparePunch(id, content)
+  const prep = preparePunch(id, content, undefined, ghPrep.record.timestamp)
 
   if (prep.kind === 'ok' && prep.record) {
     // Include time investment if specified
@@ -1965,9 +2008,9 @@ const addGoalHistory = async () => {
           prep.record.id = data.id
           addPunchRecordDirectly(prep.record, { skipAutoCompletion: true })
 
-          MessagePlugin.success('已添加记录并同步打卡')
+          Message.success('已添加记录并同步打卡')
         } else {
-          MessagePlugin.warning('历史记录添加成功，但打卡同步失败')
+          Message.warning('历史记录添加成功，但打卡同步失败')
         }
       })
   } else if (prep.kind === 'update_note' && prep.recordId) {
@@ -1979,7 +2022,7 @@ const addGoalHistory = async () => {
       .then(({ error }) => {
         if (!error) {
           updatePunchRecordNote(prep.recordId!, content)
-          MessagePlugin.success('已更新今日打卡备注')
+          Message.success('已更新今日打卡备注')
         }
       })
   }
@@ -1988,7 +2031,7 @@ const addGoalHistory = async () => {
   goalHistoryMinutes.value = 0
   goalHistoryType.value = 'regular'
   isAddingGoalHistory.value = false // 结束loading
-  // MessagePlugin.success('已添加记录并同步打卡') // Moved inside async callback
+  // Message.success('已添加记录并同步打卡') // Moved inside async callback
 }
 
 const startEditGoalHistory = (record: GoalHistoryRecord) => {
@@ -2005,7 +2048,7 @@ const saveGoalHistory = async () => {
 
   const content = goalHistoryContent.value.trim()
   if (!content) {
-    MessagePlugin.warning('历史记录内容不能为空')
+    Message.warning('历史记录内容不能为空')
     return
   }
 
@@ -2023,27 +2066,21 @@ const saveGoalHistory = async () => {
 
   if (error) {
     console.error('Failed to update goal history record:', error)
-    MessagePlugin.error('更新失败')
+    Message.error('更新失败')
     return
   }
 
   // 更新本地状态
-  const success = updateGoalHistoryRecord(id, content)
+  const success = updateGoalHistoryRecord(id, content, undefined, inputMinutes)
   if (!success) {
-    MessagePlugin.error('本地更新失败')
+    Message.error('本地更新失败')
     return
-  }
-
-  // 同时更新本地的 inputTime
-  const record = goalHistoryRecords.value.find((r) => r.id === id)
-  if (record) {
-    record.inputTime = inputMinutes
   }
 
   editingGoalHistoryId.value = null
   goalHistoryContent.value = ''
   goalHistoryMinutes.value = 0
-  MessagePlugin.success('已更新历史记录')
+  Message.success('已更新历史记录')
 }
 
 const cancelEditGoalHistory = () => {
@@ -2052,21 +2089,57 @@ const cancelEditGoalHistory = () => {
 }
 
 const deleteGoalHistory = (id: string) => {
-  const confirmDialog = DialogPlugin.confirm({
-    header: '确认删除',
-    body: '确定要删除这条历史记录吗？',
-    confirmBtn: {
-      content: '删除',
-      theme: 'danger',
-    },
-    onConfirm: () => {
-      const success = deleteGoalHistoryRecord(id)
-      if (success) {
-        MessagePlugin.success('已删除历史记录')
-      } else {
-        MessagePlugin.error('删除失败')
+  const confirmDialog = Modal.confirm({
+    title: '确认删除',
+    content: '确定要删除这条历史记录吗？',
+    okText: '删除',
+    okButtonProps: { status: 'danger' },
+    onOk: async () => {
+      // 1. 获取要删除的记录信息
+      const record = goalHistoryRecords.value.find((r) => r.id === id)
+      if (!record) return
+
+      try {
+        // 2. 从 Supabase 删除进度记录
+        const { error: ghError } = await supabase
+          .from('todo_goal_history_records')
+          .delete()
+          .eq('id', id)
+
+        if (ghError) throw ghError
+
+        const targetGoalId = (record as GoalHistoryRecord).goalId
+        const targetTimestamp = (record as GoalHistoryRecord).timestamp
+
+        // 3. 尝试同步删除关联的打卡记录
+        // 通过 goal_id (todo_id) 和 timestamp (时间戳) 的精确匹配来定位
+        const { data: punchData } = await supabase
+          .from('todo_punch_records')
+          .select('id')
+          .eq('todo_id', targetGoalId)
+          .eq('timestamp', targetTimestamp)
+
+        if (punchData && punchData.length > 0) {
+          const punchId = (punchData[0] as { id: string }).id
+          if (punchId) {
+            await supabase.from('todo_punch_records').delete().eq('id', punchId)
+            deletePunchRecord(punchId) // 本地也删除
+          }
+        }
+
+        // 4. 更新本地状态 (进度记录)
+        const success = deleteGoalHistoryRecord(id)
+        if (success) {
+          Message.success('已删除进度记录及其关联打卡')
+        } else {
+          Message.error('本地删除失败')
+        }
+      } catch (err) {
+        console.error('Failed to delete goal history or related punch:', err)
+        Message.error('删除操作失败')
+      } finally {
+        confirmDialog.close()
       }
-      confirmDialog.hide()
     },
   })
 }
@@ -2125,11 +2198,11 @@ const saveTemplateEdit = async () => {
 
   const nextTitle = templateTitle.value.trim()
   if (!nextTitle) {
-    MessagePlugin.warning('任务名称不能为空')
+    Message.warning('任务名称不能为空')
     return
   }
   if (templateCategoryOptions.value.length && !templateCategory.value) {
-    MessagePlugin.warning('请选择任务分类')
+    Message.warning('请选择任务分类')
     return
   }
 
@@ -2157,7 +2230,7 @@ const saveTemplateEdit = async () => {
 
   templateEditVisible.value = false
   editingTemplateId.value = null
-  MessagePlugin.success('任务已更新')
+  Message.success('任务已更新')
 }
 
 const isTaskCompleted = (t: Todo) => {
@@ -2187,11 +2260,16 @@ const addTodo = async () => {
   if (isAddingTodo.value) return // Prevent double submission
 
   if (!categoryOptions.value.length) {
-    MessagePlugin.warning('请先在配置管理中添加分类后再添加')
+    Message.warning('请先在配置管理中添加分类后再添加')
     return
   }
   if (!category.value) {
-    MessagePlugin.warning('请选择任务分类')
+    Message.warning('请选择任务分类')
+    return
+  }
+
+  if (!title.value.trim()) {
+    Message.error('任务标题不能为空')
     return
   }
 
@@ -2211,11 +2289,13 @@ const addTodo = async () => {
   })
 
   if (res.kind === 'empty') {
-    MessagePlugin.error('任务标题不能为空')
+    Message.error('任务标题不能为空')
+    isAddingTodo.value = false
     return
   }
   if (res.kind === 'exists') {
-    MessagePlugin.info(`任务已存在,请${res.action}`)
+    Message.info(`任务已存在,请${res.action}`)
+    isAddingTodo.value = false
     return
   }
 
@@ -2243,7 +2323,7 @@ const addTodo = async () => {
       templateId = savedId || undefined
 
       if (!templateId) {
-        MessagePlugin.error('保存模板失败')
+        Message.error('保存模板失败')
         return
       }
 
@@ -2274,7 +2354,7 @@ const addTodo = async () => {
     // 添加到内存中的 todos 列表
     addTodoDirectly(localTodo)
 
-    MessagePlugin.success('任务添加成功')
+    Message.success('任务添加成功')
 
     // Reset form
     title.value = ''
@@ -2282,7 +2362,7 @@ const addTodo = async () => {
     deadline.value = ''
   } catch (e) {
     console.error('❌ Unexpected error in addTodo:', e)
-    MessagePlugin.error('添加任务发生异常')
+    Message.error('添加任务发生异常')
   } finally {
     isAddingTodo.value = false
   }
@@ -2308,17 +2388,14 @@ const archiveTodo = (id: string) => {
   if (!todo) return
 
   if (todo.period === 'once') {
-    const confirmDialog = DialogPlugin.confirm({
-      header: '确认放弃目标',
-      body: '确定要放弃这个目标吗？放弃后将移动到“已放弃”列表。',
-      confirmBtn: {
-        content: '放弃',
-        theme: 'danger',
-      },
-      onConfirm: async () => {
+    const confirmDialog = Modal.confirm({
+      title: '确认放弃目标',
+      content: '确定要放弃这个目标吗？放弃后将移动到“已放弃”列表。',
+      okText: '放弃',
+      onOk: async () => {
         const res = giveUpGoalById(id)
         if (res.kind === 'not_found') {
-          confirmDialog.hide()
+          confirmDialog.close()
           return
         }
 
@@ -2327,24 +2404,21 @@ const archiveTodo = (id: string) => {
 
         for (const rid of res.removedIds) selectedIds.value.delete(rid)
 
-        MessagePlugin.success('目标已放弃')
-        confirmDialog.hide()
+        Message.success('目标已放弃')
+        confirmDialog.close()
       },
     })
     return
   }
 
-  const confirmDialog = DialogPlugin.confirm({
-    header: '确认归档',
-    body: '确定要归档这个任务吗？归档后将不再生成新任务。',
-    confirmBtn: {
-      content: '归档',
-      theme: 'warning',
-    },
-    onConfirm: async () => {
+  const confirmDialog = Modal.confirm({
+    title: '确认归档',
+    content: '确定要归档这个任务吗？归档后将不再生成新任务。',
+    okText: '归档',
+    onOk: async () => {
       const res = archiveTodoById(id)
       if (res.kind === 'not_found') {
-        confirmDialog.hide()
+        confirmDialog.close()
         return
       }
 
@@ -2355,8 +2429,8 @@ const archiveTodo = (id: string) => {
 
       for (const rid of res.removedIds) selectedIds.value.delete(rid)
 
-      MessagePlugin.success('任务已归档')
-      confirmDialog.hide()
+      Message.success('任务已归档')
+      confirmDialog.close()
     },
   })
 }
@@ -2374,18 +2448,15 @@ const toggleDone = async (id: string, done: boolean) => {
   if (done) {
     const todo = getTodoById(id)
     if (todo && todo.period === 'once') {
-      const confirmDialog = DialogPlugin.confirm({
-        header: '确认完成目标',
-        body: `确定要标记目标"${todo.title}"为已完成吗?`,
-        confirmBtn: {
-          content: '确认完成',
-          theme: 'success',
-        },
-        onConfirm: async () => {
+      const confirmDialog = Modal.confirm({
+        title: '确认完成目标',
+        content: `确定要标记目标"${todo.title}"为已完成吗?`,
+        okText: '确认完成',
+        onOk: async () => {
           toggleTodoDone(id, done)
           // Sync with Supabase
           await markTodoCompleteInSupabase(id, done)
-          confirmDialog.hide()
+          confirmDialog.close()
         },
       })
       return
@@ -2689,10 +2760,10 @@ const copyChart = async (chartRef: unknown, title: string) => {
       }),
     ])
 
-    MessagePlugin.success(`${title} 已复制到剪贴板`)
+    Message.success(`${title} 已复制到剪贴板`)
   } catch (error) {
     console.error('Copy chart failed:', error)
-    MessagePlugin.error('复制失败,请重试')
+    Message.error('复制失败,请重试')
   }
 }
 
@@ -2930,12 +3001,12 @@ const exportDialogToImage = async () => {
       backgroundColor: exportPalette.value.rootBg,
     })
 
-    MessagePlugin.success('已导出图片')
+    Message.success('已导出图片')
     // Don't close dialog automatically, user might want to adjust
     // exportDialogVisible.value = false
   } catch (e) {
     console.error(e)
-    MessagePlugin.error('导出失败，请重试')
+    Message.error('导出失败，请重试')
   } finally {
     if (clone && clone.parentNode) {
       clone.parentNode.removeChild(clone)
@@ -3072,7 +3143,7 @@ const punchDialogWidth = computed(() => {
   <!-- Full-Screen Loading Overlay -->
   <div
     v-if="pageLoading"
-    class="fixed inset-0 z-50 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm flex items-center justify-center"
+    class="fixed inset-0 z-50 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md flex items-center justify-center"
   >
     <div class="w-full max-w-md px-8">
       <!-- Loading Message -->
@@ -3102,15 +3173,14 @@ const punchDialogWidth = computed(() => {
 
   <!-- Authentication Setup Dialog (First Time) -->
   <!-- Authentication Verification Dialog -->
-  <t-dialog
+  <a-modal
     v-model:visible="authDialogVisible"
-    header="身份验证"
-    :close-on-overlay-click="false"
-    :close-btn="false"
+    title="身份验证"
+    :mask-closable="false"
+    :closable="false"
     width="400px"
-    :confirm-btn="{ content: '验证', theme: 'primary' }"
-    :cancel-btn="null"
-    @confirm="() => verifyAuth()"
+    hide-cancel
+    @ok="() => verifyAuth()"
   >
     <div class="p-2">
       <div class="text-center mb-2">
@@ -3118,21 +3188,21 @@ const punchDialogWidth = computed(() => {
         <div class="text-sm text-neutral-600 dark:text-neutral-400">请输入密码以访问待办事项</div>
       </div>
 
-      <t-input
+      <a-input
         v-model="authPassword"
         type="password"
         placeholder="输入密码"
         ref="authPasswordRef"
-        @enter="() => verifyAuth()"
+        @press-enter="() => verifyAuth()"
       />
       <div v-if="biometricCredId" class="mt-4 text-center">
-        <t-button variant="outline" shape="circle" size="large" @click="loginWithBiometrics">
-          <template #icon><fingerprint-icon size="24" /></template>
-        </t-button>
+        <a-button type="outline" shape="circle" size="large" @click="loginWithBiometrics">
+          <template #icon><icon-robot size="24" /></template>
+        </a-button>
         <div class="text-xs text-neutral-500 mt-2">点击进行指纹/面部验证</div>
       </div>
     </div>
-  </t-dialog>
+  </a-modal>
 
   <div
     v-if="isAuthenticated"
@@ -3144,43 +3214,40 @@ const punchDialogWidth = computed(() => {
       :class="{ 'opacity-0': isWallpaperPreview }"
     >
       <div
-        class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+        class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg p-2 shadow-sm flex items-center gap-2"
       >
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
         <div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
           {{ todayDisplay }}
         </div>
         <div class="ml-auto flex items-center gap-1">
-          <t-button
+          <a-button
             v-if="currentWallpaper && !isMobile"
-            variant="text"
-            shape="square"
+            type="text"
             @mouseenter="isWallpaperPreview = true"
             @mouseleave="isWallpaperPreview = false"
             title="预览壁纸 (长按)"
           >
-            <template #icon><browse-icon /></template>
-          </t-button>
+            <template #icon><icon-eye /></template>
+          </a-button>
 
-          <t-button
+          <a-button
             v-if="wallpaperHistory.length > 0 && !isMobile"
-            variant="text"
-            shape="square"
+            type="text"
             @click="randomWallpaper"
             title="随机切换历史壁纸"
           >
-            <template #icon><history-icon /></template>
-          </t-button>
+            <template #icon><icon-history /></template>
+          </a-button>
 
-          <t-button
+          <a-button
             v-if="!isMobile"
-            variant="text"
-            shape="square"
+            type="text"
             @click="wallpaperDialogVisible = true"
             title="设置壁纸"
           >
-            <template #icon><image-icon /></template>
-          </t-button>
+            <template #icon><icon-image /></template>
+          </a-button>
         </div>
       </div>
     </div>
@@ -3195,12 +3262,12 @@ const punchDialogWidth = computed(() => {
     >
       <!-- Add Task/Goal Section (Desktop only) -->
       <div v-if="!isMobile" class="max-w-[1200px] mx-auto mt-2 px-4">
-        <div class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm">
+        <div class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg p-2 shadow-sm">
           <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-            <t-input
+            <a-input
               autofocus
               v-model="title"
-              :onEnter="addTodo"
+              @press-enter="addTodo"
               :placeholder="
                 !categoryOptions.length
                   ? '请先在配置管理中添加分类'
@@ -3209,127 +3276,111 @@ const punchDialogWidth = computed(() => {
                     : '添加任务'
               "
               class="flex-1"
-            ></t-input>
-            <t-button
+            ></a-input>
+            <a-button
               @click="addTodo"
               class="w-full sm:w-auto"
               :disabled="!categoryOptions.length || !category || isAddingTodo"
               :loading="isAddingTodo"
+              type="primary"
             >
               <template #icon>
-                <add-icon v-if="!isAddingTodo" size="20" />
+                <icon-plus v-if="!isAddingTodo" />
               </template>
               {{ isAddingTodo ? '提交中...' : period === 'once' ? '新建目标' : '新建任务' }}
-            </t-button>
+            </a-button>
           </div>
 
           <div class="grid grid-cols-12 gap-x-4 gap-y-3 mt-2">
             <div class="col-span-12 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">任务分类</div>
               <div class="flex items-center gap-2 flex-1">
-                <t-radio-group
+                <a-radio-group
                   v-if="categoryOptions.length"
                   v-model="category"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   class="flex flex-wrap"
                 >
-                  <t-radio-button v-for="c in categoryOptions" :key="c" :value="c">{{
-                    c
-                  }}</t-radio-button>
-                </t-radio-group>
+                  <a-radio v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</a-radio>
+                </a-radio-group>
                 <div v-else class="text-sm text-neutral-400">暂无分类，请先添加</div>
-                <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
-                  <template #icon><setting-icon /></template>
-                </t-button>
+                <a-button type="text" size="small" @click="openConfigDrawer">
+                  <template #icon><icon-settings /></template>
+                </a-button>
               </div>
             </div>
 
             <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">任务周期</div>
-              <t-radio-group
-                v-model="period"
-                variant="default-filled"
-                size="small"
-                class="flex flex-wrap"
-              >
-                <t-radio-button value="daily" :disabled="!categoryOptions.length"
-                  >每天</t-radio-button
-                >
-                <t-radio-button value="weekly" :disabled="!categoryOptions.length"
-                  >每周</t-radio-button
-                >
-                <t-radio-button value="monthly" :disabled="!categoryOptions.length"
-                  >每月</t-radio-button
-                >
-                <t-radio-button value="yearly" :disabled="!categoryOptions.length"
-                  >每年</t-radio-button
-                >
-                <t-radio-button value="once" :disabled="!categoryOptions.length"
-                  >目标</t-radio-button
-                >
-              </t-radio-group>
+              <a-radio-group v-model="period" type="button" size="small" class="flex flex-wrap">
+                <a-radio value="daily" :disabled="!categoryOptions.length">每天</a-radio>
+                <a-radio value="weekly" :disabled="!categoryOptions.length">每周</a-radio>
+                <a-radio value="monthly" :disabled="!categoryOptions.length">每月</a-radio>
+                <a-radio value="yearly" :disabled="!categoryOptions.length">每年</a-radio>
+                <a-radio value="once" :disabled="!categoryOptions.length">目标</a-radio>
+              </a-radio-group>
             </div>
 
             <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">最小频率</div>
               <div class="flex items-center gap-2">
-                <t-radio-group
+                <a-radio-group
                   v-model="minFrequency"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   :disabled="period === 'once'"
                   class="flex flex-wrap"
                 >
-                  <t-radio-button v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{
+                  <a-radio v-for="freq in minFrequencyOptions" :key="freq" :value="freq">{{
                     freq
-                  }}</t-radio-button>
-                </t-radio-group>
+                  }}</a-radio>
+                </a-radio-group>
                 <div class="text-sm text-neutral-400">次</div>
-                <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
-                  <template #icon><setting-icon /></template>
-                </t-button>
+                <a-button type="text" size="small" @click="openConfigDrawer">
+                  <template #icon><icon-settings /></template>
+                </a-button>
               </div>
             </div>
 
             <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">任务单位</div>
-              <t-radio-group
+              <a-radio-group
                 v-model="unit"
-                variant="default-filled"
+                type="button"
                 size="small"
                 :disabled="period === 'once'"
                 class="flex flex-wrap"
               >
-                <t-radio-button value="times">次数</t-radio-button>
-                <t-radio-button value="minutes">分钟</t-radio-button>
-              </t-radio-group>
+                <a-radio value="times">次数</a-radio>
+                <a-radio value="minutes">分钟</a-radio>
+              </a-radio-group>
             </div>
 
             <div class="col-span-12 lg:col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">每次分钟</div>
               <div class="flex items-center gap-2 flex-1">
-                <t-radio-group
+                <a-radio-group
                   v-model="minutesPerTime"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   :disabled="period === 'once' || unit !== 'minutes'"
                   class="flex flex-wrap"
                 >
-                  <t-radio-button v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{
+                  <a-radio v-for="mins in minutesPerTimeOptions" :key="mins" :value="mins">{{
                     mins
-                  }}</t-radio-button>
-                </t-radio-group>
+                  }}</a-radio>
+                </a-radio-group>
                 <div class="text-sm text-neutral-400">分钟</div>
-                <t-button shape="square" variant="text" size="small" @click="openConfigDrawer">
-                  <template #icon><setting-icon /></template>
-                </t-button>
+                <a-button type="text" size="small" @click="openConfigDrawer">
+                  <template #icon><icon-settings /></template>
+                </a-button>
               </div>
             </div>
 
             <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">任务描述</div>
-              <t-input
+              <a-input
                 v-model="description"
                 placeholder="可选：添加任务的详细描述"
                 class="flex-1"
@@ -3338,7 +3389,7 @@ const punchDialogWidth = computed(() => {
 
             <div class="col-span-6 flex flex-col sm:flex-row sm:items-center gap-2">
               <div class="text-sm sm:w-[72px] shrink-0">截止日期</div>
-              <t-date-picker
+              <a-date-picker
                 :disabled="period !== 'once'"
                 v-model="deadline"
                 placeholder="可选：选择截止日期"
@@ -3361,7 +3412,7 @@ const punchDialogWidth = computed(() => {
       <!-- Section Title: Tasks/Goals -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
         <div
-          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg p-2 shadow-sm flex items-center gap-2"
         >
           <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
           <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">任务/目标</h2>
@@ -3377,7 +3428,7 @@ const punchDialogWidth = computed(() => {
           <div
             v-for="group in boardGroups"
             :key="group.name"
-            class="group rounded-lg border border-t-0 border-r-0 border-b-0 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm shadow-lg flex flex-col overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl cursor-pointer"
+            class="group rounded-lg border border-t-0 border-r-0 border-b-0 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl shadow-lg flex flex-col overflow-hidden transition-all duration-200 cursor-pointer"
             :style="{
               borderLeftColor: group.color,
               borderLeftWidth: '5px',
@@ -3395,7 +3446,7 @@ const punchDialogWidth = computed(() => {
                   class="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 group-hover/icon:scale-110"
                   :style="{ backgroundColor: group.color + '20', color: group.color }"
                 >
-                  <component :is="iconMap[group.icon] || AppIcon" size="16" />
+                  <component :is="iconMap[group.icon] || IconApps" size="16" />
                 </div>
                 <span class="font-bold text-base text-neutral-900 dark:text-neutral-100">{{
                   group.name
@@ -3405,14 +3456,9 @@ const punchDialogWidth = computed(() => {
                 <div class="text-xs font-mono text-teal-600 dark:text-teal-400">
                   已达成 {{ group.completed.length }} / 未达成 {{ group.unfinished.length }}
                 </div>
-                <t-button
-                  variant="text"
-                  shape="square"
-                  size="small"
-                  @click.stop="openCategoryEdit(group)"
-                >
-                  <template #icon><edit-icon size="14" /></template>
-                </t-button>
+                <a-button type="text" size="small" @click.stop="openCategoryEdit(group)">
+                  <template #icon><icon-edit size="14" /></template>
+                </a-button>
               </div>
             </div>
 
@@ -3428,6 +3474,7 @@ const punchDialogWidth = computed(() => {
                   <TodoItem
                     :todo="todo"
                     :punched-minutes="getPunchedMinutesForTodo(todo)"
+                    :minutes-today="getPunchedMinutesTodayForTodo(todo)"
                     :show-meta-tags="false"
                     compact
                     @toggle-select="toggleSelect"
@@ -3446,6 +3493,7 @@ const punchDialogWidth = computed(() => {
                   <TodoItem
                     :todo="todo"
                     :punched-minutes="getPunchedMinutesForTodo(todo)"
+                    :minutes-today="getPunchedMinutesTodayForTodo(todo)"
                     :show-meta-tags="false"
                     compact
                     @toggle-select="toggleSelect"
@@ -3462,7 +3510,7 @@ const punchDialogWidth = computed(() => {
                 v-if="group.total === 0"
                 class="flex-1 flex flex-col items-center justify-center text-neutral-400 text-sm italic gap-2 min-h-[100px]"
               >
-                <div class="opacity-30"><app-icon size="24" /></div>
+                <div class="opacity-30"><icon-apps size="24" /></div>
                 暂无任务
               </div>
             </div>
@@ -3470,16 +3518,16 @@ const punchDialogWidth = computed(() => {
         </div>
         <div
           v-else
-          class="flex flex-col items-center justify-center py-12 text-neutral-400 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg shadow-sm"
+          class="flex flex-col items-center justify-center py-12 text-neutral-400 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg shadow-sm"
         >
-          <t-empty description="暂无分类任务，请先添加任务" />
+          <a-empty description="暂无分类任务，请先添加任务" />
         </div>
       </div>
 
       <!-- Section Title: History/Archive -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
         <div
-          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg p-2 shadow-sm flex items-center gap-2"
         >
           <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
           <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">历史/归档</h2>
@@ -3488,22 +3536,22 @@ const punchDialogWidth = computed(() => {
 
       <!-- History & Archive Content -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
-        <t-tabs
-          :default-value="1"
-          class="rounded-lg overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md shadow-sm"
+        <a-tabs
+          default-active-key="1"
+          class="rounded-lg overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl shadow-sm"
         >
-          <t-tab-panel :value="1" :label="`打卡记录 (${currentHistoryRecords.length})`">
+          <a-tab-pane key="1" :title="`打卡记录 (${currentHistoryRecords.length})`">
             <div class="min-h-[100px] p-2">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
                 <div class="flex items-center gap-2">
-                  <t-button variant="text" shape="square" @click="prevDay">
-                    <template #icon><chevron-left-icon /></template>
-                  </t-button>
+                  <a-button type="text" @click="prevDay">
+                    <template #icon><icon-left /></template>
+                  </a-button>
                   <div class="font-medium text-lg shrink-0">{{ historyDate }}</div>
                   <div class="text-sm shrink-0" v-if="isToday">(今天)</div>
-                  <t-button variant="text" shape="square" @click="nextDay" :disabled="isToday">
-                    <template #icon><chevron-right-icon /></template>
-                  </t-button>
+                  <a-button type="text" @click="nextDay" :disabled="isToday">
+                    <template #icon><icon-right /></template>
+                  </a-button>
                 </div>
                 <div class="text-sm">当日打卡: {{ currentHistoryRecords.length }} 次</div>
               </div>
@@ -3534,26 +3582,18 @@ const punchDialogWidth = computed(() => {
                           v-if="editingRecordId === record.id"
                           class="flex flex-wrap items-center gap-2"
                         >
-                          <t-input
+                          <a-input
                             v-model="editingRecordNote"
                             size="small"
                             placeholder="输入备注..."
                             auto-width
                           />
                           <div class="flex gap-1">
-                            <t-button
-                              size="small"
-                              theme="primary"
-                              variant="text"
-                              @click="saveRecordNote"
-                              >保存</t-button
+                            <a-button size="small" color="arcoblue" @click="saveRecordNote"
+                              >保存</a-button
                             >
-                            <t-button
-                              size="small"
-                              theme="default"
-                              variant="text"
-                              @click="editingRecordId = null"
-                              >取消</t-button
+                            <a-button size="small" type="text" @click="editingRecordId = null"
+                              >取消</a-button
                             >
                           </div>
                         </div>
@@ -3573,7 +3613,7 @@ const punchDialogWidth = computed(() => {
                           v-if="editingRecordMinutesId === record.id"
                           class="flex flex-wrap items-center gap-2"
                         >
-                          <t-input-number
+                          <a-input-number
                             v-model="editingRecordMinutes"
                             :min="0"
                             :step="5"
@@ -3581,19 +3621,14 @@ const punchDialogWidth = computed(() => {
                             class="w-[120px]"
                           />
                           <div class="flex gap-1">
-                            <t-button
-                              size="small"
-                              theme="primary"
-                              variant="text"
-                              @click="saveRecordMinutes"
-                              >保存</t-button
+                            <a-button size="small" color="arcoblue" @click="saveRecordMinutes"
+                              >保存</a-button
                             >
-                            <t-button
+                            <a-button
                               size="small"
-                              theme="default"
-                              variant="text"
+                              type="text"
                               @click="editingRecordMinutesId = null"
-                              >取消</t-button
+                              >取消</a-button
                             >
                           </div>
                         </div>
@@ -3618,12 +3653,12 @@ const punchDialogWidth = computed(() => {
                 <div
                   class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
                 >
-                  <t-empty description="该日暂无打卡记录" />
+                  <a-empty description="该日暂无打卡记录" />
                 </div>
               </template>
             </div>
-          </t-tab-panel>
-          <t-tab-panel :value="2" :label="`已归档 (${archivedHistorySorted.length})`">
+          </a-tab-pane>
+          <a-tab-pane key="2" :title="`已归档 (${archivedHistorySorted.length})`">
             <div class="min-h-[100px] p-2">
               <template v-if="archivedHistorySorted.length">
                 <div class="flex flex-col gap-2">
@@ -3643,15 +3678,15 @@ const punchDialogWidth = computed(() => {
                         >
                           {{ item.category }}
                         </span>
-                        <t-tag size="small" variant="dark" :theme="getPeriodTheme(item.period)">{{
+                        <a-tag size="small" :color="getPeriodTheme(item.period)">{{
                           periodTextMap[item.period]
-                        }}</t-tag>
-                        <t-tag size="small" variant="light" theme="default">
+                        }}</a-tag>
+                        <a-tag size="small">
                           <template v-if="item.unit === 'minutes'">
                             目标 {{ item.minFrequency }} 次 × {{ item.minutesPerTime || 0 }} 分钟
                           </template>
                           <template v-else>目标 {{ item.minFrequency }} 次</template>
-                        </t-tag>
+                        </a-tag>
                         <span class="text-xs text-neutral-400"
                           >归档于 {{ dayjs(item.archivedAt).format('YYYY-MM-DD HH:mm') }}</span
                         >
@@ -3670,18 +3705,18 @@ const punchDialogWidth = computed(() => {
                 <div
                   class="w-full h-[200px] flex flex-col items-center justify-center text-neutral-400"
                 >
-                  <t-empty description="暂无归档数据" />
+                  <a-empty description="暂无归档数据" />
                 </div>
               </template>
             </div>
-          </t-tab-panel>
-        </t-tabs>
+          </a-tab-pane>
+        </a-tabs>
       </div>
 
       <!-- Section Title: Data Statistics -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
         <div
-          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg p-2 shadow-sm flex items-center gap-2"
         >
           <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
           <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">数据统计</h2>
@@ -3691,29 +3726,27 @@ const punchDialogWidth = computed(() => {
       <!-- Data Statistics Content -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4 pb-2">
         <div
-          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg shadow-sm overflow-hidden"
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg shadow-sm overflow-hidden"
         >
           <div class="p-2">
             <div
               class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2"
             >
               <div class="flex items-center gap-2">
-                <t-radio-group v-model="statsRange" variant="default-filled" size="small">
-                  <t-radio-button value="7d">7天</t-radio-button>
-                  <t-radio-button value="30d">30天</t-radio-button>
-                </t-radio-group>
-                <t-button
-                  shape="square"
+                <a-radio-group v-model="statsRange" type="button" size="small">
+                  <a-radio value="7d">7天</a-radio>
+                  <a-radio value="30d">30天</a-radio>
+                </a-radio-group>
+                <a-button
                   size="small"
-                  theme="primary"
-                  variant="outline"
+                  color="arcoblue"
                   :disabled="exporting"
                   @click="openExportDialog"
                 >
                   <template v-slot:icon>
-                    <file-export-icon />
+                    <icon-export />
                   </template>
-                </t-button>
+                </a-button>
               </div>
             </div>
 
@@ -3728,9 +3761,7 @@ const punchDialogWidth = computed(() => {
                   >
                     {{ animatedScheduled }}
                   </div>
-                  <t-tag size="small" variant="light" theme="success"
-                    >已打卡: {{ todayPunchedCount }}</t-tag
-                  >
+                  <a-tag size="small" color="green">已打卡: {{ todayPunchedCount }}</a-tag>
                 </div>
               </div>
               <div
@@ -3743,9 +3774,7 @@ const punchDialogWidth = computed(() => {
                   >
                     {{ animatedUnstarted }}
                   </div>
-                  <t-tag size="small" variant="light" theme="warning"
-                    >占比: {{ unstartedTaskRatio }}%</t-tag
-                  >
+                  <a-tag size="small" color="orange">占比: {{ unstartedTaskRatio }}%</a-tag>
                 </div>
               </div>
               <div
@@ -3758,9 +3787,7 @@ const punchDialogWidth = computed(() => {
                   >
                     {{ animatedUnfinishedGoals }}
                   </div>
-                  <t-tag size="small" variant="light" theme="danger"
-                    >占比: {{ unfinishedGoalRatio }}%</t-tag
-                  >
+                  <a-tag size="small" color="red">占比: {{ unfinishedGoalRatio }}%</a-tag>
                 </div>
               </div>
               <div
@@ -3773,13 +3800,9 @@ const punchDialogWidth = computed(() => {
                   >
                     {{ animatedPunchIns }}
                   </div>
-                  <t-tag
-                    size="small"
-                    variant="light"
-                    :theme="punchInsDiff >= 0 ? 'success' : 'danger'"
-                  >
+                  <a-tag size="small" :color="punchInsDiff >= 0 ? 'green' : 'red'">
                     较昨日{{ punchInsDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(punchInsDiff) }} 次
-                  </t-tag>
+                  </a-tag>
                 </div>
               </div>
               <div
@@ -3792,13 +3815,9 @@ const punchDialogWidth = computed(() => {
                   >
                     {{ animatedMinutes }}
                   </div>
-                  <t-tag
-                    size="small"
-                    variant="light"
-                    :theme="minutesDiff >= 0 ? 'success' : 'danger'"
-                  >
+                  <a-tag size="small" :color="minutesDiff >= 0 ? 'green' : 'red'">
                     较昨日{{ minutesDiff >= 0 ? '增加' : '减少' }}: {{ Math.abs(minutesDiff) }} 分钟
-                  </t-tag>
+                  </a-tag>
                 </div>
               </div>
               <div
@@ -3811,9 +3830,9 @@ const punchDialogWidth = computed(() => {
                   >
                     {{ animatedConsecutive }}
                   </div>
-                  <t-tag size="small" variant="light" theme="warning">
+                  <a-tag size="small" color="orange">
                     最大连续: {{ animatedMaxConsecutive }} 天
-                  </t-tag>
+                  </a-tag>
                 </div>
               </div>
             </div>
@@ -3841,7 +3860,7 @@ const punchDialogWidth = computed(() => {
                 v-if="heatmapLoading"
                 class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-neutral-950/50 rounded-md"
               >
-                <t-loading text="正在更新热力图..." />
+                <a-spin tip="正在更新热力图..." />
               </div>
             </div>
 
@@ -3856,22 +3875,20 @@ const punchDialogWidth = computed(() => {
                     各任务类型的打卡趋势
                   </div>
                   <div class="flex items-center gap-1">
-                    <t-button
+                    <a-button
                       size="small"
-                      variant="text"
-                      shape="square"
+                      type="text"
                       @click="copyChart(chart1Ref, '各任务类型的打卡趋势')"
                     >
-                      <template #icon><copy-icon /></template>
-                    </t-button>
-                    <t-button
+                      <template #icon><icon-copy /></template>
+                    </a-button>
+                    <a-button
                       size="small"
-                      variant="text"
-                      shape="square"
+                      type="text"
                       @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
                     >
-                      <template #icon><download-icon /></template>
-                    </t-button>
+                      <template #icon><icon-download /></template>
+                    </a-button>
                   </div>
                 </div>
                 <div class="p-2">
@@ -3889,22 +3906,12 @@ const punchDialogWidth = computed(() => {
                 >
                   <div class="text-xs font-bold text-purple-600 dark:text-purple-400">任务分类</div>
                   <div class="flex items-center gap-1">
-                    <t-button
-                      size="small"
-                      variant="text"
-                      shape="square"
-                      @click="copyChart(chart2Ref, '任务分类')"
-                    >
-                      <template #icon><copy-icon /></template>
-                    </t-button>
-                    <t-button
-                      size="small"
-                      variant="text"
-                      shape="square"
-                      @click="exportChart(chart2Ref, '任务分类')"
-                    >
-                      <template #icon><download-icon /></template>
-                    </t-button>
+                    <a-button size="small" type="text" @click="copyChart(chart2Ref, '任务分类')">
+                      <template #icon><icon-copy /></template>
+                    </a-button>
+                    <a-button size="small" type="text" @click="exportChart(chart2Ref, '任务分类')">
+                      <template #icon><icon-download /></template>
+                    </a-button>
                   </div>
                 </div>
                 <div class="p-2">
@@ -3924,22 +3931,20 @@ const punchDialogWidth = computed(() => {
                     每日打卡次数趋势
                   </div>
                   <div class="flex items-center gap-1">
-                    <t-button
+                    <a-button
                       size="small"
-                      variant="text"
-                      shape="square"
+                      type="text"
                       @click="copyChart(chart3Ref, '每日打卡次数趋势')"
                     >
-                      <template #icon><copy-icon /></template>
-                    </t-button>
-                    <t-button
+                      <template #icon><icon-copy /></template>
+                    </a-button>
+                    <a-button
                       size="small"
-                      variant="text"
-                      shape="square"
+                      type="text"
                       @click="exportChart(chart3Ref, '每日打卡次数趋势')"
                     >
-                      <template #icon><download-icon /></template>
-                    </t-button>
+                      <template #icon><icon-download /></template>
+                    </a-button>
                   </div>
                 </div>
                 <div class="p-2">
@@ -3959,22 +3964,20 @@ const punchDialogWidth = computed(() => {
                     每日打卡分钟数趋势
                   </div>
                   <div class="flex items-center gap-1">
-                    <t-button
+                    <a-button
                       size="small"
-                      variant="text"
-                      shape="square"
+                      type="text"
                       @click="copyChart(chart4Ref, '每日打卡分钟数趋势')"
                     >
-                      <template #icon><copy-icon /></template>
-                    </t-button>
-                    <t-button
+                      <template #icon><icon-copy /></template>
+                    </a-button>
+                    <a-button
                       size="small"
-                      variant="text"
-                      shape="square"
+                      type="text"
                       @click="exportChart(chart4Ref, '每日打卡分钟数趋势')"
                     >
-                      <template #icon><download-icon /></template>
-                    </t-button>
+                      <template #icon><icon-download /></template>
+                    </a-button>
                   </div>
                 </div>
                 <div class="p-2">
@@ -3988,9 +3991,9 @@ const punchDialogWidth = computed(() => {
         </div>
       </div>
 
-      <t-dialog
+      <a-modal
         v-model:visible="exportDialogVisible"
-        :header="exportDialogTitle"
+        :title="exportDialogTitle"
         width="95%"
         placement="top"
         :top="'5vh'"
@@ -4001,20 +4004,16 @@ const punchDialogWidth = computed(() => {
           :style="{ backgroundColor: exportPalette.rootBg, color: exportPalette.rootText }"
         >
           <div class="flex items-center justify-between gap-2 mb-2 px-2">
-            <t-button
-              size="small"
-              variant="outline"
-              @click="prevExportWeek"
-              :disabled="exportingImage"
-              >上一周</t-button
+            <a-button size="small" type="outline" @click="prevExportWeek" :disabled="exportingImage"
+              >上一周</a-button
             >
             <div class="text-xs" :style="exportMutedTextStyle">{{ exportWeekRangeText }}</div>
-            <t-button
+            <a-button
               size="small"
-              variant="outline"
+              type="outline"
               @click="nextExportWeek"
               :disabled="!canNextExportWeek || exportingImage"
-              >下一周</t-button
+              >下一周</a-button
             >
           </div>
           <div class="max-h-[60vh] overflow-auto px-2">
@@ -4093,34 +4092,31 @@ const punchDialogWidth = computed(() => {
             </div>
           </div>
           <div class="mt-2 flex justify-end gap-2">
-            <t-button
-              variant="outline"
-              @click="exportDialogVisible = false"
-              :disabled="exportingImage"
-              >取消</t-button
+            <a-button type="outline" @click="exportDialogVisible = false" :disabled="exportingImage"
+              >取消</a-button
             >
-            <t-button
-              theme="primary"
+            <a-button
+              type="primary"
               @click="exportDialogToImage"
               :loading="exportingImage"
               :disabled="exportingImage"
             >
               确定导出
-            </t-button>
+            </a-button>
           </div>
         </div>
-      </t-dialog>
+      </a-modal>
 
-      <t-dialog
+      <a-modal
         v-model:visible="editVisible"
-        :header="isEditingGoal ? '编辑目标' : '编辑任务'"
+        :title="isEditingGoal ? '编辑目标' : '编辑任务'"
         :width="editDialogWidth"
         :footer="false"
       >
         <div class="grid grid-cols-12 gap-2 max-h-[70vh] overflow-y-auto px-1">
           <div class="col-span-12">
             <div class="text-sm mb-1">{{ isEditingGoal ? '目标名称' : '任务名称' }}</div>
-            <t-input
+            <a-input
               v-model="editTitle"
               :placeholder="isEditingGoal ? '请输入目标名称' : '请输入任务名称'"
               :disabled="editOnlyDescription"
@@ -4129,7 +4125,7 @@ const punchDialogWidth = computed(() => {
 
           <div class="col-span-12">
             <div class="text-sm mb-1">{{ isEditingGoal ? '目标描述' : '任务描述' }}</div>
-            <t-input
+            <a-input
               v-model="editDescription"
               :placeholder="isEditingGoal ? '可选：添加目标的详细描述' : '可选：添加任务的详细描述'"
             />
@@ -4140,18 +4136,16 @@ const punchDialogWidth = computed(() => {
             <div class="col-span-12">
               <div class="text-sm mb-1">任务分类</div>
               <div class="flex items-center gap-2">
-                <t-radio-group
+                <a-radio-group
                   v-if="editCategoryOptions.length"
                   v-model="editCategory"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   class="flex flex-wrap"
                 >
-                  <t-radio-button v-for="c in editCategoryOptions" :key="c" :value="c">{{
-                    c
-                  }}</t-radio-button>
-                </t-radio-group>
-                <t-input
+                  <a-radio v-for="c in editCategoryOptions" :key="c" :value="c">{{ c }}</a-radio>
+                </a-radio-group>
+                <a-input
                   v-else
                   v-model="editCategory"
                   placeholder="暂无分类，请先在配置管理中添加"
@@ -4163,51 +4157,43 @@ const punchDialogWidth = computed(() => {
 
             <div class="col-span-12">
               <div class="text-sm mb-1">任务周期</div>
-              <t-radio-group
-                v-model="editPeriod"
-                variant="default-filled"
-                size="small"
-                class="flex flex-wrap"
-              >
-                <t-radio-button value="daily">每天</t-radio-button>
-                <t-radio-button value="weekly">每周</t-radio-button>
-                <t-radio-button value="monthly">每月</t-radio-button>
-                <t-radio-button value="yearly">每年</t-radio-button>
-                <t-radio-button value="once">目标</t-radio-button>
-              </t-radio-group>
+              <a-radio-group v-model="editPeriod" type="button" size="small" class="flex flex-wrap">
+                <a-radio value="daily">每天</a-radio>
+                <a-radio value="weekly">每周</a-radio>
+                <a-radio value="monthly">每月</a-radio>
+                <a-radio value="yearly">每年</a-radio>
+                <a-radio value="once">目标</a-radio>
+              </a-radio-group>
             </div>
 
             <div class="col-span-12">
               <div class="text-sm mb-1">任务单位</div>
-              <t-radio-group
+              <a-radio-group
                 v-model="editUnit"
-                variant="default-filled"
+                type="button"
                 size="small"
                 :disabled="editPeriod === 'once'"
                 class="flex flex-wrap"
               >
-                <t-radio-button value="times">次数</t-radio-button>
-                <t-radio-button value="minutes">分钟</t-radio-button>
-              </t-radio-group>
+                <a-radio value="times">次数</a-radio>
+                <a-radio value="minutes">分钟</a-radio>
+              </a-radio-group>
             </div>
 
             <div class="col-span-12">
               <div class="text-sm mb-1">最小频率</div>
               <div class="flex items-center gap-2">
-                <t-radio-group
+                <a-radio-group
                   v-model="editMinFrequency"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   :disabled="editPeriod === 'once'"
                   class="flex flex-wrap"
                 >
-                  <t-radio-button
-                    v-for="freq in editMinFrequencyOptions"
-                    :key="freq"
-                    :value="freq"
-                    >{{ freq }}</t-radio-button
-                  >
-                </t-radio-group>
+                  <a-radio v-for="freq in editMinFrequencyOptions" :key="freq" :value="freq">{{
+                    freq
+                  }}</a-radio>
+                </a-radio-group>
                 <div class="text-sm text-neutral-400">次</div>
               </div>
             </div>
@@ -4215,37 +4201,37 @@ const punchDialogWidth = computed(() => {
             <div class="col-span-12" v-if="editUnit === 'minutes'">
               <div class="text-sm mb-1">每次分钟</div>
               <div class="flex items-center gap-2">
-                <t-radio-group
+                <a-radio-group
                   v-model="editMinutesPerTime"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   class="flex flex-wrap"
                 >
-                  <t-radio-button v-for="m in editMinutesPerTimeOptions" :key="m" :value="m">{{
+                  <a-radio v-for="m in editMinutesPerTimeOptions" :key="m" :value="m">{{
                     m
-                  }}</t-radio-button>
-                </t-radio-group>
+                  }}</a-radio>
+                </a-radio-group>
                 <div class="text-sm text-neutral-400">分钟</div>
               </div>
             </div>
           </template>
         </div>
         <div class="mt-2 flex justify-end gap-2">
-          <t-button variant="outline" @click="editVisible = false" :disabled="isSavingEdit"
-            >取消</t-button
+          <a-button type="outline" @click="editVisible = false" :disabled="isSavingEdit"
+            >取消</a-button
           >
-          <t-button
-            theme="primary"
+          <a-button
+            color="arcoblue"
             @click="saveEdit"
             :loading="isSavingEdit"
             :disabled="isSavingEdit"
           >
             {{ isSavingEdit ? '保存中...' : '保存' }}
-          </t-button>
+          </a-button>
         </div>
-      </t-dialog>
+      </a-modal>
 
-      <t-dialog
+      <a-modal
         v-model:visible="templateEditVisible"
         header="编辑任务"
         :width="editDialogWidth"
@@ -4254,24 +4240,22 @@ const punchDialogWidth = computed(() => {
         <div class="grid grid-cols-12 gap-2 max-h-[70vh] overflow-y-auto px-1">
           <div class="col-span-12">
             <div class="text-sm mb-1">任务名称</div>
-            <t-input v-model="templateTitle" placeholder="请输入任务名称" />
+            <a-input v-model="templateTitle" placeholder="请输入任务名称" />
           </div>
 
           <div class="col-span-12">
             <div class="text-sm mb-1">任务分类</div>
             <div class="flex items-center gap-2">
-              <t-radio-group
+              <a-radio-group
                 v-if="templateCategoryOptions.length"
                 v-model="templateCategory"
-                variant="default-filled"
+                type="button"
                 size="small"
                 class="flex flex-wrap"
               >
-                <t-radio-button v-for="c in templateCategoryOptions" :key="c" :value="c">{{
-                  c
-                }}</t-radio-button>
-              </t-radio-group>
-              <t-input
+                <a-radio v-for="c in templateCategoryOptions" :key="c" :value="c">{{ c }}</a-radio>
+              </a-radio-group>
+              <a-input
                 v-else
                 v-model="templateCategory"
                 placeholder="暂无分类，请先在配置管理中添加"
@@ -4283,51 +4267,48 @@ const punchDialogWidth = computed(() => {
 
           <div class="col-span-12">
             <div class="text-sm mb-1">任务周期</div>
-            <t-radio-group
+            <a-radio-group
               v-model="templatePeriod"
-              variant="default-filled"
+              type="button"
               size="small"
               class="flex flex-wrap"
             >
-              <t-radio-button value="daily">每天</t-radio-button>
-              <t-radio-button value="weekly">每周</t-radio-button>
-              <t-radio-button value="monthly">每月</t-radio-button>
-              <t-radio-button value="yearly">每年</t-radio-button>
-              <t-radio-button value="once">目标</t-radio-button>
-            </t-radio-group>
+              <a-radio value="daily">每天</a-radio>
+              <a-radio value="weekly">每周</a-radio>
+              <a-radio value="monthly">每月</a-radio>
+              <a-radio value="yearly">每年</a-radio>
+              <a-radio value="once">目标</a-radio>
+            </a-radio-group>
           </div>
 
           <div class="col-span-12">
             <div class="text-sm mb-1">任务单位</div>
-            <t-radio-group
+            <a-radio-group
               v-model="templateUnit"
-              variant="default-filled"
+              type="button"
               size="small"
               :disabled="templatePeriod === 'once'"
               class="flex flex-wrap"
             >
-              <t-radio-button value="times">次数</t-radio-button>
-              <t-radio-button value="minutes">分钟</t-radio-button>
-            </t-radio-group>
+              <a-radio value="times">次数</a-radio>
+              <a-radio value="minutes">分钟</a-radio>
+            </a-radio-group>
           </div>
 
           <div class="col-span-12">
             <div class="text-sm mb-1">最小频率</div>
             <div class="flex items-center gap-2">
-              <t-radio-group
+              <a-radio-group
                 v-model="templateMinFrequency"
-                variant="default-filled"
+                type="button"
                 size="small"
                 :disabled="templatePeriod === 'once'"
                 class="flex flex-wrap"
               >
-                <t-radio-button
-                  v-for="freq in templateMinFrequencyOptions"
-                  :key="freq"
-                  :value="freq"
-                  >{{ freq }}</t-radio-button
-                >
-              </t-radio-group>
+                <a-radio v-for="freq in templateMinFrequencyOptions" :key="freq" :value="freq">{{
+                  freq
+                }}</a-radio>
+              </a-radio-group>
               <div class="text-sm text-neutral-400">次</div>
             </div>
           </div>
@@ -4335,86 +4316,77 @@ const punchDialogWidth = computed(() => {
           <div class="col-span-12" v-if="templateUnit === 'minutes'">
             <div class="text-sm mb-1">每次分钟</div>
             <div class="flex items-center gap-2">
-              <t-radio-group
+              <a-radio-group
                 v-model="templateMinutesPerTime"
-                variant="default-filled"
+                type="button"
                 size="small"
                 class="flex flex-wrap"
               >
-                <t-radio-button
-                  v-for="mins in templateMinutesPerTimeOptions"
-                  :key="mins"
-                  :value="mins"
-                  >{{ mins }}</t-radio-button
-                >
-              </t-radio-group>
+                <a-radio v-for="mins in templateMinutesPerTimeOptions" :key="mins" :value="mins">{{
+                  mins
+                }}</a-radio>
+              </a-radio-group>
               <div class="text-sm text-neutral-400">分钟</div>
             </div>
           </div>
 
           <div class="col-span-12">
             <div class="text-sm mb-1">任务描述</div>
-            <t-input v-model="templateDescription" placeholder="可选：添加任务的详细描述" />
+            <a-input v-model="templateDescription" placeholder="可选：添加任务的详细描述" />
           </div>
         </div>
         <div class="mt-2 flex justify-end gap-2">
-          <t-button variant="outline" @click="templateEditVisible = false">取消</t-button>
-          <t-button theme="primary" @click="saveTemplateEdit">保存</t-button>
+          <a-button type="outline" @click="templateEditVisible = false">取消</a-button>
+          <a-button color="arcoblue" @click="saveTemplateEdit">保存</a-button>
         </div>
-      </t-dialog>
+      </a-modal>
 
-      <t-dialog
+      <a-modal
         v-model:visible="punchDialogVisible"
-        :header="currentPunchTodo ? `打卡: ${currentPunchTodo.title}` : '打卡备注'"
+        :title="currentPunchTodo ? `打卡: ${currentPunchTodo.title}` : '打卡备注'"
         :width="punchDialogWidth"
         :footer="false"
       >
         <div class="flex flex-col gap-2">
           <div class="text-sm">请输入本次打卡备注（可选）：</div>
-          <t-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
+          <a-textarea v-model="punchNote" placeholder="例如：读了第3章..." autofocus />
           <div v-if="punchMinutesEnabled" class="flex items-center gap-2">
             <div class="text-sm shrink-0">本次分钟</div>
             <div class="flex items-center gap-2">
-              <t-button
-                variant="outline"
+              <a-button
+                type="outline"
                 size="small"
-                shape="square"
                 :disabled="punchMinutes <= 0"
                 @click="adjustPunchMinutes(-1, $event)"
               >
-                <template #icon><minus-icon /></template>
-              </t-button>
+                <template #icon><icon-minus /></template>
+              </a-button>
               <div class="min-w-14 text-center tabular-nums font-medium">{{ punchMinutes }}</div>
-              <t-button
-                variant="outline"
-                size="small"
-                shape="square"
-                @click="adjustPunchMinutes(1, $event)"
-              >
-                <template #icon><add-icon /></template>
-              </t-button>
+              <a-button type="outline" size="small" @click="adjustPunchMinutes(1, $event)">
+                <template #icon><icon-plus /></template>
+              </a-button>
             </div>
           </div>
           <div class="flex justify-end gap-2 mt-2">
-            <t-button variant="outline" @click="punchDialogVisible = false" :disabled="isPunchingIn"
-              >取消</t-button
+            <a-button type="outline" @click="punchDialogVisible = false" :disabled="isPunchingIn"
+              >取消</a-button
             >
-            <t-button
-              theme="primary"
+            <a-button
+              type="primary"
               @click="confirmPunch"
               :loading="isPunchingIn"
               :disabled="isPunchingIn"
             >
               {{ isPunchingIn ? '打卡中...' : '确认打卡' }}
-            </t-button>
+            </a-button>
           </div>
         </div>
-      </t-dialog>
+      </a-modal>
 
       <!-- 目标历史记录对话框 -->
-      <t-dialog
+      <a-modal
         v-model:visible="goalHistoryDialogVisible"
-        :header="`目标进度记录 (已投入 ${viewedGoalTotalMinutes} 分钟)`"
+        :title="`目标进度记录 (已投入 ${viewedGoalTotalMinutes} 分钟)`"
         :width="editDialogWidth"
         :footer="false"
       >
@@ -4430,20 +4402,20 @@ const punchDialogWidth = computed(() => {
             <div class="space-y-2">
               <div>
                 <div class="text-xs mb-1">记录类型</div>
-                <t-radio-group
+                <a-radio-group
                   v-model="goalHistoryType"
-                  variant="default-filled"
+                  type="button"
                   size="small"
                   :disabled="!!editingGoalHistoryId"
                 >
-                  <t-radio-button value="regular">普通历史</t-radio-button>
-                  <t-radio-button value="milestone">里程碑</t-radio-button>
-                </t-radio-group>
+                  <a-radio value="regular">普通历史</a-radio>
+                  <a-radio value="milestone">里程碑</a-radio>
+                </a-radio-group>
               </div>
 
               <div>
                 <div class="text-xs mb-1">记录内容</div>
-                <t-textarea
+                <a-textarea
                   v-model="goalHistoryContent"
                   placeholder="记录你做了什么..."
                   :autosize="{ minRows: 2, maxRows: 4 }"
@@ -4453,45 +4425,43 @@ const punchDialogWidth = computed(() => {
               <div>
                 <div class="text-xs mb-1">投入时间（分钟）</div>
                 <div class="flex items-center gap-2">
-                  <t-button
-                    variant="outline"
+                  <a-button
+                    type="outline"
                     size="small"
-                    shape="square"
                     :disabled="goalHistoryMinutes <= 0"
                     @click="adjustGoalHistoryMinutes(-1, $event)"
                   >
-                    <template #icon><minus-icon /></template>
-                  </t-button>
+                    <template #icon><icon-minus /></template>
+                  </a-button>
                   <div class="min-w-14 text-center tabular-nums font-medium">
                     {{ goalHistoryMinutes }}
                   </div>
-                  <t-button
-                    variant="outline"
+                  <a-button
+                    type="outline"
                     size="small"
-                    shape="square"
                     @click="adjustGoalHistoryMinutes(1, $event)"
                   >
-                    <template #icon><add-icon /></template>
-                  </t-button>
+                    <template #icon><icon-plus /></template>
+                  </a-button>
                 </div>
               </div>
 
               <div class="flex gap-2">
-                <t-button
+                <a-button
                   v-if="!editingGoalHistoryId"
                   size="small"
-                  theme="primary"
+                  color="arcoblue"
                   :loading="isAddingGoalHistory"
                   :disabled="isAddingGoalHistory"
                   @click="addGoalHistory"
                 >
                   {{ isAddingGoalHistory ? '添加中...' : '添加记录' }}
-                </t-button>
+                </a-button>
                 <template v-else>
-                  <t-button size="small" theme="primary" @click="saveGoalHistory"> 保存 </t-button>
-                  <t-button size="small" variant="outline" @click="cancelEditGoalHistory">
+                  <a-button size="small" color="arcoblue" @click="saveGoalHistory"> 保存 </a-button>
+                  <a-button size="small" type="outline" @click="cancelEditGoalHistory">
                     取消
-                  </t-button>
+                  </a-button>
                 </template>
               </div>
             </div>
@@ -4513,12 +4483,7 @@ const punchDialogWidth = computed(() => {
               <div class="flex items-start justify-between gap-2">
                 <div class="flex-1">
                   <div class="flex items-center gap-2 mb-1">
-                    <t-tag
-                      v-if="record.type === 'milestone'"
-                      size="small"
-                      theme="warning"
-                      variant="light"
-                    >
+                    <a-tag v-if="record.type === 'milestone'" size="small" color="orange">
                       <template #icon>
                         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path
@@ -4527,19 +4492,18 @@ const punchDialogWidth = computed(() => {
                         </svg>
                       </template>
                       里程碑
-                    </t-tag>
+                    </a-tag>
                     <span class="text-xs text-neutral-500 dark:text-neutral-400">
                       {{ dayjs(record.timestamp).format('YYYY-MM-DD HH:mm') }}
                     </span>
                     <!-- 显示投入时间 -->
-                    <t-tag
+                    <a-tag
                       v-if="record.inputTime && record.inputTime > 0"
                       size="small"
-                      theme="primary"
-                      variant="light"
+                      color="arcoblue"
                     >
                       {{ record.inputTime }} 分钟
-                    </t-tag>
+                    </a-tag>
                   </div>
                   <div class="text-sm mb-1 whitespace-pre-wrap">{{ record.content }}</div>
                   <div
@@ -4550,27 +4514,21 @@ const punchDialogWidth = computed(() => {
                   </div>
                 </div>
                 <div class="flex gap-1 shrink-0">
-                  <t-button
-                    size="small"
-                    variant="text"
-                    shape="square"
-                    @click="startEditGoalHistory(record)"
-                  >
+                  <a-button size="small" type="text" @click="startEditGoalHistory(record)">
                     <template #icon>
-                      <edit-icon size="14" />
+                      <icon-edit size="14" />
                     </template>
-                  </t-button>
-                  <t-button
+                  </a-button>
+                  <a-button
                     size="small"
-                    variant="text"
-                    theme="danger"
-                    shape="square"
+                    type="text"
+                    color="red"
                     @click="deleteGoalHistory(record.id)"
                   >
                     <template #icon>
-                      <delete-icon size="14" />
+                      <icon-delete size="14" />
                     </template>
-                  </t-button>
+                  </a-button>
                 </div>
               </div>
             </div>
@@ -4580,122 +4538,109 @@ const punchDialogWidth = computed(() => {
           </div>
         </div>
         <div class="mt-2 flex justify-end">
-          <t-button variant="outline" @click="goalHistoryDialogVisible = false">关闭</t-button>
+          <a-button type="outline" @click="goalHistoryDialogVisible = false">关闭</a-button>
         </div>
-      </t-dialog>
+      </a-modal>
 
-      <t-drawer
+      <a-drawer
         v-model:visible="configDrawerVisible"
         placement="right"
-        size="420px"
-        header="配置管理"
+        width="500px"
+        title="配置管理"
         :footer="false"
       >
         <div class="p-2 space-y-6">
           <div>
             <div class="text-sm mb-2 font-medium">任务分类</div>
-            <div
-              class="flex items-center gap-2 mb-2"
-              v-for="(cat, idx) in draftCategoriesList"
-              :key="idx"
-            >
-              <t-input
-                v-model="draftCategoriesList[idx]"
-                placeholder="分类名称"
-                :ref="
-                  (el: ComponentPublicInstance | Element | null) => {
-                    if (el) {
-                      const comp = el as any
-                      draftCategoriesInputRefs[idx] = comp.$el
-                        ? comp.$el.querySelector('input')
-                        : (el as HTMLElement)
-                    }
-                  }
-                "
-                @enter="onDraftCategoryEnter(idx)"
-              />
-
-              <t-button
-                variant="text"
-                shape="square"
-                theme="danger"
-                @click="removeDraftCategory(idx)"
+            <div class="grid grid-cols-3 gap-x-2 gap-y-3 mb-3">
+              <div
+                class="flex items-center gap-1"
+                v-for="(cat, idx) in draftCategoriesList"
+                :key="idx"
               >
-                <template #icon><delete-icon /></template>
-              </t-button>
+                <a-input
+                  v-model="draftCategoriesList[idx]"
+                  placeholder="分类"
+                  size="small"
+                  :ref="
+                    (el: ComponentPublicInstance | Element | null) => {
+                      if (el) {
+                        const comp = el as any
+                        draftCategoriesInputRefs[idx] = comp.$el
+                          ? comp.$el.querySelector('input')
+                          : (el as HTMLElement)
+                      }
+                    }
+                  "
+                  @press-enter="onDraftCategoryEnter(idx)"
+                />
+
+                <a-button type="text" status="danger" size="mini" @click="removeDraftCategory(idx)">
+                  <template #icon><icon-delete /></template>
+                </a-button>
+              </div>
             </div>
-            <t-button variant="dashed" block @click="addDraftCategory">
-              <template #icon><add-icon /></template>添加分类
-            </t-button>
+            <a-button block @click="addDraftCategory">
+              <template #icon><icon-plus /></template>添加分类
+            </a-button>
           </div>
 
           <div>
             <div class="text-sm mb-2 font-medium">最小频率</div>
-            <div class="space-y-2 mb-2">
+            <div class="grid grid-cols-3 gap-x-2 gap-y-3 mb-3">
               <div
                 v-for="(_, idx) in draftMinFrequenciesList"
                 :key="idx"
-                class="flex items-center gap-2"
+                class="flex items-center gap-1"
               >
-                <t-input-number
+                <a-input-number
                   v-model="draftMinFrequenciesList[idx]"
                   :min="1"
-                  theme="column"
+                  size="small"
+                  hide-button
                   class="flex-1"
                 />
-                <t-button
-                  variant="text"
-                  shape="square"
-                  size="small"
-                  theme="danger"
+                <a-button
+                  type="text"
+                  size="mini"
+                  status="danger"
                   @click="removeDraftFrequency(idx)"
                 >
-                  <template #icon><delete-icon /></template>
-                </t-button>
+                  <template #icon><icon-delete /></template>
+                </a-button>
               </div>
             </div>
-            <t-button
-              block
-              variant="dashed"
-              theme="default"
-              class="mt-2"
-              @click="addDraftFrequency"
-            >
-              <template #icon><add-icon /></template>
+            <a-button block class="mt-2" @click="addDraftFrequency">
+              <template #icon><icon-plus /></template>
               添加频率
-            </t-button>
+            </a-button>
           </div>
 
           <div>
             <div class="text-sm mb-2 font-medium">每次分钟</div>
-            <div class="space-y-2 mb-2">
+            <div class="grid grid-cols-3 gap-x-2 gap-y-3 mb-3">
               <div
                 v-for="(_, idx) in draftMinutesPerTimesList"
                 :key="idx"
-                class="flex items-center gap-2"
+                class="flex items-center gap-1"
               >
-                <t-input-number
+                <a-input-number
                   v-model="draftMinutesPerTimesList[idx]"
                   :min="1"
                   :step="5"
-                  theme="column"
+                  size="small"
+                  hide-button
                   class="flex-1"
                 />
-                <t-button
-                  variant="text"
-                  shape="square"
-                  size="small"
-                  theme="danger"
-                  @click="removeDraftMinute(idx)"
-                >
-                  <template #icon><delete-icon /></template>
-                </t-button>
+                <a-button type="text" size="mini" status="danger" @click="removeDraftMinute(idx)">
+                  <template #icon><icon-delete /></template>
+                </a-button>
               </div>
             </div>
-            <t-button block variant="dashed" theme="default" class="mt-2" @click="addDraftMinute">
-              <template #icon><add-icon /></template>
+            <a-button block class="mt-2" @click="addDraftMinute">
+              <template #icon><icon-plus /></template>
               添加分钟配置
-            </t-button>
+            </a-button>
           </div>
 
           <div class="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
@@ -4704,16 +4649,16 @@ const punchDialogWidth = computed(() => {
               <span class="text-sm text-neutral-600 dark:text-neutral-400"
                 >生物识别解锁 (TouchID/FaceID)</span
               >
-              <t-button
+              <a-button
                 v-if="!biometricCredId"
                 size="small"
-                variant="outline"
+                type="outline"
                 @click="enableBiometrics"
               >
                 启用
-              </t-button>
+              </a-button>
               <span v-else class="text-xs text-green-500 font-medium flex items-center gap-1">
-                <check-circle-icon /> 已启用
+                <icon-check-circle /> 已启用
               </span>
             </div>
           </div>
@@ -4721,28 +4666,28 @@ const punchDialogWidth = computed(() => {
           <div
             class="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800"
           >
-            <t-button variant="outline" @click="resetUiConfig">恢复默认</t-button>
-            <t-button
-              theme="primary"
+            <a-button type="outline" @click="resetUiConfig">恢复默认</a-button>
+            <a-button
+              color="arcoblue"
               @click="saveUiConfigFromDraft"
               :loading="isSavingConfig"
               :disabled="isSavingConfig"
-              >保存</t-button
+              >保存</a-button
             >
           </div>
         </div>
-      </t-drawer>
+      </a-drawer>
 
       <!-- Category Edit Dialog -->
-      <t-dialog
+      <a-modal
         v-model:visible="categoryEditDialogVisible"
-        :header="`编辑分类: ${editingCategory.name}`"
+        :title="`编辑分类: ${editingCategory.name}`"
         @confirm="saveCategoryConfig"
       >
         <div class="space-y-4 pt-2">
           <div>
             <div class="text-sm font-medium mb-2">卡片颜色</div>
-            <t-color-picker
+            <a-color-picker
               v-model="editingCategory.color"
               format="HEX"
               :show-primary-color-preview="false"
@@ -4763,12 +4708,12 @@ const punchDialogWidth = computed(() => {
                 ]"
                 @click="editingCategory.icon = item.icon"
               >
-                <component :is="iconMap[item.icon] || AppIcon" size="20" />
+                <component :is="iconMap[item.icon] || IconApps" size="20" />
               </div>
             </div>
           </div>
         </div>
-      </t-dialog>
+      </a-modal>
     </div>
 
     <!-- Wallpaper Dialog -->
