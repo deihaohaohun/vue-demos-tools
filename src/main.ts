@@ -6,8 +6,8 @@ import router from './router'
 
 import './app.css'
 
-import TDesign from 'tdesign-vue-next'
-import 'tdesign-vue-next/es/style/index.css'
+import ArcoVue from '@arco-design/web-vue'
+import '@arco-design/web-vue/dist/arco.css'
 import 'aieditor/dist/style.css'
 import 'viewerjs/dist/viewer.css'
 import VueViewer from 'v-viewer'
@@ -22,6 +22,6 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.use(TDesign)
+app.use(ArcoVue)
 app.use(VueViewer)
 app.mount('#app')

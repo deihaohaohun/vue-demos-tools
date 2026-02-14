@@ -16,6 +16,8 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@arco-design/web-vue": "^2.57.0",
+    "@douyinfe/semi-ui": "^2.91.0",
     "@iconify-json/fluent-emoji-flat": "^1.2.5",
     "@iconify/vue": "^5.0.0",
     "@imengyu/vue3-context-menu": "^1.5.3",
@@ -23,12 +25,14 @@
     "@primeuix/themes": "^1.2.5",
     "@supabase/supabase-js": "^2.86.0",
     "@tailwindcss/vite": "^4.1.17",
+    "@transsionfe/semi-ui-vue": "^0.1.0",
     "@vueuse/core": "^14.1.0",
     "@yeger/vue-masonry-wall": "^5.1.4",
     "@zumer/snapdom": "^2.0.1",
     "aieditor": "^1.4.2",
     "cal-heatmap": "^4.2.4",
     "canvas-confetti": "^1.9.4",
+    "date-fns": "^3.6.0",
     "dayjs": "^1.11.13",
     "echarts": "^5.5.1",
     "gsap": "^3.14.2",

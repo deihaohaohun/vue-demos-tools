@@ -3,18 +3,15 @@ import type { GrammarItem } from '../types'
 export const n3Data: GrammarItem[] = [
   {
     id: 5,
-    title: '〜从〜にかけて',
+    title: '〜から〜にかけて',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
       {
         meaning: '从...到...（范围模糊）',
         usage: ['名词 + から + 名词 + にかけて'],
-        examples: [
-          '昨夜から今朝にかけて雨が降りました。',
-          '関東地方から東北地方にかけて地震があった。',
-        ],
       },
     ],
     isRemembered: false,
@@ -23,6 +20,7 @@ export const n3Data: GrammarItem[] = [
     id: 10,
     title: '〜とたん',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
@@ -30,10 +28,6 @@ export const n3Data: GrammarItem[] = [
         meaning: 'A 发生之后 B 立刻发生了',
         tips: ['A 和 B 多为原因和结果的关系居多', 'B 为意料之外的结果', '非意志/非将来的预定'],
         usage: ['动词た + とたん'],
-        examples: [
-          '家を出たとたん、雨が降ってきた。',
-          '部屋の窓を開けたとたん、小鳥が飛んでしまった。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -49,6 +43,7 @@ export const n3Data: GrammarItem[] = [
     id: 12,
     title: '〜たびに',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
@@ -56,10 +51,6 @@ export const n3Data: GrammarItem[] = [
         meaning: '每次~, 每当~',
         tips: [],
         usage: ['动词る + たびに', '名词の + たびに'],
-        examples: [
-          'おばあちゃんは会うたびに、お菓子をくれます。',
-          '彼はiPhoneの新機種が出るたびに、買い替えている。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -75,6 +66,7 @@ export const n3Data: GrammarItem[] = [
     id: 13,
     title: '〜だらけ',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
@@ -82,10 +74,6 @@ export const n3Data: GrammarItem[] = [
         meaning: '满是~, 全是~',
         tips: ['负面居多'],
         usage: ['名词 + だらけ'],
-        examples: [
-          'うちの職場は男だらけで、出会い機会いがない。',
-          '彼の部屋は掃除や片付けをしていないようで、ゴミだらけでした。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -101,6 +89,7 @@ export const n3Data: GrammarItem[] = [
     id: 14,
     title: '〜ついでに',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
@@ -108,10 +97,6 @@ export const n3Data: GrammarItem[] = [
         meaning: '顺便~',
         tips: ['一些小事, 不麻烦, 不费精力的事'],
         usage: ['动词る/た + ついでに', '名词の + ついでに'],
-        examples: [
-          '友達を駅まで送ったついでに、スーパーで夜食を買ってきた。',
-          '毎晩、夕食を作るついでに、明日のお弁当のおかずも作っておきます。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -127,18 +112,17 @@ export const n3Data: GrammarItem[] = [
     id: 15,
     title: '〜うちに',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 3,
     meanings: [
       {
         meaning: '趁着...（在状态改变前）',
         usage: ['PI(な・の) + うちに'],
-        examples: ['若いうちに勉強しておきなさい。', '忘れないうちにメモしておきます。'],
       },
       {
         meaning: '在...期间（不知不觉间发生了变化）',
         usage: ['动词进行时 + うちに'],
-        examples: ['本を读んでいるうちに、寝てしまいました。'],
       },
     ],
     isRemembered: false,
@@ -147,17 +131,13 @@ export const n3Data: GrammarItem[] = [
     id: 16,
     title: '〜っけ',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 3,
     meanings: [
       {
         meaning: '~来着(表示回忆或确认)',
         usage: ['普通形(だ・だ) + っけ', '敬体(でした・ました) + っけ'],
-        examples: [
-          'この店、以前来たことがあったっけ？',
-          '彼の名前、何だったっけ？',
-          '学生のころ、よく彼女とこの喫茶店に来たっけ。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -173,17 +153,13 @@ export const n3Data: GrammarItem[] = [
     id: 17,
     title: '〜っぽい',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 3,
     meanings: [
       {
         meaning: '经常~, 有点~(接近A的状态), 像~(不是A但是像A的样子)',
         usage: ['动词ます形 + っぽい', '名词 + っぽい'],
-        examples: [
-          'この店、以前来たことがあったっけ？',
-          '彼の名前、何だったっけ？',
-          '学生のころ、よく彼女とこの喫茶店に来たっけ。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -199,16 +175,13 @@ export const n3Data: GrammarItem[] = [
     id: 18,
     title: '〜てからでないと・〜てからでなければ',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 3,
     meanings: [
       {
         meaning: '如果不先做 A 的话, B 也不~(负面)',
         usage: ['动词て型 + からでないと/からでなければ'],
-        examples: [
-          '直接部屋を見てからでないと、借りるかどうか決められない。',
-          'パソコンはOSをインストールしてからでなければ、使えません。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -224,19 +197,13 @@ export const n3Data: GrammarItem[] = [
     id: 19,
     title: '～てしょうがない',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
       {
         meaning: '~~的不得了(感情/感觉/现象)',
         usage: [
-          '动词て型 + てしょうがない',
-          '形容词く + てしょうがない',
-          '形容动词で + てしょうがない',
-        ],
-        examples: [
-          '好きな人と付き合えることになって、嬉しくてしょうがない。（感情）',
-          'エアコンが壊れて、暑くてしょうがない。（感觉）',
         ],
         references: [
           {
@@ -253,6 +220,7 @@ export const n3Data: GrammarItem[] = [
     id: 20,
     title: '～ということだ・とのことだ',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
@@ -260,10 +228,6 @@ export const n3Data: GrammarItem[] = [
         meaning: '据说~, 听说~',
         usage: ['PI([だ]・[だ]) + ということだ・とのことだ'],
         tips: ['比そうだ硬い'],
-        examples: [
-          'A社からの回答は、これ以上の値下げは難しいということです。',
-          '友人の話では、田中さんは卒業後、カナダに留学に行ったとのことだ。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -276,10 +240,6 @@ export const n3Data: GrammarItem[] = [
         meaning: '也就是说~',
         usage: ['PI([だ]・[だ]) + ということだ'],
         tips: ['比そうだ硬い'],
-        examples: [
-          'A社からの回答は、これ以上の値下げは難しいということです。',
-          '友人の話では、田中さんは卒業後、カナダに留学に行ったとのことだ。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -295,16 +255,13 @@ export const n3Data: GrammarItem[] = [
     id: 21,
     title: '～というより',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
       {
         meaning: '与其说A，不如说B更合适',
         usage: ['PI([だ]・[だ]) + というより'],
-        examples: [
-          '現在の気温はマイナス10度です。屋外に出ると、寒いと言うより痛いです。',
-          '私は健康のためというよりストレス発散のためにジョギングをしている。',
-        ],
         references: [
           {
             name: '出口仁 N3',
@@ -320,13 +277,13 @@ export const n3Data: GrammarItem[] = [
     id: 21,
     title: '～なくちゃ・なきゃ・～ないと',
     level: 'N3',
+    category: '语法',
     commonality: 4,
     mastery: 4,
     meanings: [
       {
         meaning: '必须~, 不~不行',
         usage: ['动词ない形 → なくちゃ/なきゃ/ないと'],
-        examples: ['あ、もうこんな時間。早く帰らなきゃ。', '夏までに何とか痩せなくちゃ。'],
         references: [
           {
             name: '出口仁 N3',
