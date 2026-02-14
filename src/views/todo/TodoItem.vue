@@ -83,7 +83,10 @@ const remainingTime = computed(() => {
     if (props.todo.period === 'daily') {
       end = dayjs().endOf('day')
     } else if (props.todo.period === 'weekly') {
-      end = dayjs().endOf('week')
+      const dayOfWeek = now.day()
+      const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      const weekStart = now.startOf('day').subtract(diff, 'day')
+      end = weekStart.add(6, 'day').endOf('day')
     } else if (props.todo.period === 'monthly') {
       end = dayjs().endOf('month')
     } else if (props.todo.period === 'yearly') {

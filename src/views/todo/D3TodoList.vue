@@ -13,7 +13,7 @@ import { Message, Modal } from '@arco-design/web-vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { BarChart, LineChart } from 'echarts/charts'
+import { BarChart, LineChart, TreemapChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
@@ -79,6 +79,7 @@ use([
   CanvasRenderer,
   BarChart,
   LineChart,
+  TreemapChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
@@ -3090,6 +3091,7 @@ const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption 
   todos,
   dayStats,
   punchRecords,
+  todayKey,
   rangeDayKeys,
   rangeLabels,
   punchInsSeries,
@@ -3872,20 +3874,20 @@ const punchDialogWidth = computed(() => {
                   class="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center"
                 >
                   <div class="text-xs font-bold text-blue-600 dark:text-blue-400">
-                    各任务类型的打卡趋势
+                    每日各任务类型的打卡
                   </div>
                   <div class="flex items-center gap-1">
                     <a-button
                       size="small"
                       type="text"
-                      @click="copyChart(chart1Ref, '各任务类型的打卡趋势')"
+                      @click="copyChart(chart1Ref, '每日各任务类型的打卡')"
                     >
                       <template #icon><icon-copy /></template>
                     </a-button>
                     <a-button
                       size="small"
                       type="text"
-                      @click="exportChart(chart1Ref, '各任务类型的打卡趋势')"
+                      @click="exportChart(chart1Ref, '每日各任务类型的打卡')"
                     >
                       <template #icon><icon-download /></template>
                     </a-button>
@@ -4747,6 +4749,10 @@ const punchDialogWidth = computed(() => {
 #todo-cal-heatmap {
   display: flex;
   justify-content: center;
+}
+
+:global(.arco-tabs-content) {
+  padding: 0;
 }
 
 /* Respect user's motion preferences for accessibility */

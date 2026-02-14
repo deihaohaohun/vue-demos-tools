@@ -3,6 +3,7 @@ import type { EChartsOption } from 'echarts'
 import { useDark } from '@vueuse/core'
 
 type TodoLike = {
+  title?: string
   dayKey: string
   category: string
   punchIns: number
@@ -16,6 +17,7 @@ type DayStatLike = {
 }
 
 type PunchRecordLike = {
+  todoTitle?: string
   dayKey: string
   category: string
   unit?: string
@@ -26,6 +28,7 @@ export const useTodoCharts = (args: {
   todos: Ref<TodoLike[]>
   dayStats?: Ref<Record<string, DayStatLike>>
   punchRecords?: Ref<PunchRecordLike[]>
+  todayKey?: Ref<string>
   rangeDayKeys: ComputedRef<string[]>
   rangeLabels: ComputedRef<string[]>
   punchInsSeries: ComputedRef<number[]>
@@ -67,80 +70,66 @@ export const useTodoCharts = (args: {
     }
   })
 
-  const punchInsByCategory = computed(
-    (): {
-      categories: string[]
-      series: Array<{
-        name: string
-        type: string
-        data: number[]
-        stack: string
-        itemStyle: {
-          color: string
-          borderRadius: number | number[]
-          borderColor: string
-          borderWidth: number
-        }
-      }>
-    } => {
-      const dayKeys = args.rangeDayKeys.value
-      const byDay: Record<string, Record<string, number>> = {}
-      const categorySet = new Set<string>()
+  const punchInsByCategory = computed(() => {
+    const dayKeys = args.rangeDayKeys.value
+    const byDay: Record<string, Record<string, number>> = {}
+    const categorySet = new Set<string>()
 
-      for (const dk of dayKeys) byDay[dk] = {}
+    for (const dk of dayKeys) byDay[dk] = {}
 
-      if (args.dayStats) {
-        for (const dk of dayKeys) {
-          const stat = args.dayStats.value?.[dk]
-          const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
-          for (const [c, v] of entries) {
-            if (!v) continue
-            categorySet.add(c)
-            const bucket = byDay[dk] || (byDay[dk] = {})
-            bucket[c] = (bucket[c] || 0) + (v || 0)
-          }
-        }
-      }
-
-      // Always collect categories from current todos ensuring reactivity
-      for (const t of args.todos.value) {
-        const c = t.category || '未分类'
-        categorySet.add(c)
-
-        // If no dayStats, we still need to calculate values from todos (fallback logic)
-        if (!args.dayStats) {
-          const dk = t.dayKey
-          if (!byDay[dk]) continue
+    if (args.dayStats) {
+      for (const dk of dayKeys) {
+        const stat = args.dayStats.value?.[dk]
+        const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
+        for (const [c, v] of entries) {
+          if (!v) continue
+          categorySet.add(c)
           const bucket = byDay[dk] || (byDay[dk] = {})
-          bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
+          bucket[c] = (bucket[c] || 0) + (v || 0)
         }
       }
+    }
 
-      const categories = Array.from(categorySet)
-      categories.sort((a, b) => a.localeCompare(b, 'zh'))
+    for (const t of args.todos.value) {
+      const c = t.category || '未分类'
+      categorySet.add(c)
 
-      const series = categories.map((c, idx) => {
-        const color = palette[idx % palette.length] ?? '#60a5fa'
+      if (!args.dayStats) {
+        const dk = t.dayKey
+        if (!byDay[dk]) continue
+        const bucket = byDay[dk] || (byDay[dk] = {})
+        bucket[c] = (bucket[c] || 0) + (t.punchIns || 0)
+      }
+    }
+
+    const categories = Array.from(categorySet)
+    categories.sort((a, b) => a.localeCompare(b, 'zh'))
+
+    const fallbackDayKey = dayKeys[dayKeys.length - 1]
+    const rawTargetKey = args.todayKey?.value || fallbackDayKey
+    const targetDayKey = (rawTargetKey && byDay[rawTargetKey] ? rawTargetKey : fallbackDayKey) || ''
+    const targetIndex = dayKeys.indexOf(targetDayKey)
+    const dayLabel =
+      targetIndex >= 0 ? args.rangeLabels.value[targetIndex] || targetDayKey : targetDayKey
+
+    const data = categories
+      .map((c, cIdx) => {
+        const value = targetDayKey ? byDay[targetDayKey]?.[c] || 0 : 0
+        if (!value) return null
+        const color = palette[cIdx % palette.length] ?? '#60a5fa'
         return {
           name: c,
-          type: 'bar',
-          data: dayKeys.map((dk) => byDay[dk]?.[c] || 0),
-          stack: 'punchIns',
-          itemStyle: {
-            color,
-            borderRadius: 4, // 全圆角
-            borderColor: chartTheme.value.barBorder,
-            borderWidth: 2,
-          },
+          value,
+          itemStyle: { color },
         }
       })
+      .filter(Boolean) as Array<{ name: string; value: number; itemStyle: { color: string } }>
 
-      return { categories, series }
-    },
-  )
+    return { categories, data, dayLabel, dayKey: targetDayKey }
+  })
 
   const punchInsByCategoryOption = computed((): EChartsOption => {
-    const hasData = punchInsByCategory.value.series.some((s) => s.data.some((v: number) => v > 0))
+    const hasData = punchInsByCategory.value.data.some((d) => (d?.value || 0) > 0)
     if (!hasData) {
       const t = chartTheme.value
       return {
@@ -160,100 +149,71 @@ export const useTodoCharts = (args: {
       }
     }
     const t = chartTheme.value
-    const a = axisCommon.value
-
-    // Calculate totals for "Total" series
-    const dayKeys = args.rangeDayKeys.value
-    const seriesData = punchInsByCategory.value.series
-    const totalData = dayKeys.map((_, dayIdx) => {
-      return seriesData.reduce((sum, s) => sum + (s.data[dayIdx] || 0), 0)
-    })
-
     return {
       backgroundColor: 'transparent',
       textStyle: { color: t.text },
       tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
+        trigger: 'item',
         backgroundColor: t.tooltipBg,
         borderColor: t.tooltipBorder,
         textStyle: { color: t.text },
         formatter: (params: unknown) => {
-          const raw = params as Array<{
-            axisValue: string
-            value: number
-            seriesName: string
-            color: string
-          }>
-          const list = Array.isArray(raw) ? raw.filter((p) => p.seriesName !== '总计') : []
-          if (!list.length) return ''
-          let total = 0
-          const firstItem = list[0]
-          let html = `<div class="font-bold mb-1">${firstItem?.axisValue || ''}</div>`
-          list.forEach((p) => {
-            const val = p.value || 0
-            total += val
-            html += `<div class="flex items-center justify-between gap-4">
-              <span class="flex items-center gap-1">
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background-color:${p.color};"></span>
-                ${p.seriesName}
-              </span>
-              <span class="font-medium">${val} 次</span>
-            </div>`
-          })
-          html += `<div class="mt-1 pt-1 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-between gap-4 font-bold">
-            <span>总计</span>
-            <span>${total} 次</span>
-          </div>`
-          return html
+          const p = params as {
+            name?: string
+            value?: number
+            color?: string
+          }
+          const dayName = punchInsByCategory.value.dayLabel || ''
+          const dayKey = punchInsByCategory.value.dayKey || ''
+          const categoryName = p.name || ''
+          const records =
+            args.punchRecords?.value.filter(
+              (r) => r.dayKey === dayKey && (r.category || '未分类') === categoryName,
+            ) || []
+          const titles = records.map((r) => r.todoTitle).filter(Boolean) as string[]
+          const titleHtml = titles.length
+            ? titles
+                .map(
+                  (title) =>
+                    `<div class="flex items-center gap-1"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background-color:${p.color || '#60a5fa'};"></span>${title}</div>`,
+                )
+                .join('')
+            : '<div>暂无打卡记录</div>'
+          return `<div class="font-bold mb-1">${dayName}</div>
+            <div class="text-xs">${titleHtml}</div>`
         },
       },
-      legend: {
-        type: 'scroll',
-        data: punchInsByCategory.value.categories,
-        top: 0,
-        textStyle: { color: t.text },
-        pageButtonItemGap: 5,
-        pageIconSize: 12,
-      },
-      grid: { left: 24, right: 24, top: 46, bottom: 0, containLabel: true },
-      xAxis: {
-        type: 'category',
-        data: args.rangeLabels.value,
-        axisTick: { show: false },
-        axisLabel: a.axisLabel,
-        axisLine: a.axisLine,
-      },
-      yAxis: {
-        type: 'value',
-        name: '次',
-        minInterval: 1,
-        axisLabel: a.axisLabel,
-        nameTextStyle: a.nameTextStyle,
-        axisLine: a.axisLine,
-        splitLine: a.splitLine,
-      },
       series: [
-        ...(punchInsByCategory.value.series as unknown as unknown[]),
         {
-          name: '总计',
-          type: 'bar',
-          data: totalData,
-          barGap: '-100%',
-          itemStyle: { color: 'transparent' },
-          emphasis: { disabled: true },
-          tooltip: { show: false },
+          type: 'treemap',
+          data: punchInsByCategory.value.data as unknown as Array<Record<string, unknown>>,
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          roam: false,
+          nodeClick: false,
+          breadcrumb: { show: false },
+          upperLabel: { show: false },
           label: {
             show: true,
-            position: 'top',
             color: t.text,
-            formatter: (p: { value?: unknown }) => {
+            formatter: (p: { name?: string; value?: unknown }) => {
               const v = typeof p.value === 'number' ? p.value : Number(p.value)
-              if (!Number.isFinite(v) || v <= 0) return ''
-              return `${v}`
+              if (!Number.isFinite(v) || v <= 0) return p.name || ''
+              return `${p.name || ''}\n${v}次`
             },
           },
-          z: 10,
+          itemStyle: {
+            borderColor: t.tooltipBorder,
+            borderWidth: 1,
+            gapWidth: 2,
+          },
+          levels: [
+            { itemStyle: { borderWidth: 0, gapWidth: 4 } },
+            { itemStyle: { borderColor: t.tooltipBorder, borderWidth: 1, gapWidth: 2 } },
+            { itemStyle: { borderColor: t.tooltipBorder, borderWidth: 1, gapWidth: 1 } },
+          ],
         },
       ] as unknown as EChartsOption['series'],
     }
@@ -510,8 +470,18 @@ export const useTodoCharts = (args: {
   })
 
   const categoryOption = computed((): EChartsOption => {
-    const data = Object.entries(args.categoryCounts.value).sort((a, b) => (b[1] || 0) - (a[1] || 0))
-    const hasData = data.some((d) => (d[1] || 0) > 0)
+    const rawData = Object.entries(args.categoryCounts.value).sort(
+      (a, b) => (b[1] || 0) - (a[1] || 0),
+    )
+    const data = rawData
+      .filter((d) => (d[1] || 0) > 0)
+      .map((d) => ({
+        name: d[0],
+        value: d[1],
+      }))
+
+    const hasData = data.length > 0
+
     if (!hasData) {
       const t = chartTheme.value
       return {
@@ -531,61 +501,57 @@ export const useTodoCharts = (args: {
       }
     }
     const t = chartTheme.value
-    const a = axisCommon.value
+
     return {
       backgroundColor: 'transparent',
       textStyle: { color: t.text },
       tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
+        trigger: 'item',
         backgroundColor: t.tooltipBg,
         borderColor: t.tooltipBorder,
         textStyle: { color: t.text },
         formatter: (params: unknown) => {
-          const first = Array.isArray(params) ? params[0] : params
-          if (!first || typeof first !== 'object') return ''
-
-          const p = first as { name?: unknown; axisValue?: unknown; value?: unknown }
-          const name =
-            typeof p.name === 'string' ? p.name : typeof p.axisValue === 'string' ? p.axisValue : ''
-          const value =
-            typeof p.value === 'number' ? p.value : typeof p.value === 'string' ? p.value : ''
-
-          return `${name}: ${value}`
+          const p = params as { name: string; value: number }
+          const titles = args.todos.value
+            .filter((t) => (t.category || '未分类') === p.name)
+            .map((t) => t.title)
+            .filter(Boolean) as string[]
+          const uniqueTitles = Array.from(new Set(titles))
+          const listHtml = uniqueTitles.length
+            ? uniqueTitles
+                .map(
+                  (title) =>
+                    `<div class="flex items-center gap-1"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background-color:${t.text};"></span>${title}</div>`,
+                )
+                .join('')
+            : '<div>暂无任务</div>'
+          return `<div class="font-bold mb-1">${p.name}</div><div class="text-xs">${listHtml}</div>`
         },
-      },
-      grid: { left: 24, right: 24, top: 40, bottom: 0, containLabel: true },
-      xAxis: {
-        type: 'category',
-        data: data.map((d) => d[0]),
-        axisTick: { show: false },
-        axisLabel: { ...a.axisLabel, interval: 0, rotate: data.length > 6 ? 30 : 0 },
-        axisLine: a.axisLine,
-      },
-      yAxis: {
-        type: 'value',
-        name: '个',
-        minInterval: 1,
-        axisLabel: a.axisLabel,
-        nameTextStyle: a.nameTextStyle,
-        axisLine: a.axisLine,
-        splitLine: a.splitLine,
       },
       series: [
         {
           name: '任务分类',
-          type: 'bar',
-          data: data.map((d) => d[1] || 0),
-          barWidth: 16,
-          itemStyle: {
-            color: '#60a5fa',
-            borderRadius: 4, // 全圆角
-          },
+          type: 'treemap',
+          data: data,
+          width: '100%',
+          height: '100%',
+          roam: false, // Disable zoom/pan
+          nodeClick: false, // Disable drill down
+          breadcrumb: { show: false }, // Hide breadcrumb
           label: {
             show: true,
-            position: 'top',
-            color: t.text,
+            formatter: '{b}\n{c}',
+            fontSize: 14,
+            color: '#fff', // Always white text on colored blocks
           },
+          itemStyle: {
+            borderColor: t.tooltipBg, // Use bg color as border to simulate gaps
+            borderWidth: 2,
+            gapWidth: 2,
+            borderRadius: 4,
+          },
+          // Use the same palette
+          color: palette,
         },
       ],
     }
