@@ -3143,7 +3143,9 @@ const punchDialogWidth = computed(() => {
       class="max-w-[1200px] mx-auto pt-2 px-4 transition-opacity duration-300"
       :class="{ 'opacity-0': isWallpaperPreview }"
     >
-      <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
+      <div
+        class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+      >
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
         <div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
           {{ todayDisplay }}
@@ -3193,7 +3195,7 @@ const punchDialogWidth = computed(() => {
     >
       <!-- Add Task/Goal Section (Desktop only) -->
       <div v-if="!isMobile" class="max-w-[1200px] mx-auto mt-2 px-4">
-        <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm">
+        <div class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm">
           <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
             <t-input
               autofocus
@@ -3358,7 +3360,9 @@ const punchDialogWidth = computed(() => {
 
       <!-- Section Title: Tasks/Goals -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
-        <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
+        <div
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+        >
           <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
           <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">任务/目标</h2>
         </div>
@@ -3466,7 +3470,7 @@ const punchDialogWidth = computed(() => {
         </div>
         <div
           v-else
-          class="flex flex-col items-center justify-center py-12 text-neutral-400 bg-white dark:bg-neutral-800 rounded-lg shadow-sm"
+          class="flex flex-col items-center justify-center py-12 text-neutral-400 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg shadow-sm"
         >
           <t-empty description="暂无分类任务，请先添加任务" />
         </div>
@@ -3474,7 +3478,9 @@ const punchDialogWidth = computed(() => {
 
       <!-- Section Title: History/Archive -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
-        <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
+        <div
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+        >
           <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
           <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">历史/归档</h2>
         </div>
@@ -3484,7 +3490,7 @@ const punchDialogWidth = computed(() => {
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
         <t-tabs
           :default-value="1"
-          class="rounded-lg overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm"
+          class="rounded-lg overflow-hidden border border-neutral-100 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md shadow-sm"
         >
           <t-tab-panel :value="1" :label="`打卡记录 (${currentHistoryRecords.length})`">
             <div class="min-h-[100px] p-2">
@@ -3674,7 +3680,9 @@ const punchDialogWidth = computed(() => {
 
       <!-- Section Title: Data Statistics -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4">
-        <div class="bg-white dark:bg-neutral-800 rounded-lg p-2 shadow-sm flex items-center gap-2">
+        <div
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg p-2 shadow-sm flex items-center gap-2"
+        >
           <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
           <h2 class="text-lg font-bold text-neutral-900 dark:text-neutral-100">数据统计</h2>
         </div>
@@ -3682,7 +3690,9 @@ const punchDialogWidth = computed(() => {
 
       <!-- Data Statistics Content -->
       <div class="max-w-[1200px] mx-auto mt-2 px-4 pb-2">
-        <div class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm overflow-hidden">
+        <div
+          class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-lg shadow-sm overflow-hidden"
+        >
           <div class="p-2">
             <div
               class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2"
