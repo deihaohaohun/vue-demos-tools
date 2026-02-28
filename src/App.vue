@@ -9,8 +9,10 @@ watch(
   (val) => {
     if (val) {
       document.documentElement.setAttribute('theme-mode', 'dark')
+      document.body.setAttribute('arco-theme', 'dark')
     } else {
       document.documentElement.removeAttribute('theme-mode')
+      document.body.removeAttribute('arco-theme')
     }
   },
   { immediate: true },

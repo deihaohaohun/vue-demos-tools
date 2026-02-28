@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import MasonryWall from '@yeger/vue-masonry-wall'
+import { nanoid } from 'nanoid'
 import { useBreakpoints, breakpointsTailwind } from '@vueuse/core'
 import {
   IconStarFill,
@@ -15,7 +16,9 @@ import { Message } from '@arco-design/web-vue'
 import type { GrammarItem, GrammarMeaning, ContentCategory } from './types'
 import { grammarData as initialData } from './data'
 
-const grammarData = ref<GrammarItem[]>(initialData)
+// Ensure all items have an ID for the view
+type GrammarItemWithId = GrammarItem & { id: string | number }
+const grammarData = ref<GrammarItemWithId[]>(initialData as GrammarItemWithId[])
 
 // 过滤状态
 const selectedLevel = ref<string>('All')
@@ -111,9 +114,9 @@ const filteredAndSortedData = computed(() => {
 })
 
 // Expanded cards state
-const expandedCards = ref<Set<number>>(new Set())
+const expandedCards = ref<Set<string | number>>(new Set())
 
-const toggleExpand = (id: number) => {
+const toggleExpand = (id: string | number) => {
   if (expandedCards.value.has(id)) {
     expandedCards.value.delete(id)
   } else {
@@ -121,7 +124,7 @@ const toggleExpand = (id: number) => {
   }
 }
 
-const toggleRemember = (id: number) => {
+const toggleRemember = (id: string | number) => {
   const item = grammarData.value.find((i) => i.id === id)
   if (item) {
     item.isRemembered = !item.isRemembered
@@ -129,7 +132,7 @@ const toggleRemember = (id: number) => {
 }
 
 // 学习反馈函数
-const handleRemember = (id: number) => {
+const handleRemember = (id: string | number) => {
   const item = grammarData.value.find((i) => i.id === id)
   if (item && item.mastery < 5) {
     item.mastery += 1
@@ -137,7 +140,7 @@ const handleRemember = (id: number) => {
   }
 }
 
-const handleVague = (id: number) => {
+const handleVague = (id: string | number) => {
   const item = grammarData.value.find((i) => i.id === id)
   if (item && item.mastery > 1) {
     item.mastery -= 1
@@ -145,7 +148,7 @@ const handleVague = (id: number) => {
   }
 }
 
-const handleForget = (id: number) => {
+const handleForget = (id: string | number) => {
   const item = grammarData.value.find((i) => i.id === id)
   if (item) {
     item.mastery = 1
@@ -155,15 +158,15 @@ const handleForget = (id: number) => {
 
 // Dialog State
 const showDialog = ref(false)
-const editingId = ref<number | null>(null)
+const editingId = ref<string | number | null>(null)
 
 interface EditingExample {
-  id: number
+  id: string | number
   text: string
 }
 
 interface EditingMeaning {
-  id: number
+  id: string | number
   meaning: string
   usage: string[]
   examples: EditingExample[]
@@ -178,10 +181,10 @@ const formData = ref({
 
 const addMeaning = () => {
   formData.value.meanings.push({
-    id: Date.now(),
+    id: nanoid(),
     meaning: '',
     usage: [],
-    examples: [{ id: Date.now() + 1, text: '' }],
+    examples: [{ id: nanoid(), text: '' }],
   })
 }
 
@@ -193,7 +196,7 @@ const addExample = (meaningIndex: number) => {
   const meaning = formData.value.meanings[meaningIndex]
   if (meaning) {
     meaning.examples.push({
-      id: Date.now(),
+      id: nanoid(),
       text: '',
     })
   }
@@ -208,18 +211,18 @@ const removeExample = (meaningIndex: number, exampleIndex: number) => {
 
 const openDialog = (item?: GrammarItem) => {
   if (item) {
-    editingId.value = item.id
+    editingId.value = item.id || nanoid() // Ensure we have an ID to edit
     formData.value = {
       title: item.title,
       level: item.level,
       category: item.category,
-      meanings: item.meanings.map((m, idx) => ({
-        id: Date.now() + idx,
+      meanings: item.meanings.map((m) => ({
+        id: nanoid(),
         meaning: m.meaning,
         usage: [...m.usage],
         examples:
-          m.examples?.map((ex, exIdx) => ({
-            id: Date.now() + idx * 100 + exIdx,
+          m.examples?.map((ex) => ({
+            id: nanoid(),
             text: ex,
           })) || [],
       })),
@@ -275,8 +278,8 @@ const handleSave = () => {
     Message.success('更新成功')
   } else {
     // Add new
-    const newItem: GrammarItem = {
-      id: Date.now(),
+    const newItem: GrammarItemWithId = {
+      id: nanoid(),
       title: formData.value.title,
       level: formData.value.level,
       category: formData.value.category,
@@ -545,18 +548,18 @@ const handleSave = () => {
                                 v-if="ref.type"
                                 class="absolute -bottom-0.5 -right-0.5 px-1 py-0.5 text-[8px] font-black rounded-full bg-gradient-to-br shadow-sm"
                                 :class="{
-                                  'from-rose-500 to-pink-600 text-white': ref.type === '视频',
-                                  'from-orange-400 to-amber-500 text-white': ref.type === '音频',
-                                  'from-emerald-400 to-green-600 text-white': ref.type === '图片',
-                                  'from-cyan-400 to-blue-500 text-white': ref.type === '文字',
+                                  'from-rose-500 to-pink-600 text-white': ref.type === 'video',
+                                  'from-orange-400 to-amber-500 text-white': ref.type === 'audio',
+                                  'from-emerald-400 to-green-600 text-white': ref.type === 'image',
+                                  'from-cyan-400 to-blue-500 text-white': ref.type === 'text',
                                 }"
                               >
                                 {{
-                                  ref.type === '视频'
+                                  ref.type === 'video'
                                     ? '▶'
-                                    : ref.type === '音频'
+                                    : ref.type === 'audio'
                                       ? '♪'
-                                      : ref.type === '图片'
+                                      : ref.type === 'image'
                                         ? '◆'
                                         : '◉'
                                 }}

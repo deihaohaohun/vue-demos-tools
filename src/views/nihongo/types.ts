@@ -4,19 +4,25 @@ export interface GrammarMeaning {
   usage: string[]
   examples?: string[]
   content?: string
-  references?: { name: string; url: string; logo?: string; type?: ReferenceType }[]
+  references?: {
+    name: string
+    url: string
+    logo?: string
+    type?: ReferenceType
+    platform?: string
+  }[]
 }
 
 // 内容分类类型
 export type ContentCategory = '语法' | '单词' | '听力' | '阅读'
 // 1. 定义一个只读的常量数组
-export const REFERENCE_TYPES = ['视频', '音频', '图片', '文字'] as const
+export const REFERENCE_TYPES = ['video', 'audio', 'image', 'text'] as const
 
 // 2. 通过 typeof 和索引访问推导出联合类型
 export type ReferenceType = (typeof REFERENCE_TYPES)[number]
 
 export interface GrammarItem {
-  id: number
+  id?: string | number
   title: string
   level: string
   category: ContentCategory // 内容分类

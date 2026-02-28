@@ -1754,6 +1754,12 @@ const todayDisplay = computed(() => {
   return `${todayKey.value} 周${w[new Date().getDay()]}`
 })
 
+const yearRemainingDays = computed(() => {
+  const current = dayjs(todayKey.value).startOf('day')
+  const endOfYear = current.endOf('year').startOf('day')
+  return endOfYear.diff(current, 'day')
+})
+
 const openEdit = (id: string) => {
   const todo = getTodoById(id)
   if (!todo) return
@@ -2507,13 +2513,14 @@ const todayMinutesTotal = computed(() => {
   return todayPunchRecords.value.reduce((sum, r) => sum + getRecordMinutes(r), 0)
 })
 
-// 当天可以打卡的总任务数 (所有今天显示的任务，排除目标)
-const todayScheduledCount = computed(
-  () => todayTodos.value.filter((t) => t.period !== 'once').length,
-)
-// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0，排除目标)
+// 当天可以打卡的总任务数 (所有今天显示的任务，包含目标)
+const todayScheduledCount = computed(() => todayTodos.value.length)
+// 当日还剩几个可以打卡但是未打卡的数量 (punchIns === 0，包含目标)
 const todayUnstartedCount = computed(
-  () => todayTodos.value.filter((t) => t.period !== 'once' && t.punchIns === 0).length,
+  () =>
+    todayTodos.value.filter(
+      (t) => !t.done && t.punchIns === 0 && (getPunchedMinutesForTodo(t) || 0) === 0,
+    ).length,
 )
 // 未完成目标数 (目标任务 && 未完成)
 const unfinishedGoalsCount = computed(
@@ -2533,7 +2540,7 @@ const unfinishedGoalRatio = computed(() => {
   return ((unfinishedGoalsCount.value / totalGoalsCountForToday.value) * 100).toFixed(2)
 })
 
-// 今日已打卡任务数 (排除目标)
+// 今日已打卡任务数 (包含目标)
 const todayPunchedCount = computed(() => {
   const set = new Set<string>()
   for (const r of todayPunchRecords.value) {
@@ -2650,14 +2657,14 @@ const boardGroups = computed(() => {
 
 // 昨日数据对比
 const yesterdayKey = computed(() => dayjs().subtract(1, 'day').format('YYYY-MM-DD'))
-const yesterdayStat = computed(
-  () => dayStats.value[yesterdayKey.value] || { punchInsTotal: 0, minutesTotal: 0 },
+const yesterdayPunchRecords = computed(() =>
+  punchRecords.value.filter((r) => r.dayKey === yesterdayKey.value),
 )
-const punchInsDiff = computed(
-  () => todayPunchInsTotal.value - (yesterdayStat.value.punchInsTotal || 0),
-)
+const punchInsDiff = computed(() => todayPunchInsTotal.value - yesterdayPunchRecords.value.length)
 const minutesDiff = computed(
-  () => todayMinutesTotal.value - (yesterdayStat.value.minutesTotal || 0),
+  () =>
+    todayMinutesTotal.value -
+    yesterdayPunchRecords.value.reduce((sum, r) => sum + getRecordMinutes(r), 0),
 )
 
 const animatedScheduled = useNumberAnimation(todayScheduledCount)
@@ -3056,7 +3063,9 @@ const rangeLabels = computed(() => {
   return rangeDayKeys.value.map(formatShortDay)
 })
 
-const punchInsSeries = computed(() => rangeStats.value.map((s) => s.punchInsTotal))
+const punchInsSeries = computed(() => {
+  return rangeDayKeys.value.map((dk) => punchRecords.value.filter((r) => r.dayKey === dk).length)
+})
 const minutesSeries = computed(() => rangeStats.value.map((s) => s.minutesTotal))
 
 const templateCategoryCounts = computed(() => {
@@ -3097,6 +3106,7 @@ const { punchInsByCategoryOption, punchInsOption, minutesOption, categoryOption 
   punchInsSeries,
   minutesSeries,
   categoryCounts: categoryCountsForChart,
+  getRecordMinutes,
 })
 
 const formatShortDay = (dayKey: string) => {
@@ -3219,8 +3229,13 @@ const punchDialogWidth = computed(() => {
         class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg p-2 shadow-sm flex items-center gap-2"
       >
         <div class="w-1 h-5 bg-teal-500 rounded-full"></div>
-        <div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
-          {{ todayDisplay }}
+        <div class="flex items-baseline gap-2">
+          <div class="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+            {{ todayDisplay }}
+          </div>
+          <div class="text-xs text-neutral-500 font-medium">
+            今年剩余 {{ yearRemainingDays }} 天
+          </div>
         </div>
         <div class="ml-auto flex items-center gap-1">
           <a-button
@@ -3756,7 +3771,7 @@ const punchDialogWidth = computed(() => {
               <div
                 class="p-2 rounded bg-linear-to-br from-green-100 to-green-50 dark:from-green-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
               >
-                <div class="text-xs text-center mb-1">可打卡任务</div>
+                <div class="text-xs text-center mb-1">可打卡</div>
                 <div class="flex flex-col items-center justify-center gap-1">
                   <div
                     class="text-2xl sm:text-3xl font-bold text-center text-green-600 dark:text-green-400"
@@ -3769,7 +3784,7 @@ const punchDialogWidth = computed(() => {
               <div
                 class="p-2 rounded bg-linear-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-neutral-900 flex flex-col items-center justify-between min-h-[100px]"
               >
-                <div class="text-xs text-center mb-1">未开始任务</div>
+                <div class="text-xs text-center mb-1">未开始</div>
                 <div class="flex flex-col items-center justify-center gap-1">
                   <div
                     class="text-2xl sm:text-3xl font-bold text-center text-yellow-600 dark:text-yellow-400"
@@ -4452,7 +4467,7 @@ const punchDialogWidth = computed(() => {
                 <a-button
                   v-if="!editingGoalHistoryId"
                   size="small"
-                  color="arcoblue"
+                  type="primary"
                   :loading="isAddingGoalHistory"
                   :disabled="isAddingGoalHistory"
                   @click="addGoalHistory"
@@ -4460,7 +4475,7 @@ const punchDialogWidth = computed(() => {
                   {{ isAddingGoalHistory ? '添加中...' : '添加记录' }}
                 </a-button>
                 <template v-else>
-                  <a-button size="small" color="arcoblue" @click="saveGoalHistory"> 保存 </a-button>
+                  <a-button size="small" type="primary" @click="saveGoalHistory"> 保存 </a-button>
                   <a-button size="small" type="outline" @click="cancelEditGoalHistory">
                     取消
                   </a-button>

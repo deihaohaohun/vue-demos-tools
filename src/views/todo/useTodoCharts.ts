@@ -17,10 +17,13 @@ type DayStatLike = {
 }
 
 type PunchRecordLike = {
-  todoTitle?: string
+  id: string
+  todoId: string
+  timestamp: number
+  todoTitle: string
   dayKey: string
   category: string
-  unit?: string
+  unit?: 'times' | 'minutes'
   minutesPerTime?: number
 }
 
@@ -34,14 +37,15 @@ export const useTodoCharts = (args: {
   punchInsSeries: ComputedRef<number[]>
   minutesSeries: ComputedRef<number[]>
   categoryCounts: ComputedRef<Record<string, number>>
+  getRecordMinutes?: (record: PunchRecordLike) => number
 }) => {
   const isDark = useDark()
   const palette = ['#60a5fa', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#facc15', '#22c55e']
   const chartTheme = computed(() => {
     if (isDark.value) {
       return {
-        text: '#a1a1aa',
-        mutedText: '#71717a',
+        text: '#d4d4d8', // zinc-300
+        mutedText: '#a1a1aa', // zinc-400
         axisLine: '#3f3f46',
         splitLine: '#27272a',
         tooltipBg: 'rgba(10,10,10,0.92)',
@@ -77,7 +81,15 @@ export const useTodoCharts = (args: {
 
     for (const dk of dayKeys) byDay[dk] = {}
 
-    if (args.dayStats) {
+    if (args.punchRecords) {
+      for (const record of args.punchRecords.value) {
+        if (!dayKeys.includes(record.dayKey)) continue
+        const c = record.category || '未分类'
+        categorySet.add(c)
+        const bucket = byDay[record.dayKey] || (byDay[record.dayKey] = {})
+        bucket[c] = (bucket[c] || 0) + 1
+      }
+    } else if (args.dayStats) {
       for (const dk of dayKeys) {
         const stat = args.dayStats.value?.[dk]
         const entries = stat?.categoryPunchIns ? Object.entries(stat.categoryPunchIns) : []
@@ -90,11 +102,12 @@ export const useTodoCharts = (args: {
       }
     }
 
-    for (const t of args.todos.value) {
-      const c = t.category || '未分类'
-      categorySet.add(c)
+    // fallback when neither exists to todo directly
+    if (!args.punchRecords && !args.dayStats) {
+      for (const t of args.todos.value) {
+        const c = t.category || '未分类'
+        categorySet.add(c)
 
-      if (!args.dayStats) {
         const dk = t.dayKey
         if (!byDay[dk]) continue
         const bucket = byDay[dk] || (byDay[dk] = {})
@@ -197,7 +210,8 @@ export const useTodoCharts = (args: {
           upperLabel: { show: false },
           label: {
             show: true,
-            color: t.text,
+            color: '#fff', // Always white text on colored blocks
+            fontSize: 14,
             formatter: (p: { name?: string; value?: unknown }) => {
               const v = typeof p.value === 'number' ? p.value : Number(p.value)
               if (!Number.isFinite(v) || v <= 0) return p.name || ''
@@ -205,15 +219,11 @@ export const useTodoCharts = (args: {
             },
           },
           itemStyle: {
-            borderColor: t.tooltipBorder,
-            borderWidth: 1,
+            borderColor: t.tooltipBg, // Use bg color as border to simulate gaps
+            borderWidth: 2,
             gapWidth: 2,
+            borderRadius: 4,
           },
-          levels: [
-            { itemStyle: { borderWidth: 0, gapWidth: 4 } },
-            { itemStyle: { borderColor: t.tooltipBorder, borderWidth: 1, gapWidth: 2 } },
-            { itemStyle: { borderColor: t.tooltipBorder, borderWidth: 1, gapWidth: 1 } },
-          ],
         },
       ] as unknown as EChartsOption['series'],
     }
@@ -316,7 +326,9 @@ export const useTodoCharts = (args: {
 
         // 计算该打卡记录的实际分钟数
         let minutes = 0
-        if (record.unit === 'minutes' && typeof record.minutesPerTime === 'number') {
+        if (args.getRecordMinutes) {
+          minutes = args.getRecordMinutes(record)
+        } else if (record.unit === 'minutes' && typeof record.minutesPerTime === 'number') {
           minutes = record.minutesPerTime
         }
 

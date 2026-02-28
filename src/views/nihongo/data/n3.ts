@@ -2,7 +2,6 @@ import type { GrammarItem } from '../types'
 
 export const n3Data: GrammarItem[] = [
   {
-    id: 5,
     title: '〜から〜にかけて',
     level: 'N3',
     category: '语法',
@@ -17,7 +16,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 10,
     title: '〜とたん',
     level: 'N3',
     category: '语法',
@@ -40,7 +38,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 12,
     title: '〜たびに',
     level: 'N3',
     category: '语法',
@@ -63,7 +60,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 13,
     title: '〜だらけ',
     level: 'N3',
     category: '语法',
@@ -86,7 +82,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 14,
     title: '〜ついでに',
     level: 'N3',
     category: '语法',
@@ -109,7 +104,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 15,
     title: '〜うちに',
     level: 'N3',
     category: '语法',
@@ -128,7 +122,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 16,
     title: '〜っけ',
     level: 'N3',
     category: '语法',
@@ -150,7 +143,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 17,
     title: '〜っぽい',
     level: 'N3',
     category: '语法',
@@ -172,7 +164,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 18,
     title: '〜てからでないと・〜てからでなければ',
     level: 'N3',
     category: '语法',
@@ -194,7 +185,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 19,
     title: '～てしょうがない',
     level: 'N3',
     category: '语法',
@@ -203,8 +193,7 @@ export const n3Data: GrammarItem[] = [
     meanings: [
       {
         meaning: '~~的不得了(感情/感觉/现象)',
-        usage: [
-        ],
+        usage: [],
         references: [
           {
             name: '出口仁 N3',
@@ -217,7 +206,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 20,
     title: '～ということだ・とのことだ',
     level: 'N3',
     category: '语法',
@@ -252,7 +240,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 21,
     title: '～というより',
     level: 'N3',
     category: '语法',
@@ -274,7 +261,6 @@ export const n3Data: GrammarItem[] = [
     isRemembered: false,
   },
   {
-    id: 21,
     title: '～なくちゃ・なきゃ・～ないと',
     level: 'N3',
     category: '语法',
@@ -289,6 +275,57 @@ export const n3Data: GrammarItem[] = [
             name: '出口仁 N3',
             url: 'https://www.bilibili.com/video/BV1x64y1u7ZD?p=41',
             logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    title: '〜ことにしている',
+    level: 'N3',
+    category: '语法',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '决定~(过去的决定现在依然持续, 已经成为习惯)',
+        usage: ['动词る・ない形 + ことにしている'],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.youtube.com/watch?v=D7X3CChxptY&list=PLynCeSdpMqxDS6EC0L7vXYUAVCstRHcQR&index=23',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+            type: 'video',
+            platform: 'youtube',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
+  {
+    title: '〜ということなる',
+    level: 'N3',
+    category: '语法',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '也就是说~, 换句话说~',
+        usage: [
+          '动词普通形 + (という)ことになる',
+          '形容词普通形 + というsことなる',
+          '形容动词だ + ということなる',
+          '名词词干 + ということなる',
+        ],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.youtube.com/watch?v=m3udfvJsYWY&list=PLynCeSdpMqxDS6EC0L7vXYUAVCstRHcQR&index=22',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+            type: 'video',
+            platform: 'youtube',
           },
         ],
       },
