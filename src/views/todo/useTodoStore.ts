@@ -562,19 +562,19 @@ export const useTodoStore = () => {
       }
     }
 
-    // Update Day Stats (Exclude Goals)
-    if (todo?.period !== 'once') {
-      const stat = ensureDayStat(record.dayKey)
-      stat.punchInsTotal += 1
-      incCategory(stat.categoryPunchIns, record.category || '未分类', 1)
+    // Update Day Stats (Include Goals)
+    // if (todo?.period !== 'once') {
+    const stat = ensureDayStat(record.dayKey)
+    stat.punchInsTotal += 1
+    incCategory(stat.categoryPunchIns, record.category || '未分类', 1)
 
-      // Update minutes stats if minutesPerTime is set (regardless of unit)
-      if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
-        const mins = record.minutesPerTime
-        stat.minutesTotal += mins
-        incCategory(stat.categoryMinutes, record.category || '未分类', mins)
-      }
+    // Update minutes stats if minutesPerTime is set (regardless of unit)
+    if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
+      const mins = record.minutesPerTime
+      stat.minutesTotal += mins
+      incCategory(stat.categoryMinutes, record.category || '未分类', mins)
     }
+    // }
 
     // 限制最大记录数，避免 localStorage 过大，比如最近 5000 条
     if (punchRecords.value.length > 5000) {
@@ -585,7 +585,50 @@ export const useTodoStore = () => {
   const deletePunchRecord = (id: string) => {
     const index = punchRecords.value.findIndex((r) => r.id === id)
     if (index === -1) return false
+    const record = punchRecords.value[index]
+    if (!record) return false
+
+    const todo = todos.value.find((t) => t.id === record.todoId)
+
     punchRecords.value.splice(index, 1)
+
+    // Update Todo stats
+    if (todo) {
+      if (todo.punchIns > 0) todo.punchIns -= 1
+
+      // Re-evaluate done status
+      // 注意：这里只是基于 punchIns 的简单估算，更严谨的应该像 addPunchRecordDirectly 一样
+      // 但因为 delete 是个低频操作，且 D3TodoList 会定期 sync，所以简单处理即可
+      const currentEstimated = todo.punchIns * (todo.minutesPerTime || 0)
+      const target = todo.minFrequency * (todo.minutesPerTime || 0)
+
+      if (todo.unit === 'minutes') {
+        if (currentEstimated < target && todo.done) {
+          toggleTodoDone(todo.id, false)
+        }
+      } else {
+        if (todo.punchIns < todo.minFrequency && todo.done) {
+          toggleTodoDone(todo.id, false)
+        }
+      }
+    }
+
+    // Update Day Stats
+    // if (todo?.period !== 'once') {
+    const stat = ensureDayStat(record.dayKey)
+    if (stat.punchInsTotal > 0) stat.punchInsTotal -= 1
+    incCategory(stat.categoryPunchIns, record.category || '未分类', -1)
+
+    if (typeof record.minutesPerTime === 'number' && record.minutesPerTime > 0) {
+      const mins = record.minutesPerTime
+      // 简单处理，不检查负数，因为 minutesTotal 应该是累加的
+      stat.minutesTotal -= mins
+      if (stat.minutesTotal < 0) stat.minutesTotal = 0
+
+      incCategory(stat.categoryMinutes, record.category || '未分类', -mins)
+    }
+    // }
+
     return true
   }
 
@@ -602,7 +645,7 @@ export const useTodoStore = () => {
     const record = punchRecords.value.find((r) => r.id === id)
     if (!record) return false
 
-    const todo = todos.value.find((t) => t.id === record.todoId)
+    // const todo = todos.value.find((t) => t.id === record.todoId)
 
     const dk = record.dayKey
     const stat = ensureDayStat(dk)
@@ -611,14 +654,14 @@ export const useTodoStore = () => {
     const oldMinutes = typeof record.minutesPerTime === 'number' ? record.minutesPerTime : 0
     const nextMinutes = Math.max(0, Math.round(minutes))
 
-    // Update minutes stats (Exclude Goals)
-    if (todo?.period !== 'once') {
-      const delta = nextMinutes - oldMinutes
-      if (delta !== 0) {
-        stat.minutesTotal = Math.max(0, (stat.minutesTotal || 0) + delta)
-        incCategory(stat.categoryMinutes, categoryKey, delta)
-      }
+    // Update minutes stats (Include Goals)
+    // if (todo?.period !== 'once') {
+    const delta = nextMinutes - oldMinutes
+    if (delta !== 0) {
+      stat.minutesTotal = Math.max(0, (stat.minutesTotal || 0) + delta)
+      incCategory(stat.categoryMinutes, categoryKey, delta)
     }
+    // }
 
     record.minutesPerTime = nextMinutes
     record.unit = 'minutes'

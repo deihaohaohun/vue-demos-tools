@@ -28,6 +28,7 @@ interface Todo {
 interface Props {
   todo: Todo
   punchedMinutes?: number
+  punchedCount?: number
   minutesToday?: number
   showMetaTags?: boolean
   compact?: boolean
@@ -137,7 +138,9 @@ const progressPercentage = computed(() => {
     if (props.todo.done) return 100
 
     if (props.todo.minFrequency > 0) {
-      percentage = (props.todo.punchIns / props.todo.minFrequency) * 100
+      const current =
+        typeof props.punchedCount === 'number' ? props.punchedCount : props.todo.punchIns
+      percentage = (current / props.todo.minFrequency) * 100
     }
   }
   return Math.min(100, Math.max(0, percentage))

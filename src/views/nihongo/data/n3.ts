@@ -332,4 +332,27 @@ export const n3Data: GrammarItem[] = [
     ],
     isRemembered: false,
   },
+  {
+    title: '〜だけ',
+    level: 'N3',
+    category: '语法',
+    commonality: 4,
+    mastery: 4,
+    meanings: [
+      {
+        meaning: '想多少就多少, 能多少就多少',
+        usage: ['PI(な・❌) + だけ'],
+        references: [
+          {
+            name: '出口仁 N3',
+            url: 'https://www.youtube.com/watch?v=VSho5rvFGWw&list=PLynCeSdpMqxDS6EC0L7vXYUAVCstRHcQR&index=27',
+            logo: 'https://tdesign.gtimg.com/site/avatar.jpg',
+            type: 'video',
+            platform: 'youtube',
+          },
+        ],
+      },
+    ],
+    isRemembered: false,
+  },
 ]

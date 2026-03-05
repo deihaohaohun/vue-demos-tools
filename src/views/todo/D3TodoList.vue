@@ -726,6 +726,26 @@ const getPunchedMinutesTodayForTodo = (todo: (typeof todos.value)[number]) => {
   return 0
 }
 
+const getPunchedCountForTodo = (todo: (typeof todos.value)[number]) => {
+  // 对于目标任务，不需要计算次数
+  if (todo.period === 'once') return 0
+
+  const list = punchRecordsByTodoId.value[todo.id] || []
+  if (!list.length) return 0
+
+  const startKey = getTodoCycleStartDayKey(todo.period, todo.dayKey)
+  const endKey = getTodoCycleEndDayKey(todo.period, startKey)
+
+  let count = 0
+  for (const r of list) {
+    const rKey = dayjs(r.timestamp).format('YYYY-MM-DD')
+    if (rKey >= startKey && rKey <= endKey) {
+      count++
+    }
+  }
+  return count
+}
+
 const hashString = (s: string) => {
   let h = 0
   for (let i = 0; i < s.length; i += 1) {
@@ -1067,6 +1087,31 @@ const saveRecordNote = () => {
     editingRecordId.value = null
     Message.success('备注已更新')
   }
+}
+
+const handlePunchDelete = (id: string) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: '确定要删除这条打卡记录吗？这将同时减少相关的统计数据。',
+    okText: '删除',
+    okButtonProps: { status: 'danger' },
+    onOk: async () => {
+      try {
+        const { error } = await supabase.from('todo_punch_records').delete().eq('id', id)
+        if (error) throw error
+
+        const success = deletePunchRecord(id)
+        if (success) {
+          Message.success('删除成功')
+        } else {
+          Message.warning('记录已删除，但本地状态更新可能有误')
+        }
+      } catch (err) {
+        console.error('Failed to delete punch record:', err)
+        Message.error('删除失败，请重试')
+      }
+    },
+  })
 }
 
 const getRecordMinutes = (record: PunchRecord) => {
@@ -1435,11 +1480,29 @@ onMounted(async () => {
       console.log(`✅ Loaded ${statsData.length} day stats (this year)`)
     }
 
-    // 加载今年的打卡记录(用于图表统计)
+    // 加载今年的打卡记录(用于图表统计) -> 优化：按需加载
+    // 计算需要的最早时间点
+    // 默认加载最近一周的数据，以便显示最近的趋势
+    let earliestPunchNeeded = dayjs(todayKey).subtract(6, 'day').startOf('day')
+
+    for (const t of todos.value) {
+      if (t.period === 'once') continue
+      if (t.period === 'daily') continue // daily 只需今天
+
+      const cycleStartKey = getTodoCycleStartDayKey(t.period, todayKey)
+      const start = dayjs(cycleStartKey)
+      if (start.isBefore(earliestPunchNeeded)) {
+        earliestPunchNeeded = start
+      }
+    }
+
+    const punchStartKey = earliestPunchNeeded.format('YYYY-MM-DD')
+    console.log(`📅 Loading punch records since: ${punchStartKey}`)
+
     const { data: punchData } = await supabase
       .from('todo_punch_records')
       .select('*')
-      .gte('day_key', yearStartKey)
+      .gte('day_key', punchStartKey)
       .order('timestamp', { ascending: false })
     if (punchData) {
       punchRecords.value = punchData.map((r) => ({
@@ -1543,15 +1606,20 @@ onMounted(async () => {
         todo.punchIns = todoRecords.length
 
         // 自动判断是否完成
+        let isDone = false
         if (todo.unit === 'minutes') {
           const totalMinutes = todoRecords.reduce(
             (sum, r) => sum + (typeof r.minutesPerTime === 'number' ? r.minutesPerTime : 0),
             0,
           )
           const targetMinutes = todo.minFrequency * (todo.minutesPerTime || 0)
-          todo.done = totalMinutes >= targetMinutes
+          isDone = totalMinutes >= targetMinutes
         } else {
-          todo.done = todo.punchIns >= todo.minFrequency
+          isDone = todo.punchIns >= todo.minFrequency
+        }
+        
+        if (isDone !== todo.done) {
+          todo.done = isDone
         }
 
         if (todo.done) {
@@ -1562,8 +1630,40 @@ onMounted(async () => {
         }
       }
     }
+    
+    // Step 6: 校准 Day Stats (特别是最近的数据)
+    // 修复统计数据与打卡记录不一致的问题 (如目标打卡之前未计入)
+    const affectedDays = new Set<string>()
+    punchRecords.value.forEach((r) => affectedDays.add(r.dayKey))
 
-    console.log(`✅ Updated todo progress from punch records`)
+    affectedDays.forEach((dk) => {
+      const stat = dayStats.value[dk]
+      if (!stat) return
+      
+      const recordsOfDay = punchRecords.value.filter((r) => r.dayKey === dk)
+      const actualCount = recordsOfDay.length
+      
+      // Calibrate Count
+      if (stat.punchInsTotal !== actualCount) {
+        console.log(`🔧 Calibrating ${dk}: Count ${stat.punchInsTotal} -> ${actualCount}`)
+        stat.punchInsTotal = actualCount
+      }
+      
+      // Calibrate Minutes
+      const actualMinutes = recordsOfDay.reduce((sum, r) => {
+        let m = 0
+        if (typeof r.minutesPerTime === 'number') m = r.minutesPerTime
+        else if (r.unit === 'minutes') m = 15 
+        return sum + m
+      }, 0)
+      
+      if (Math.abs(stat.minutesTotal - actualMinutes) > 5) {
+         console.log(`🔧 Calibrating ${dk}: Minutes ${stat.minutesTotal} -> ${actualMinutes}`)
+         stat.minutesTotal = actualMinutes
+      }
+    })
+
+    console.log(`✅ Updated todo progress and calibrated stats`)
     loadingProgress.value = 100
 
     // 5. Initialize Sync Watchers
@@ -1893,6 +1993,33 @@ const saveEdit = async () => {
             }
           : record,
       )
+    }
+
+    // 重新计算任务的打卡次数和完成状态，因为周期可能发生了变化
+    if (!isCompletedGoal) {
+      const cycleStartKey = getTodoCycleStartDayKey(todo.period, todo.dayKey)
+      const cycleEndKey = getTodoCycleEndDayKey(todo.period, cycleStartKey)
+
+      const todoRecords = punchRecords.value.filter(
+        (r) => r.todoId === todo.id && r.dayKey >= cycleStartKey && r.dayKey <= cycleEndKey,
+      )
+
+      todo.punchIns = todoRecords.length
+
+      // 重新判断是否完成
+      let isDone = false
+      if (todo.unit === 'minutes') {
+        const totalMinutes = todoRecords.reduce((sum, r) => sum + (r.minutesPerTime || 0), 0)
+        const targetMinutes = todo.minFrequency * (todo.minutesPerTime || 0)
+        isDone = totalMinutes >= targetMinutes
+      } else {
+        isDone = todo.punchIns >= todo.minFrequency
+      }
+
+      if (todo.done !== isDone) {
+        toggleTodoDone(todo.id, isDone)
+        await markTodoCompleteInSupabase(todo.id, isDone)
+      }
     }
 
     editVisible.value = false
@@ -3064,7 +3191,9 @@ const rangeLabels = computed(() => {
 })
 
 const punchInsSeries = computed(() => {
-  return rangeDayKeys.value.map((dk) => punchRecords.value.filter((r) => r.dayKey === dk).length)
+  // Use rangeStats (derived from dayStats) instead of raw punchRecords
+  // This allows us to load only recent punchRecords without breaking the chart
+  return rangeStats.value.map((s) => s.punchInsTotal)
 })
 const minutesSeries = computed(() => rangeStats.value.map((s) => s.minutesTotal))
 
@@ -3491,6 +3620,7 @@ const punchDialogWidth = computed(() => {
                   <TodoItem
                     :todo="todo"
                     :punched-minutes="getPunchedMinutesForTodo(todo)"
+                    :punched-count="getPunchedCountForTodo(todo)"
                     :minutes-today="getPunchedMinutesTodayForTodo(todo)"
                     :show-meta-tags="false"
                     compact
@@ -3510,6 +3640,7 @@ const punchDialogWidth = computed(() => {
                   <TodoItem
                     :todo="todo"
                     :punched-minutes="getPunchedMinutesForTodo(todo)"
+                    :punched-count="getPunchedCountForTodo(todo)"
                     :minutes-today="getPunchedMinutesTodayForTodo(todo)"
                     :show-meta-tags="false"
                     compact
@@ -3663,6 +3794,17 @@ const punchDialogWidth = computed(() => {
                         </div>
                       </div>
                     </div>
+
+                    <div class="flex items-center">
+                      <a-button
+                        type="text"
+                        status="danger"
+                        size="small"
+                        @click="handlePunchDelete(record.id)"
+                      >
+                        <template #icon><icon-delete /></template>
+                      </a-button>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -3746,14 +3888,8 @@ const punchDialogWidth = computed(() => {
           class="bg-white/80 dark:bg-neutral-800/80 backdrop-blur-xl rounded-lg shadow-sm overflow-hidden"
         >
           <div class="p-2">
-            <div
-              class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2"
-            >
-              <div class="flex items-center gap-2">
-                <a-radio-group v-model="statsRange" type="button" size="small">
-                  <a-radio value="7d">7天</a-radio>
-                  <a-radio value="30d">30天</a-radio>
-                </a-radio-group>
+            <div class="flex flex-col sm:flex-row justify-end gap-2 mb-2">
+              <div class="flex gap-2">
                 <a-button
                   size="small"
                   color="arcoblue"
