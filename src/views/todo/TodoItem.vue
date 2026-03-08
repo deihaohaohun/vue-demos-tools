@@ -167,7 +167,10 @@ const isUnstarted = computed(() => {
           class="flex-1 min-w-0 pointer-events-auto"
         >
           <div class="text-base font-medium text-neutral-800 dark:text-neutral-200 truncate">
-            {{ todo.title }}
+            <div>{{ todo.title }}</div>
+            <div class="text-xs font-medium text-neutral-400 dark:text-gray-500 truncate mt-2">
+              {{ todo.description }}
+            </div>
           </div>
         </a-tooltip>
 

@@ -126,12 +126,45 @@ const {
   consecutivePunchDays,
 } = useTodoStore()
 
-// Loading state for page initialization
+// 页面加载状态
 const pageLoading = ref(true)
 const loadingProgress = ref(0)
 const loadingMessage = ref('正在初始化...')
 
-// Authentication state
+// 页面搁置检测：记录数据加载完成时的日期，若页面恢复可见时日期已变更则提示刷新
+const pageStaleVisible = ref(false) // 是否显示「页面已过期」全屏提示
+const initializedDateKey = ref('') // 数据加载完成时的日期字符串 YYYY-MM-DD
+let staleCheckCleanup: (() => void) | null = null // 清理 visibilitychange 监听
+
+/**
+ * 注册 visibilitychange 事件，当页面重新可见时检查日期是否变化
+ */
+const registerStaleCheck = () => {
+  const handleVisibilityChange = () => {
+    // 页面重新变为可见状态
+    if (!document.hidden && initializedDateKey.value) {
+      const currentDateKey = dayjs().format('YYYY-MM-DD')
+      if (currentDateKey !== initializedDateKey.value) {
+        // 日期与初始化时不同，说明页面已被搁置过夜，弹出不可关闭提示
+        pageStaleVisible.value = true
+      }
+    }
+  }
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  // 返回清理函数
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
+}
+
+/** 刷新页面（封装为函数以便在模板中调用） */
+const reloadPage = () => {
+  window.location.reload()
+}
+
+// 身份验证状态
 const isAuthenticated = ref(false)
 const authDialogVisible = ref(false)
 const authPassword = ref('')
@@ -1617,7 +1650,7 @@ onMounted(async () => {
         } else {
           isDone = todo.punchIns >= todo.minFrequency
         }
-        
+
         if (isDone !== todo.done) {
           todo.done = isDone
         }
@@ -1630,7 +1663,7 @@ onMounted(async () => {
         }
       }
     }
-    
+
     // Step 6: 校准 Day Stats (特别是最近的数据)
     // 修复统计数据与打卡记录不一致的问题 (如目标打卡之前未计入)
     const affectedDays = new Set<string>()
@@ -1639,24 +1672,24 @@ onMounted(async () => {
     affectedDays.forEach((dk) => {
       const stat = dayStats.value[dk]
       if (!stat) return
-      
+
       const recordsOfDay = punchRecords.value.filter((r) => r.dayKey === dk)
       const actualCount = recordsOfDay.length
-      
+
       // Calibrate Count
       if (stat.punchInsTotal !== actualCount) {
         console.log(`🔧 Calibrating ${dk}: Count ${stat.punchInsTotal} -> ${actualCount}`)
         stat.punchInsTotal = actualCount
       }
-      
+
       // Calibrate Minutes
       const actualMinutes = recordsOfDay.reduce((sum, r) => {
         let m = 0
         if (typeof r.minutesPerTime === 'number') m = r.minutesPerTime
-        else if (r.unit === 'minutes') m = 15 
+        else if (r.unit === 'minutes') m = 15
         return sum + m
       }, 0)
-      
+
       if (Math.abs(stat.minutesTotal - actualMinutes) > 5) {
          console.log(`🔧 Calibrating ${dk}: Minutes ${stat.minutesTotal} -> ${actualMinutes}`)
          stat.minutesTotal = actualMinutes
@@ -1672,19 +1705,24 @@ onMounted(async () => {
     console.error('❌ Error during page initialization:', error)
     loadingProgress.value = 100
   } finally {
-    // Hide loading overlay after short delay
+    // 页面数据加载完成后，延迟隐藏 loading 遮罩
     setTimeout(async () => {
       pageLoading.value = false
 
-      // Try Biometric Login First
+      // 记录数据初始化完成时的日期，用于后续搁置检测
+      initializedDateKey.value = dayjs().format('YYYY-MM-DD')
+      // 注册页面搁置检测监听，并保存清理函数
+      staleCheckCleanup = registerStaleCheck()
+
+      // 优先尝试生物识别登录
       if (biometricCredId.value) {
         await loginWithBiometrics()
-        // If failed or cancelled, show dialog
+        // 如果失败或取消，展示密码对话框
         if (!isAuthenticated.value) {
           authDialogVisible.value = true
         }
       } else {
-        // Show authentication dialog
+        // 展示身份验证对话框
         authDialogVisible.value = true
       }
     }, 300)
@@ -3269,6 +3307,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateWidth)
+  // 清理页面搁置检测的事件监听
+  staleCheckCleanup?.()
 })
 
 const editDialogWidth = computed(() => {
@@ -3281,13 +3321,13 @@ const punchDialogWidth = computed(() => {
 </script>
 
 <template>
-  <!-- Full-Screen Loading Overlay -->
+  <!-- 全屏 Loading 遮罩 -->
   <div
     v-if="pageLoading"
     class="fixed inset-0 z-50 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md flex items-center justify-center"
   >
     <div class="w-full max-w-md px-8">
-      <!-- Loading Message -->
+      <!-- Loading 提示文字 -->
       <div class="text-center mb-6">
         <div
           class="text-2xl font-bold mb-2"
@@ -3300,7 +3340,7 @@ const punchDialogWidth = computed(() => {
         </div>
       </div>
 
-      <!-- Progress Bar -->
+      <!-- 进度条 -->
       <div
         class="w-full h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden shadow-inner"
       >
@@ -3311,6 +3351,34 @@ const punchDialogWidth = computed(() => {
       </div>
     </div>
   </div>
+
+  <!-- 页面搁置过期提示（不可关闭，阻止继续操作，需刷新页面） -->
+  <a-modal
+    v-model:visible="pageStaleVisible"
+    :mask-closable="false"
+    :closable="false"
+    :hide-cancel="true"
+    width="360px"
+    @ok="reloadPage"
+  >
+    <!-- 自定义确认按钮文字 -->
+    <template #ok-text>🔄 立即刷新</template>
+
+    <!-- 内容 -->
+    <div class="flex flex-col items-center gap-4 py-4 text-center">
+      <!-- 图标 -->
+      <div class="text-5xl">🌙</div>
+      <!-- 标题 -->
+      <div class="text-base font-semibold text-neutral-800 dark:text-neutral-100">页面已过期</div>
+      <!-- 说明 -->
+      <div class="text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+        页面已长时间搁置，数据可能已不是最新状态。
+        <br />
+        请刷新页面以获取最新数据。
+      </div>
+    </div>
+  </a-modal>
+
 
   <!-- Authentication Setup Dialog (First Time) -->
   <!-- Authentication Verification Dialog -->
@@ -4914,4 +4982,6 @@ const punchDialogWidth = computed(() => {
     transition-duration: 0.01ms !important;
   }
 }
+
+
 </style>
